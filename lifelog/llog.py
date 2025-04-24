@@ -1,5 +1,5 @@
-#!/usr/bin/env llog-python
-# lifelog/llog.py
+#!/home/zach.mckinnon/lifelog/.venv/bin/python
+
 import typer
 from commands import log, summary, time, habit, metric
 
