@@ -1,8 +1,18 @@
 # lifelog/config/config_manager.py
 from pathlib import Path
 from tomlkit import parse, document, dumps
+import toml
 
 CONFIG_PATH = Path.home() / ".config" / "lifelog" / "config.toml"
+
+
+def get_alias_map():
+    config_path = Path.home() / ".config" / "lifelog" / "config.toml"
+    if not config_path.exists():
+        return {}
+    with open(config_path) as f:
+        parsed = toml.load(f)
+    return parsed.get("aliases", {})
 
 
 def load_config():

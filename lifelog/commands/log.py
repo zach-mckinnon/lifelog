@@ -10,6 +10,70 @@ app = typer.Typer(help="Log a single metric (e.g. mood, water, sleep, etc.)")
 
 LOG_FILE = Path.home() / ".lifelog.json"
 
+@app.command("entry")
+def log_entry(
+    name: str,
+    value: str,
+    extras: list[str] = typer.Argument(None)
+):
+    """
+    Natural CLI logging: `llog mood 5 "Tired from work" +foggy`
+    """
+    from config.config_manager import get_alias_map
+
+    aliases = get_alias_map()
+    name = aliases.get(name, name)
+
+    notes = ""
+    tags = []
+
+    for item in extras or []:
+        if item.startswith("+"):
+            tags.append(item.lstrip("+"))
+        else:
+            notes += item + " "
+
+    validated_value = validate_metric(name, value)
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "metric": name,
+        "value": validated_value,
+        "notes": notes.strip(),
+        "tags": tags
+    }
+    save_entry(entry)
+    typer.echo(f"✅ Logged {name} = {validated_value}")
+
+@app.command()
+def quick():
+    """
+    Prompt-based logging for low-energy check-ins.
+    """
+    mood = typer.prompt("Mood (1-10)", default="")
+    sleep = typer.prompt("Sleep Hours", default="")
+    notes = typer.prompt("Notes (optional)", default="")
+
+    entries = []
+    if mood:
+        entries.append({"name": "mood", "value": mood})
+    if sleep:
+        entries.append({"name": "sleep", "value": sleep})
+
+    for e in entries:
+        try:
+            validated = validate_metric(e["name"], e["value"])
+            save_entry({
+                "timestamp": datetime.now().isoformat(),
+                "metric": e["name"],
+                "value": validated,
+                "notes": notes,
+                "tags": []
+            })
+            typer.echo(f"✅ Logged {e['name']} = {validated}")
+        except Exception as err:
+            typer.echo(f"❌ {e['name']} failed: {err}")
+
+
 def save_entry(entry):
     if LOG_FILE.exists():
         with open(LOG_FILE, "r") as f:

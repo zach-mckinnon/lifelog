@@ -25,6 +25,10 @@ def help_command():
 
     typer.echo("🔹 Metric Logging")
     typer.echo("  llog log metric <name> <value> [--notes \"...\"] [--tags tag1 tag2]     Log a single metric\n")
+    
+    typer.echo("🔹 Low-Effort Logging")
+    typer.echo("  llog entry <alias or name> <value> [\"optional notes\"] [+tags...]")
+    typer.echo("  llog quick                        Run a prompt-based mood + sleep logger\n")
 
     typer.echo("🔹 Time Tracking")
     typer.echo("  llog time start <category>          Start timing a category")

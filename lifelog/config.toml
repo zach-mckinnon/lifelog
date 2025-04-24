@@ -14,3 +14,8 @@ description = "Sleep quality"
 [paths]
 log_file = "/home/pi/.lifelog.json"
 config_file = "/home/pi/.config/lifelog/config.toml"
+
+[aliases]
+m = "mood"
+a = "anxiety"
+w = "water"
