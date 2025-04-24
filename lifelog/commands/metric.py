@@ -4,7 +4,26 @@ from config.config_manager import load_config, save_config
 
 app = typer.Typer(help="Manage metric definitions.")
 
-@app.command()
+@app.command(
+    help="""
+Add a new metric definition.
+
+Usage:
+  llog metrics add NAME TYPE [--min N] [--max N] [--description "..."]
+
+Arguments:
+  NAME            The name of the metric to track (e.g. mood, energy)
+  TYPE            One of: int, float, bool, str
+
+Options:
+  --min FLOAT     Minimum allowed value (e.g. 0)
+  --max FLOAT     Maximum allowed value (e.g. 10)
+  --description   A short description of what this metric represents
+
+Example:
+  llog metrics add energy int --min 0 --max 10 --description "Energy level from tired to hyper"
+"""
+)
 def add(name: str, type: str, min: float = None, max: float = None, description: str = ""):
     """
     Add a new metric definition.
