@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env llog-python
 # lifelog/llog.py
 import typer
 from commands import log, summary, time, habit, metric
