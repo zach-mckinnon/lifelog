@@ -23,7 +23,7 @@ def help_command():
     typer.echo("  llog metric add <name> --type <int|float|bool|str> [--min N] [--max N] --description \"...\"  Add a metric")
     typer.echo("  llog metric list                                             List all defined metric\n")
 
-    typer.echo("🔹 Logging")
+    typer.echo("🔹 Metric Logging")
     typer.echo("  llog log metric <name> <value> [--notes \"...\"] [--tags tag1 tag2]     Log a single metric\n")
 
     typer.echo("🔹 Time Tracking")
@@ -37,7 +37,10 @@ def help_command():
     typer.echo("  llog habit list                     List all habits\n")
 
     typer.echo("🔹 Reports")
-    typer.echo("  llog summary metric <name> [--period day|week|month]         View a metric trend chart\n")
+    typer.echo("  llog summary metric <name> [--period day|week|month]         View a metric trend chart")
+    typer.echo("  llog summary time [--period day|week|month]                  View time spent per category")
+    typer.echo("  llog summary habits [--period day|week|month]                View habit completions by habit")
+    typer.echo("  llog summary daily                                           View a full daily recap\n")
 
     typer.echo("(More categories like 'form' and 'task' coming soon!)\n")
     typer.echo("ℹ️  You can also run any command with --help for details. Example: `llog log --help`\n")
