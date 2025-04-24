@@ -1,11 +1,11 @@
 
-[metrics.mood]
+[metric.mood]
 type = "int"
 min = 1
 max = 10
 description = "Mood from 1 (bad) to 10 (great)"
 
-[metrics.sleepq]
+[metric.sleepq]
 type = "int"
 min = 1
 max = 10

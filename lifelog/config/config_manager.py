@@ -22,9 +22,9 @@ def save_config(doc):
 
 def get_metric_definitions():
     config = load_config()
-    return config.get("metrics", {})
+    return config.get("metric", {})
 
 
 def get_metric_definition(metric_name):
-    metrics = get_metric_definitions()
-    return metrics.get(metric_name)
+    metric = get_metric_definitions()
+    return metric.get(metric_name)

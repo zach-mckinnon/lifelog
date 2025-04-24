@@ -9,7 +9,7 @@ app = typer.Typer(help="Manage metric definitions.")
 Add a new metric definition.
 
 Usage:
-  llog metrics add NAME TYPE [--min N] [--max N] [--description "..."]
+  llog metric add NAME TYPE [--min N] [--max N] [--description "..."]
 
 Arguments:
   NAME            The name of the metric to track (e.g. mood, energy)
@@ -21,7 +21,7 @@ Options:
   --description   A short description of what this metric represents
 
 Example:
-  llog metrics add energy int --min 0 --max 10 --description "Energy level from tired to hyper"
+  llog metric add energy int --min 0 --max 10 --description "Energy level from tired to hyper"
 """
 )
 def add(name: str, type: str, min: float = None, max: float = None, description: str = ""):
@@ -30,10 +30,10 @@ def add(name: str, type: str, min: float = None, max: float = None, description:
     """
     config = load_config()
 
-    if "metrics" not in config:
-        config["metrics"] = {}
+    if "metric" not in config:
+        config["metric"] = {}
 
-    if name in config["metrics"]:
+    if name in config["metric"]:
         typer.echo(f"Metric '{name}' already exists. Use a different name or edit the config manually.")
         raise typer.Exit()
     
@@ -51,23 +51,23 @@ def add(name: str, type: str, min: float = None, max: float = None, description:
     if max is not None:
         metric_def["max"] = max
 
-    config["metrics"][name] = metric_def
+    config["metric"][name] = metric_def
     save_config(config)
     typer.echo(f"✅ Added metric '{name}' with type '{type}'")
 
 @app.command("list")
-def list_metrics():
+def list_metric():
     """
-    List all defined metrics.
+    List all defined metric.
     """
     config = load_config()
-    metrics = config.get("metrics", {})
+    metric = config.get("metric", {})
 
-    if not metrics:
-        typer.echo("No metrics defined yet. Use `llog metric add` to define one.")
+    if not metric:
+        typer.echo("No metric defined yet. Use `llog metric add` to define one.")
         return
 
-    for name, props in metrics.items():
+    for name, props in metric.items():
         typer.echo(f"📊 {name} ({props.get('type')})")
         if "min" in props or "max" in props:
             typer.echo(f"    Range: {props.get('min', '-∞')} to {props.get('max', '∞')}")

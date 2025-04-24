@@ -7,8 +7,8 @@ from commands import log, summary, time, habit, metric
 app = typer.Typer(help="Lifelog CLI: Track your habits, health, time, and tasks.")
 
 # Add subcommands
-app.add_typer(log.app, name="log", help="Log individual metrics like mood, sleep, water, etc.")
-app.add_typer(metric.app, name="metrics", help="Manage and list defined metrics.")
+app.add_typer(log.app, name="log", help="Log individual metric like mood, sleep, water, etc.")
+app.add_typer(metric.app, name="metric", help="Manage and list defined metric.")
 app.add_typer(summary.app, name="summary", help="Generate CLI-based reports and visualizations.")
 app.add_typer(time.app, name="time", help="Track time in categories like resting, working, socializing.")
 app.add_typer(habit.app, name="habit", help="Track recurring habits and completions.")
@@ -20,8 +20,8 @@ def help_command():
     """
     typer.echo("\n🧠 Lifelog CLI - Available Commands\n")
     typer.echo("🔹 Metric Tracking")
-    typer.echo("  llog metrics add <name> --type <int|float|bool|str> [--min N] [--max N] --description \"...\"  Add a metric")
-    typer.echo("  llog metrics list                                             List all defined metrics\n")
+    typer.echo("  llog metric add <name> --type <int|float|bool|str> [--min N] [--max N] --description \"...\"  Add a metric")
+    typer.echo("  llog metric list                                             List all defined metric\n")
 
     typer.echo("🔹 Logging")
     typer.echo("  llog log metric <name> <value> [--notes \"...\"] [--tags tag1 tag2]     Log a single metric\n")

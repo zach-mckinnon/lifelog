@@ -139,12 +139,12 @@ def habits(period: str = typer.Option("week", help="Time range: day, week, month
 @app.command()
 def daily():
     """
-    Show a summary report of today's metrics, time tracking, and habit completions.
+    Show a summary report of today's metric, time tracking, and habit completions.
     """
     now = datetime.now()
     since = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Metrics
+    # metric
     entries = [e for e in load_entries() if datetime.fromisoformat(e["timestamp"]) >= since]
     metric_data = defaultdict(list)
     for e in entries:
@@ -153,7 +153,7 @@ def daily():
         except:
             continue
 
-    typer.echo("\n📊 Metrics (Today)")
+    typer.echo("\n📊 metric (Today)")
     if metric_data:
         for name, values in metric_data.items():
             typer.echo(f"- {name}: {round(statistics.mean(values), 2)}")
