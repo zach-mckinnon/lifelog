@@ -1,0 +1,16 @@
+
+[metrics.mood]
+type = "int"
+min = 1
+max = 10
+description = "Mood from 1 (bad) to 10 (great)"
+
+[metrics.sleepq]
+type = "int"
+min = 1
+max = 10
+description = "Sleep quality"
+
+[paths]
+log_file = "/home/pi/.lifelog.json"
+config_file = "/home/pi/.config/lifelog/config.toml"
