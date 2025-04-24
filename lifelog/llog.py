@@ -5,14 +5,9 @@ from commands import log, summary, metrics
 
 app = typer.Typer(help="Lifelog CLI: Track your habits, health, time, and tasks.")
 
-import typer
-from commands import log, summary, metric
-
-app = typer.Typer(help="Lifelog CLI: Track your habits, health, time, and tasks.")
-
 # Add subcommands
 app.add_typer(log.app, name="log", help="Log individual metrics like mood, sleep, water, etc.")
-app.add_typer(metric.app, name="metrics", help="Manage and list defined metrics.")
+app.add_typer(metrics.app, name="metrics", help="Manage and list defined metrics.")
 app.add_typer(summary.app, name="summary", help="Generate CLI-based reports and visualizations.")
 
 @app.command("help")
