@@ -23,7 +23,9 @@ llog = "lifelog.llog:app"
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["lifelog"]
+where = ["."]
 include = ["lifelog*"]
