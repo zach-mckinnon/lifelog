@@ -1,17 +1,12 @@
 # lifelog/config/cron_manager.py
 import subprocess
-from .config_manager import load_config
 from pathlib import Path
-from tomlkit import parse, document, dumps
+from tomlkit import dumps
+import lifelog.config.config_manager as cf
 
 CONFIG_PATH = Path.home() / ".config" / "lifelog" / "config.toml"
 
-def load_config():
-    if CONFIG_PATH.exists():
-        with CONFIG_PATH.open("r") as f:
-            return parse(f.read())
-    else:
-        return document()
+cfg = cf.load_cron_config()
 
 def save_config(doc):
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -19,8 +14,8 @@ def save_config(doc):
         f.write(dumps(doc))
 
 def build_cron_lines():
-    config = load_config()
-    cron_section = config.get("cron", {})
+    
+    cron_section = cfg.get("cron", {})
     lines = []
     for name, entry in cron_section.items():
         schedule = entry.get("schedule")

@@ -1,26 +1,27 @@
 
-[metric.mood]
+[tracker]
+
+[tracker.mood]
 type = "int"
 min = 1
 max = 10
 description = "Mood from 1 (bad) to 10 (great)"
 
-[metric.sleepq]
+[tracker.sleepq]
 type = "int"
 min = 1
 max = 10
 description = "Sleep quality"
 
-[metric.energy]
+[tracker.energy]
 type = "int"
 min = 1
 max = 10
 description = "Energy Level"
 
 [paths]
-log_file = "~/.lifelog.json"
+LOG_FILE = "~/.lifelog.json"
 time_file = "~/.lifelog_time_tracking.json"
-habit_file = "~/.lifelog_habits.json"
 config_file = "~/.lifelog/config.toml"
 
 [aliases]
@@ -47,3 +48,19 @@ show_completed_tasks = false
 [defaults.task]
 recur_format = "every:X" # for future customization
 due_format = "+XdT18:00"
+
+[cron.weather]
+schedule = "0 */4 * * *"
+command = "llog env weather"
+
+[cron.air]
+schedule = "15 */4 * * *"
+command = "llog env air"
+
+[cron.moon]
+schedule = "30 */6 * * *"
+command = "llog env moon"
+
+[cron.satellite]
+schedule = "45 */4 * * *"
+command = "llog env satellite"

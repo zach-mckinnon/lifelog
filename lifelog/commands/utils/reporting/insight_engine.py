@@ -8,18 +8,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
 from scipy.stats import pearsonr, spearmanr
+import lifelog.config.config_manager as cf
 
-from lifelog.config.config_manager import get_log_file, get_time_file
+import lifelog.config.config_manager as cf
 
 
-LOG_FILE = get_log_file()
-TIME_FILE = get_time_file()
+LOG_FILE = cf.get_log_file()
+TIME_FILE = cf.get_time_file()
 
 
 def load_metric_data() -> List[Dict[str, Any]]:
     if LOG_FILE.exists():
         with open(LOG_FILE, "r") as f:
-            return json.load(f)
+            return json.load(f).get("log", [])
     return []
 
 
@@ -70,8 +71,8 @@ def generate_insights():
             m2 = metric_names[j]
 
             days = set(metrics_data[m1].keys()) & set(metrics_data[m2].keys())
-            if len(days) < 5:
-                continue  # Not enough overlap
+            if len(days) < 7:
+                continue
 
             x = [metrics_data[m1][d] for d in sorted(days)]
             y = [metrics_data[m2][d] for d in sorted(days)]

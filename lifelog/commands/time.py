@@ -6,11 +6,12 @@ from datetime import datetime
 import json
 from lifelog.config.config_manager import get_time_file
 from lifelog.commands.utils.shared_options import tags_option, notes_option
+from rich.console import Console
 
 app = typer.Typer(help="Track time spent in different life categories.")
 
 TIME_TRACK_FILE = get_time_file()
-
+console = Console()
 
 def load_tracking():
     if TIME_TRACK_FILE.exists():
@@ -36,8 +37,8 @@ def start(
     data = load_tracking()
 
     if "active" in data:
-        typer.echo(f"⏳ Already tracking: {data['active']['category']} (since {data['active']['start']})")
-        raise typer.Exit()
+        console.print(f"[warning]⏳ Already tracking: {data['active']['category']} (since {data['active']['start']})[/warning]")
+        raise typer.Exit(code=1)
 
     data["active"] = {
         "category": category,
@@ -46,7 +47,8 @@ def start(
         "notes": notes if notes else "",
     }
     save_tracking(data)
-    typer.echo(f"▶️  Started tracking '{category}'")
+    console.print(f"[success]▶️  Started tracking '{category}'[/success]")
+
 
 
 @app.command()
@@ -59,8 +61,8 @@ def stop(
     """
     data = load_tracking()
     if "active" not in data:
-        typer.echo("⚠️  No active tracking session.")
-        raise typer.Exit()
+        console.print("[warning]⚠️  No active tracking session.[/warning]")
+        raise typer.Exit(code=1)
 
     start_time = datetime.fromisoformat(data["active"]["start"])
     end_time = datetime.now()
@@ -82,7 +84,7 @@ def stop(
     data.pop("active")
 
     save_tracking(data)
-    typer.echo(f"⏹️  Stopped tracking '{category}' — duration: {round(duration, 2)} minutes")
+    console.print(f"[success]⏹️  Stopped tracking '{category}'[/success] — duration: [info]{round(duration, 2)} minutes[/info]")
 
 
 @app.command()
@@ -92,6 +94,6 @@ def status():
     """
     data = load_tracking()
     if "active" in data:
-        typer.echo(f"Currently tracking '{data['active']['category']}' since {data['active']['start']}")
+        console.print(f"[info]Currently tracking '{data['active']['category']}' since {data['active']['start']}[/info]")
     else:
-        typer.echo("No active session.")
+        console.print("[info]No active session.[/info]")
