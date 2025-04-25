@@ -6,6 +6,13 @@ from lifelog.config.config_manager import get_time_file
 from lifelog.commands.utils.reporting.analytics.report_utils import render_radar_chart
 console = Console()
 
+
+'''Descriptive analytics: overview of tracker stats, time usage, and tasks.
+   - Mean, median, and standard deviation of tracker data.  
+   - Time usage statistics (total and average per day).
+   - Task summary (to be implemented).
+   - Export options (JSON, CSV).'''
+
 def report_descriptive(since: str = "30d", export: str = None):
     """
     📊 Descriptive analytics: overview of tracker stats, time usage, and tasks.

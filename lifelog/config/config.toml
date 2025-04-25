@@ -20,9 +20,14 @@ max = 10
 description = "Energy Level"
 
 [paths]
+DAILY_QUOTE_FILE = "~/.lifelog/daily_zen_quote.json"
+FEEDBACK_FILE = "~/.lifelog/feedback_sayings.json"
 LOG_FILE = "~/.lifelog.json"
 TIME_FILE = "~/.lifelog_time_tracking.json"
 CONFIG_FILE = "~/.lifelog/config.toml"
+INIT_MARKER = "~/.lifelog_initialized"
+FIRST_COMMAND_FLAG_FILE = "~/.lifelog/first_command.json"
+TASK_FILE = "~/.lifelog_tasks.json"
 
 [aliases]
 m = "mood"

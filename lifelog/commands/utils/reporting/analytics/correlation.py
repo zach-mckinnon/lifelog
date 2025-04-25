@@ -6,6 +6,14 @@ from lifelog.commands.utils.reporting.analytics.report_utils import render_scatt
 
 console = Console()
 
+# Correlation analysis between trackers over a specified period
+# (e.g. "30d", "7d").
+# This function generates insights using the insight_engine and displays
+# the top correlated pairs of metrics. It also allows for exporting the
+# results to a JSON or CSV file.
+# The function is designed to be used in a command-line interface (CLI)
+# and provides a user-friendly output format using the rich library.
+# The function is not intended to be used as a standalone script but as part of a larger application.
 def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
     """
     🔍 Correlation analysis between trackers over the specified period.
@@ -14,15 +22,16 @@ def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
     top_n: number of top correlated pairs to show
     export: optional path to export JSON or CSV
     """
-    # 1. Determine cutoff (unused by generate_insights, placeholder)
+    # 1. Parse the "since" argument and set the cutoff date
+    # 2. Generate insights using the insight_engine
     cutoff = _parse_since(since)
     console.print(f"[bold]Correlation Analysis:[/] since {cutoff.date().isoformat()} (showing top {top_n})")
 
-    # 2. Generate insights (metric-to-metric correlations)
     insights = generate_insights()
     top_insights = insights[:top_n]
 
-    # 3. Display top correlations
+   # 3. Display the top correlated pairs of metrics
+    console.print("\n[bold]Top Correlated Pairs:[/]\n")
     for idx, ins in enumerate(top_insights, start=1):
         m1, m2 = ins['metrics']
         pearson = ins['correlation']['pearson']
@@ -45,6 +54,8 @@ def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
         _export_insights(top_insights, export)
 
 
+# Helper function to parse the "since" argument
+# and convert it to a datetime object.  
 def _parse_since(s: str) -> datetime:
     now = datetime.now()
     unit = s[-1]
@@ -62,6 +73,8 @@ def _parse_since(s: str) -> datetime:
     return now - timedelta(days=amt)
 
 
+# Helper function to export insights to a file in JSON or CSV format.
+# It takes a list of insights and a file path as input.
 def _export_insights(insights: list[dict], filepath: str):
     ext = filepath.split('.')[-1].lower()
     if ext == 'csv':

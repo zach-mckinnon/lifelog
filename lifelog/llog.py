@@ -9,6 +9,7 @@ from typing import List, Optional
 import typer
 import requests
 
+from lifelog.commands.utils import get_quotes
 import lifelog.config.config_manager as cf
 from lifelog.commands import time, task, track, report, environmental_sync
 
@@ -17,59 +18,17 @@ from rich.panel import Panel
 from rich.table import Table
 
 
-
-INIT_MARKER = Path.home() / ".lifelog_initialized"
-FIRST_COMMAND_FLAG_FILE = Path.home() / ".lifelog" / "first_command.json"
-DAILY_QUOTE_FILE = Path.home() / ".lifelog" / "daily_zen_quote.json"
-FEEDBACK_FILE = Path.home() / ".lifelog" / "feedback_sayings.json"
 LOG_FILE = cf.get_log_file()
 TIME_FILE = cf.get_time_file()
+INIT_MARKER = cf.get_init_marker()
+FIRST_COMMAND_FLAG_FILE = cf.get_fc_file()
+FEEDBACK_FILE = cf.get_feedback_file()
+DAILY_QUOTE_FILE = cf.get_daily_quote_file()
 
 app = typer.Typer(help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
 console = Console()
 
-def fetch_daily_zen_quote(api_url="https://zenquotes.io/api/today"):
-    """Fetches the quote of the day from ZenQuotes."""
-    try:
-        response = requests.get(api_url)
-        response.raise_for_status()
-        data = response.json()
-        if data and isinstance(data, list) and len(data) > 0:
-            return data[0]["q"] + " — " + data[0]["a"]
-        else:
-            print("[yellow]⚠️ Warning[/yellow]: Could not parse quote from ZenQuotes API.")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"[yellow]⚠️ Warning[/yellow]: Could not fetch quote from ZenQuotes API: {e}")
-        return None
-def get_daily_quote():
-    """Retrieves the daily ZenQuote, fetching if it's a new day."""
-    today = datetime.now().date()
-    stored_quote_data = {}
-    if DAILY_QUOTE_FILE.exists():
-        try:
-            with open(DAILY_QUOTE_FILE, "r") as f:
-                stored_quote_data = json.load(f)
-        except json.JSONDecodeError:
-            print("[yellow]⚠️ Warning[/yellow]: Could not decode stored daily quote.")
 
-    if stored_quote_data.get("date") == str(today) and stored_quote_data.get("quote"):
-        return stored_quote_data["quote"]
-    else:
-        new_quote = fetch_daily_zen_quote()
-        if new_quote:
-            save_daily_quote({"date": str(today), "quote": new_quote})
-            return new_quote
-        return None
-
-def save_daily_quote(quote_data):
-    """Saves the daily ZenQuote to a JSON file."""
-    DAILY_QUOTE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(DAILY_QUOTE_FILE, "w") as f:
-            json.dump(quote_data, f, indent=2)
-    except IOError:
-        print(f"[yellow]⚠️ Warning[/yellow]: Could not save daily quote to {DAILY_QUOTE_FILE}")
 def check_first_command_of_day():
     today = datetime.now().date()
     flag_data = {}
@@ -98,7 +57,7 @@ def save_first_command_flag(date_str):
 
 # Example integration:
 def greet_user():
-    daily_quote = get_daily_quote()
+    daily_quote = get_quotes.get_daily_quote()
     if daily_quote:
         console.print(f"[bold green]☀️ Good day![/bold green] Here's your daily inspiration: [italic]{daily_quote}[/italic]")
     else:
