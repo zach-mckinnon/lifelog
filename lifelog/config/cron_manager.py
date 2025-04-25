@@ -1,6 +1,6 @@
 # lifelog/config/cron_manager.py
 import subprocess
-from config_manager import load_config
+from .config_manager import load_config
 from pathlib import Path
 from tomlkit import parse, document, dumps
 
