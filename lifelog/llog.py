@@ -227,7 +227,17 @@ llog task 42
 llog task modify 42 --title "Tidy desk"
 llog task done 42"""
     )
-
+    
+    table.add_row(
+        "Reporting and Insights",
+        """\
+llog report summary        # Quick summaries (time, tasks, habits)
+llog report diagnostics    # Diagnostic analytics (e.g. low mood root causes)
+llog report correlations   # Top metric correlations
+llog report predict        # Forecast future tracker trends
+llog report prescribe      # Prescriptive advice based on patterns
+llog report describe       # Descriptive analytics overview"""
+    )
     console.print(table)
     console.print(Panel.fit("[italic green]Tip:[/] Use [bold]--help[/bold] on any command to see options.\nExample: [bold yellow]llog report --help[/bold yellow]"))
 
