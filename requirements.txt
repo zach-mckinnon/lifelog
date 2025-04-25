@@ -1,0 +1,16 @@
+click
+colorama
+markdown-it-py
+mdurl
+numpy
+Pygments
+rich
+scipy
+shellingham
+termplotlib
+toml
+tomlkit
+typer
+typing_extensions
+build
+twine

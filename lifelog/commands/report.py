@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import statistics
 import termplotlib as tpl
-from config.config_manager import get_habit_file, get_log_file, get_time_file
+from lifelog.config.config_manager import get_habit_file, get_log_file, get_time_file
 from lifelog.commands.utils.insight_engine import generate_insights
 from utils.report_utils import render_line_chart, render_scatter_plot, correlation_score, render_calendar_heatmap
 

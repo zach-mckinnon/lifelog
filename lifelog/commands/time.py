@@ -3,7 +3,7 @@ import typer
 from pathlib import Path
 from datetime import datetime
 import json
-from config.config_manager import get_time_file
+from lifelog.config.config_manager import get_time_file
 
 app = typer.Typer(help="Track time spent in different life categories.")
 

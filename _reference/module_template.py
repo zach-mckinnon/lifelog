@@ -23,7 +23,7 @@ def save_entry(entry):
 
 # Example command: Add a new log entry
 @app.command()
-def add(name: str, value: str, notes: str = "", tags: list[str] = typer.Option([])):
+def add(name: str, value: str, notes: str = "", tags: List[str] = typer.Option([])):
     """Add a new entry to the module log."""
     entry = {
         "timestamp": datetime.now().isoformat(),

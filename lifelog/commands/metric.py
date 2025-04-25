@@ -3,8 +3,8 @@ import typer
 from datetime import datetime
 from pathlib import Path
 import json
-from config.config_manager import get_metric_definition, load_config, save_config
-from config.config_manager import get_log_file
+from lifelog.config.config_manager import get_metric_definition, load_config, save_config
+from lifelog.config.config_manager import get_log_file
 
 app = typer.Typer(help="Add or Log a single metric (e.g. mood, water, sleep, etc.)")
 
@@ -80,7 +80,7 @@ def log_entry(
     """
     Natural CLI logging: `llog mood 5 "Tired from work" +foggy`
     """
-    from config.config_manager import get_alias_map
+    from lifelog.config.config_manager import get_alias_map
 
     aliases = get_alias_map()
     name = aliases.get(name, name)

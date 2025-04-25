@@ -3,9 +3,10 @@ import typer
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from config.config_manager import get_task_file, load_config, get_time_file
-from config.cron_manager import apply_cron_jobs, load_config, save_config
+from lifelog.config.config_manager import get_task_file, load_config, get_time_file
+from lifelog.config.cron_manager import apply_cron_jobs, load_config, save_config
 from tomlkit import table
+from typing import List
 
 app = typer.Typer(help="Create and manage your personal tasks.")
 
@@ -133,7 +134,7 @@ def add(
     title: str,
     project: str = typer.Option(None, help="Project name"),
     category: str = typer.Option(..., help="Category name (must exist in time tracker)"),
-    tags: list[str] = typer.Option([], help="List of tags starting with +"),
+    tags: List[str] = typer.Option([], help="List of tags starting with +"),
     due: str = typer.Option(None, help="Due date/time in ISO or relative format"),
     importance: int = typer.Option(1, help="Importance level from 1 (low) to 5 (high)"),
     recur: str = typer.Option(None, help="Recurrence rule, e.g. every:7d or every:1w")
@@ -280,7 +281,7 @@ def modify(
     category: str = None, 
     due: str = None, 
     importance: int = None, 
-    tags: list[str] = typer.Option(None),
+    tags: List[str] = typer.Option(None),
     recur: str = typer.Option(None, help="Recurrence rule, e.g. every:3d or every:1w")
 ):
     """

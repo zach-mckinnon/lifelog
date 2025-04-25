@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from scipy.stats import pearsonr, spearmanr
 
-from config.config_manager import get_log_file, get_time_file
+from lifelog.config.config_manager import get_log_file, get_time_file
 
 
 LOG_FILE = get_log_file()

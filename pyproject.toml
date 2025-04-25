@@ -1,0 +1,21 @@
+[project]
+name = "lifelog"
+version = "0.1.0"
+description = "A terminal-based health, habit, task, life tracker."
+authors = [{ name = "Zach McKinnon" }]
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = ["typer", "rich", "termplotlib", "numpy"]
+requires-python = ">=3.8"
+
+[project.scripts]
+llog = "lifelog.llog:app"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[tool.setuptools]
+packages = ["lifelog"]
+include-package-data = true

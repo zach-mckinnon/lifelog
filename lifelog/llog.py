@@ -2,7 +2,7 @@
 
 from typing import Optional
 import typer
-from commands import time, habit, metric, task
+from lifelog.commands import time, habit, metric, task
 from lifelog.commands import report
 from rich.console import Console
 from rich.panel import Panel

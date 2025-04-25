@@ -3,7 +3,7 @@ import typer
 import json
 from pathlib import Path
 from datetime import datetime
-from config.config_manager import get_habit_file
+from lifelog.config.config_manager import get_habit_file
 
 app = typer.Typer(help="Track recurring habits and completions.")
 
