@@ -5,7 +5,15 @@ description = "A terminal-based health, habit, task, life tracker."
 authors = [{ name = "Zach McKinnon" }]
 readme = "README.md"
 license = { text = "MIT" }
-dependencies = ["typer", "rich", "termplotlib", "numpy", "requests", "random"]
+dependencies = [
+    "typer>=0.15",
+    "rich>=14.0",
+    "termplotlib>=0.3.9",
+    "numpy>=2.2",
+    "requests>=2.32",
+    "scipy>=1.13",
+    "tomlkit>=0.12",
+]
 requires-python = ">=3.8"
 
 [project.scripts]
