@@ -1,4 +1,4 @@
-#!/home/zach.mckinnon/lifelog/.venv/bin/python
+#!/usr/bin/env python3
 from datetime import datetime
 import json
 from pathlib import Path
@@ -206,7 +206,6 @@ def shortcut_entry(
     """
     Shortcut alias for `track.entry` to allow quick entry like: `llog entry mood 5 'Feeling okay' +evening`
     """
-    from commands.track import track
 
     if len(args) < 2:
         console.print("[bold red]Usage:[/bold red] llog entry <tracker> <value> [notes] [+tags]")
