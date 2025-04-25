@@ -1,10 +1,12 @@
 # lifelog/commands/metric.py
+from typing import List, Optional
 import typer
 from datetime import datetime
 from pathlib import Path
 import json
 from lifelog.config.config_manager import get_metric_definition, load_config, save_config
 from lifelog.config.config_manager import get_log_file
+from lifelog.commands.utils.shared_options import tags_option, notes_option
 
 app = typer.Typer(help="Add or Log a single metric (e.g. mood, water, sleep, etc.)")
 
@@ -72,10 +74,12 @@ def list_metric():
 
 
 @app.command("entry")
-def log_entry(
+def entry(
     name: str,
     value: str,
-    extras: list[str] = typer.Argument(None)
+    extras: list[str] = typer.Argument(None),
+    tags: List[str] = tags_option,
+    notes: Optional[str] = notes_option
 ):
     """
     Natural CLI logging: `llog mood 5 "Tired from work" +foggy`
@@ -115,8 +119,8 @@ def quick_checkin():
     mood = typer.prompt("Mood (1-10)?")
     notes = typer.prompt("Any notes?", default="")
     energy = typer.prompt("Energy Level (1-10)?")
-    log_entry("mood", mood, [notes] if notes else [])
-    log_entry("energy", energy)
+    entry("mood", mood, [notes] if notes else [])
+    entry("energy", energy)
     typer.echo("✅ Check-in logged.")
 
 

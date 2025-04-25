@@ -1,9 +1,11 @@
 # lifelog/commands/habit.py
+from typing import List, Optional
 import typer
 import json
 from pathlib import Path
 from datetime import datetime
 from lifelog.config.config_manager import get_habit_file
+from lifelog.commands.utils.shared_options import tags_option, notes_option
 
 app = typer.Typer(help="Track recurring habits and completions.")
 
@@ -43,7 +45,9 @@ def add(
 
 @app.command()
 def done(
-        name: str = typer.Argument(..., help="The name of the habit to mark as done.")
+        name: str = typer.Argument(..., help="The name of the habit to mark as done."),
+        tags: List[str] = tags_option,
+        notes: Optional[str] = notes_option
     ):
     """
     Mark a habit as done for now.
@@ -53,7 +57,7 @@ def done(
         typer.echo(f"❌ Habit '{name}' not found. Use 'llog habit add' to define it.")
         raise typer.Exit()
 
-    data["log"].append({"name": name, "timestamp": datetime.now().isoformat()})
+    data["log"].append({"name": name, "timestamp": datetime.now().isoformat(), "tags":tags, "notes":notes})
     save_habits(data)
     typer.echo(f"✅ Logged completion of habit: {name}")
 

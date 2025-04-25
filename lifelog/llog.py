@@ -92,7 +92,7 @@ def shortcut_entry(
     """
     Shortcut alias for `metric.entry` to allow quick entry like: `llog entry mood 5 'Feeling okay' +evening`
     """
-    from lifelog.commands.metric import log_entry
+    from lifelog.commands.metric import entry
 
     if len(args) < 2:
         console.print("[bold red]Usage:[/bold red] llog entry <metric> <value> [notes] [+tags]")
@@ -102,7 +102,7 @@ def shortcut_entry(
     value = args[1]
     extras = args[2:] if len(args) > 2 else []
 
-    log_entry(name, value, extras)
+    entry(name, value, extras)
 
 @app.command("task")
 def task_detail(task_id: Optional[int] = None):

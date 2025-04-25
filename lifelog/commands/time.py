@@ -1,9 +1,11 @@
 # lifelog/commands/time.py
+from typing import List, Optional
 import typer
 from pathlib import Path
 from datetime import datetime
 import json
 from lifelog.config.config_manager import get_time_file
+from lifelog.commands.utils.shared_options import tags_option, notes_option
 
 app = typer.Typer(help="Track time spent in different life categories.")
 
@@ -23,7 +25,11 @@ def save_tracking(data):
 
 
 @app.command()
-def start(category: str):
+def start(
+    category: str, 
+    tags: List[str] = tags_option,
+    notes: Optional[str] = notes_option
+    ):
     """
     Start tracking time for a category (e.g. working, resting).
     """
@@ -35,14 +41,19 @@ def start(category: str):
 
     data["active"] = {
         "category": category,
-        "start": datetime.now().isoformat()
+        "start": datetime.now().isoformat(),
+        "tags" : tags if tags else "",
+        "notes": notes if notes else "",
     }
     save_tracking(data)
     typer.echo(f"▶️  Started tracking '{category}'")
 
 
 @app.command()
-def stop():
+def stop( 
+    tags: List[str] = tags_option,
+    notes: Optional[str] = notes_option
+    ):
     """
     Stop the current timer and record the time block.
     """
@@ -60,7 +71,9 @@ def stop():
         "category": category,
         "start": start_time.isoformat(),
         "end": end_time.isoformat(),
-        "duration_minutes": round(duration, 2)
+        "duration_minutes": round(duration, 2),
+        "tags" : tags if tags else "",
+        "notes": notes if notes else "",
     }
 
     history = data.get("history", [])

@@ -5,8 +5,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from lifelog.config.config_manager import get_task_file, load_config, get_time_file
 from lifelog.config.cron_manager import apply_cron_jobs, load_config, save_config
+from lifelog.commands.utils.shared_options import tags_option, notes_option
 from tomlkit import table
-from typing import List
+from typing import List, Optional
 
 app = typer.Typer(help="Create and manage your personal tasks.")
 
@@ -50,7 +51,7 @@ def calculate_priority(task):
     }
 
     score = 0
-    importance = task.get("importance", 1)
+    importance = task.get("impt", 1)
     score += importance * coeff["importance"]
 
     if task.get("status") == "active":
@@ -122,29 +123,31 @@ def info(task_id: int):
     tasks = load_tasks()
     task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
-        typer.echo(f"❌ Task ID {task_id} not found.")
+        print(f"[bold red]❌ Error[/bold red]: Task ID {task_id} not found.")
         raise typer.Exit()
 
     for key, value in task.items():
-        typer.echo(f"{key.capitalize()}: {value}")
+        print(f"[bold blue]{key.capitalize()}:[/bold blue] {value}")
+
 
 # Add a new task.
 @app.command()
 def add(
     title: str,
-    project: str = typer.Option(None, help="Project name"),
-    category: str = typer.Option(..., help="Category name (must exist in time tracker)"),
-    tags: List[str] = typer.Option([], help="List of tags starting with +"),
-    due: str = typer.Option(None, help="Due date/time in ISO or relative format"),
-    importance: int = typer.Option(1, help="Importance level from 1 (low) to 5 (high)"),
-    recur: str = typer.Option(None, help="Recurrence rule, e.g. every:7d or every:1w")
+    category: str = typer.Option(..., "-c", help="Category name (must exist in time tracker)"),
+    project: Optional[str] = typer.Option(None, "-proj", help="Project name"),
+    due: str = typer.Option(None, "-due", help="Due date/time in ISO or relative format"),
+    impt: int = typer.Option(1, "-impt", help="impt level from 1 (low) to 5 (high)"),
+    recur: str = typer.Option(None, "-recur", help="Recurrence rule, e.g. every:7d or every:1w"),
+    tags: List[str] = tags_option,
+    notes: Optional[str] = notes_option
 ):
     """
     Add a new task.
     """
     existing_categories = load_time_categories()
     if category not in existing_categories:
-        confirm = typer.confirm(f"Category '{category}' not found in time history. Create it anyway?")
+        confirm = typer.confirm(f"[yellow]Category '{category}' not found in time history. Create it anyway?[/yellow]")
         if not confirm:
             raise typer.Exit()
 
@@ -157,13 +160,14 @@ def add(
         "project": project,
         "category": category,
         "tags": parsed_tags,
-        "importance": importance,
+        "impt": impt,
         "created": datetime.now().isoformat(),
         "due": due,
         "status": "pending",
         "start": None,
         "end": None,
-        "recur": recur
+        "recur": recur,
+        "notes":notes
     }
 
     if recur:
@@ -179,14 +183,15 @@ def add(
             save_config(doc)
             apply_cron_jobs()
 
-    if due and typer.confirm("Would you like a reminder before the due time?"):
+    if due and typer.confirm("[yellow]Would you like a reminder before the due time?[/yellow]"):
         create_due_alert(task)
 
 
     task["priority"] = calculate_priority(task)
     tasks.append(task)
     save_tasks(tasks)
-    typer.echo(f"✅ Task added: [{task['id']}] {task['title']}")
+    print(f"[green]✅ Task added[/green]: [bold blue][{task['id']}][/bold blue] {task['title']}")
+
 
 # Start tracking a task (Like moving to in-progress)
 @app.command()
@@ -197,11 +202,11 @@ def start(task_id: int):
     tasks = load_tasks()
     task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
-        typer.echo(f"❌ Task ID {task_id} not found.")
+        print(f"[bold red]❌ Error[/bold red]: Task ID {task_id} not found.")
         raise typer.Exit()
 
     if task["status"] not in ["pending", "active"]:
-        typer.echo(f"⚠️  Task [{task_id}] is not in a startable state (pending or active only).")
+        print(f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{task_id}[/bold blue]] is not in a startable state (pending or active only).")
         raise typer.Exit()
 
     task["status"] = "active"
@@ -216,7 +221,7 @@ def start(task_id: int):
             data = json.load(f)
 
     if "active" in data:
-        typer.echo("⚠️  Another task or category is already being timed.")
+        print("[yellow]⚠️ Warning[/yellow]: Another task or category is already being timed.")
         raise typer.Exit()
 
     data["active"] = {
@@ -227,10 +232,12 @@ def start(task_id: int):
     with open(time_file, "w") as f:
         json.dump(data, f, indent=2)
 
-    typer.echo(f"▶️  Started task [{task_id}]: {task['title']}")
+    print(f"[green]▶️ Started[/green] task [bold blue][{task_id}][/bold blue]: {task['title']}")
+
 
 # List all tasks sorted by priority. 
 # TO DO - Allow filtering list by project, category, or tags. 
+@app.command()
 @app.command()
 def list(project: str = None, category: str = None, tag: str = None, status: str = None):
     """
@@ -252,66 +259,71 @@ def list(project: str = None, category: str = None, tag: str = None, status: str
     filtered_tasks.sort(key=lambda x: x.get("priority", 0), reverse=True)
 
     if not filtered_tasks:
-        typer.echo("No tasks to display.")
+        print("[italic]No tasks to display.[/italic]")
         return
 
     for task in filtered_tasks:
-        line = f"[{task['id']}] {task['title']}"
-        line += f"  (Priority: {task.get('priority', 0)})"
+        line = f"[bold blue][{task['id']}][/bold blue] {task['title']}"
+        line += f" [dim](Priority: {task.get('priority', 0)})[/dim]"
         if task.get("status") == "active":
-            line += " [ACTIVE]"
-        if task.get("status") == "paused":
-            line += " [PAUSED]"
+            line += " [bold green][ACTIVE][/bold green]"
+        elif task.get("status") == "paused":
+            line += " [bold yellow][PAUSED][/bold yellow]"
         if task.get("project"):
-            line += f"  Project: {task['project']}"
+            line += f" [dim]Project:[/dim] [magenta]{task['project']}[/magenta]"
         if task.get("category"):
-            line += f"  Category: {task['category']}"
+            line += f" [dim]Category:[/dim] [cyan]{task['category']}[/cyan]"
         if task.get("due"):
-            line += f"  Due: {task['due']}"
+            line += f" [dim]Due:[/dim] [yellow]{task['due']}[/yellow]"
         if task.get("tags"):
-            line += f"  Tags: {', '.join(task['tags'])}"
-        typer.echo(line)
+            line += f" [dim]Tags:[/dim] [green]{', '.join(task['tags'])}[/green]"
+        print(line)
 
 # Modify an existing task.
 @app.command()
 def modify(
-    task_id: int, 
-    title: str = None, 
-    project: str = None, 
-    category: str = None, 
-    due: str = None, 
-    importance: int = None, 
-    tags: List[str] = typer.Option(None),
-    recur: str = typer.Option(None, help="Recurrence rule, e.g. every:3d or every:1w")
+    task_id: int = typer.Argument(..., help="The ID of the task to modify"),
+    title: Optional[str] = typer.Option(None, "-t", "--title", help="New title for the task"),
+    project: Optional[str] = typer.Option(None, "-proj", help="New project name"),
+    category: Optional[str] = typer.Option(None, "-c", help="New category name"),
+    due: Optional[str] = typer.Option(None, "-due", help="New due date/time in ISO or relative format"),
+    impt: Optional[int] = typer.Option(None, "-impt", help="New importance level from 1 (low) to 5 (high)"),
+    recur: Optional[str] = typer.Option(None, "-recur", help="New recurrence rule"),
+    tags: Optional[List[str]] = tags_option,
+    notes: Optional[str] = notes_option
 ):
     """
-    Modify an existing task's fields.
+    Modify an existing task's fields. Only provide fields you want to update.
     """
     tasks = load_tasks()
     task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
-        typer.echo(f"❌ Task ID {task_id} not found.")
+        print(f"[bold red]❌ Error[/bold red]: Task ID {task_id} not found.")
         raise typer.Exit()
 
-    if title:
+
+    if title is not None:
         task["title"] = title
-    if project:
+    if project is not None:
         task["project"] = project
-    if category:
+    if category is not None:
         task["category"] = category
-    if due:
+    if due is not None:
         task["due"] = due
-    if importance:
-        task["importance"] = importance
+    if impt is not None:
+        task["impt"] = impt
+    if recur is not None:
+        task["recur"] = recur
+        task["recur_base"] = task.get("recur_base", datetime.now().isoformat()) # Keep existing or set new
     if tags is not None:
         task["tags"] = [tag.lstrip("+") for tag in tags]
-    if recur:
-        task["recur"] = recur
-        task["recur_base"] = datetime.now().isoformat()
+    if notes is not None:
+        task["notes"] = notes
 
     task["priority"] = calculate_priority(task)
     save_tasks(tasks)
-    typer.echo(f"✏️  Task [{task_id}] updated.")
+    print(f"[green]✏️ Updated[/green] task [bold blue][{task_id}][/bold blue].")
+
 
 
 # Delete a task.
@@ -323,12 +335,15 @@ def delete(task_id: int):
     tasks = load_tasks()
     tasks = [t for t in tasks if t["id"] != task_id]
     save_tasks(tasks)
-    typer.echo(f"🗑️  Task [{task_id}] deleted.")
+    print(f"[red]🗑️ Deleted[/red] task [bold blue][{task_id}][/bold blue].")
+
 
 # Pause a task (Like putting back to to-do) but keep logged time and do not set to done. 
 @app.command()
 @app.command()
-def stop():
+def stop(
+    notes: Optional[str] = notes_option
+):
     """
     Pause the currently active task and stop timing, without marking it done.
     """
@@ -336,40 +351,41 @@ def stop():
     time_file = get_time_file()
 
     if not time_file.exists():
-        typer.echo("⚠️  No time tracking file found.")
+        print("[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
         raise typer.Exit()
 
     with open(time_file, "r") as f:
         data = json.load(f)
 
     if "active" not in data:
-        typer.echo("⚠️  No active task is being tracked.")
+        print("[yellow]⚠️ Warning[/yellow]: No active task is being tracked.")
         raise typer.Exit()
 
     active = data["active"]
     if not active["category"].startswith("task:"):
-        typer.echo("⚠️  Active tracker is not linked to a task.")
+        print("[yellow]⚠️ Warning[/yellow]: Active tracker is not linked to a task.")
         raise typer.Exit()
 
     task_id = int(active["category"].split(":")[1])
     task = next((t for t in tasks if t["id"] == task_id), None)
 
     if not task:
-        typer.echo("❌ Task for active tracking not found.")
+        print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
         raise typer.Exit()
 
     start_time = datetime.fromisoformat(active["start"])
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds() / 60
 
-    typer.echo(f"⏸️  Paused task [{task_id}]: {task['title']} — Duration: {round(duration, 2)} minutes")
+    print(f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task_id}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
 
     history = data.get("history", [])
     history.append({
         "category": task.get("category", f"task:{task_id}"),
         "start": active["start"],
         "end": end_time.isoformat(),
-        "duration_minutes": round(duration, 2)
+        "duration_minutes": round(duration, 2),
+        "notes": notes if notes else ""
     })
     data["history"] = history
     data.pop("active")
@@ -381,19 +397,21 @@ def stop():
 
 # Set a task to completed. 
 @app.command()
-def done(task_id: int):
+def done(task_id: int, notes: Optional[str] = notes_option):
     """
     Mark a task as completed.
     """
     tasks = load_tasks()
     task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
-        typer.echo(f"❌ Task ID {task_id} not found.")
+        print("[bold red]❌ Error[/bold red]: Task ID not found. Are you sure that's the right id?")
         raise typer.Exit()
 
     task["status"] = "completed"
+    task["notes"] = task.get("notes") +  + notes
     task["end"] = datetime.now().isoformat()
     save_tasks(tasks)
+    print(f"[green]✅ Task [/green][bold blue][{task_id}] marked as done! [/bold blue].")
     typer.echo(f"✅ Task [{task_id}] marked as done.")
 
 @app.command()
