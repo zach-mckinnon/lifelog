@@ -13,7 +13,7 @@ import statistics
 import termplotlib as tpl
 from lifelog.config.config_manager import get_habit_file, get_log_file, get_time_file
 from lifelog.commands.utils.insight_engine import generate_insights
-from utils.report_utils import render_line_chart, render_scatter_plot, correlation_score, render_calendar_heatmap
+from lifelog.commands.utils.report_utils import render_line_chart, render_scatter_plot, correlation_score, render_calendar_heatmap
 
 
 app = typer.Typer(help="Generate reports and visual summaries of logged data.")

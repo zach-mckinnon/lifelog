@@ -1,6 +1,6 @@
 #!/home/zach.mckinnon/lifelog/.venv/bin/python
 
-from typing import Optional
+from typing import List, Optional
 import typer
 from lifelog.commands import time, habit, metric, task
 from lifelog.commands import report
@@ -85,17 +85,23 @@ llog report missed-data"""
     console.print(table)
     console.print(Panel.fit("[italic green]Tip:[/] Use [bold]--help[/bold] on any command to see options.\nExample: [bold yellow]llog report --help[/bold yellow]"))
 
-@app.command("entry")
-def shortcut_entry(*args: str):
+@app.command("entry", add_help_option=False)
+def shortcut_entry(
+    args: List[str] = typer.Argument(..., help="Usage: llog entry <metric> <value> ['notes'] [+tags]")
+):
     """
-    Shortcut alias for `metric.entry`. Allows quick logging like:
-    llog entry mood 5 "Feeling meh" +evening
+    Shortcut alias for `metric.entry` to allow quick entry like: `llog entry mood 5 'Feeling okay' +evening`
     """
-    from commands.metric import log_entry
+    from lifelog.commands.metric import log_entry
+
     if len(args) < 2:
         console.print("[bold red]Usage:[/bold red] llog entry <metric> <value> [notes] [+tags]")
         raise typer.Exit()
-    name, value, *extras = args
+
+    name = args[0]
+    value = args[1]
+    extras = args[2:] if len(args) > 2 else []
+
     log_entry(name, value, extras)
 
 @app.command("task")
