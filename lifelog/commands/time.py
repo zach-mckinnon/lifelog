@@ -3,10 +3,11 @@ import typer
 from pathlib import Path
 from datetime import datetime
 import json
+from config.config_manager import get_time_file
 
 app = typer.Typer(help="Track time spent in different life categories.")
 
-TIME_TRACK_FILE = Path.home() / ".lifelog_time_tracking.json"
+TIME_TRACK_FILE = get_time_file()
 
 
 def load_tracking():

@@ -3,10 +3,12 @@ import typer
 import json
 from pathlib import Path
 from datetime import datetime
+from config.config_manager import get_habit_file
 
 app = typer.Typer(help="Track recurring habits and completions.")
 
-HABIT_FILE = Path.home() / ".lifelog_habits.json"
+
+HABIT_FILE = get_habit_file()
 
 
 def load_habits():
@@ -22,7 +24,10 @@ def save_habits(data):
 
 
 @app.command()
-def add(name: str, description: str = ""):
+def add(
+        name: str = typer.Argument(..., help="The name of the habit."),
+        description: str = typer.Option("", "--description", "-d", help="A description of the habit.")
+    ):
     """
     Add a new habit to track.
     """
@@ -37,7 +42,9 @@ def add(name: str, description: str = ""):
 
 
 @app.command()
-def done(name: str):
+def done(
+        name: str = typer.Argument(..., help="The name of the habit to mark as done.")
+    ):
     """
     Mark a habit as done for now.
     """

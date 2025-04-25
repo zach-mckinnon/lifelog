@@ -1,30 +1,26 @@
 # lifelog/commands/metric.py
 import typer
-from config.config_manager import load_config, save_config
+from datetime import datetime
+from pathlib import Path
+import json
+from config.config_manager import get_metric_definition, load_config, save_config
+from config.config_manager import get_log_file
 
-app = typer.Typer(help="Manage metric definitions.")
+app = typer.Typer(help="Add or Log a single metric (e.g. mood, water, sleep, etc.)")
+
+
+LOG_FILE = get_log_file()
 
 @app.command(
-    help="""
-Add a new metric definition.
-
-Usage:
-  llog metric add NAME TYPE [--min N] [--max N] [--description "..."]
-
-Arguments:
-  NAME            The name of the metric to track (e.g. mood, energy)
-  TYPE            One of: int, float, bool, str
-
-Options:
-  --min FLOAT     Minimum allowed value (e.g. 0)
-  --max FLOAT     Maximum allowed value (e.g. 10)
-  --description   A short description of what this metric represents
-
-Example:
-  llog metric add energy int --min 0 --max 10 --description "Energy level from tired to hyper"
-"""
-)
-def add(name: str, type: str, min: float = None, max: float = None, description: str = ""):
+        help="Add a new metric definition."
+    )
+def add(
+        name: str = typer.Argument(..., help="The name of the metric."),
+        type: str = typer.Argument(..., help="The data type (int, float, bool, str)."),
+        min: float = typer.Option(None, "--min", help="Minimum allowed value."),
+        max: float = typer.Option(None, "--max", help="Maximum allowed value."),
+        description: str = typer.Option("", "--description", "-d", help="Description of the metric.")
+    ):
     """
     Add a new metric definition.
     """
@@ -73,3 +69,98 @@ def list_metric():
             typer.echo(f"    Range: {props.get('min', '-∞')} to {props.get('max', '∞')}")
         if "description" in props:
             typer.echo(f"    {props['description']}")
+
+
+@app.command("entry")
+def log_entry(
+    name: str,
+    value: str,
+    extras: list[str] = typer.Argument(None)
+):
+    """
+    Natural CLI logging: `llog mood 5 "Tired from work" +foggy`
+    """
+    from config.config_manager import get_alias_map
+
+    aliases = get_alias_map()
+    name = aliases.get(name, name)
+
+    notes = ""
+    tags = []
+
+    for item in extras or []:
+        if item.startswith("+"):
+            tags.append(item.lstrip("+"))
+        else:
+            notes += item + " "
+
+    validated_value = validate_metric(name, value)
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "metric": name,
+        "value": validated_value,
+        "notes": notes.strip(),
+        "tags": tags
+    }
+    save_entry(entry)
+    typer.echo(f"✅ Logged {name} = {validated_value}")
+
+
+@app.command("checkin")
+@app.command("quick")
+def quick_checkin():
+    """
+    Prompt-based log form for daily metrics.
+    """
+    mood = typer.prompt("Mood (1-10)?")
+    notes = typer.prompt("Any notes?", default="")
+    energy = typer.prompt("Energy Level (1-10)?")
+    log_entry("mood", mood, [notes] if notes else [])
+    log_entry("energy", energy)
+    typer.echo("✅ Check-in logged.")
+
+
+def save_entry(entry):
+    if LOG_FILE.exists():
+        with open(LOG_FILE, "r") as f:
+            data = json.load(f)
+    else:
+        data = []
+
+    data.append(entry)
+    with open(LOG_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+def validate_metric(name: str, value: str):
+    definition = get_metric_definition(name)
+    if not definition:
+        raise typer.BadParameter(f"Metric '{name}' is not defined in the config.")
+
+    expected_type = definition.get("type")
+    min_val = definition.get("min")
+    max_val = definition.get("max")
+
+    try:
+        if expected_type == "int":
+            value = int(value)
+        elif expected_type == "float":
+            value = float(value)
+        elif expected_type == "bool":
+            if value.lower() in ["true", "yes", "1"]:
+                value = True
+            elif value.lower() in ["false", "no", "0"]:
+                value = False
+            else:
+                raise ValueError("Expected a boolean value (true/false).")
+        else:
+            value = str(value)
+    except ValueError:
+        raise typer.BadParameter(f"Value '{value}' is not a valid {expected_type}.")
+
+    if isinstance(value, (int, float)):
+        if min_val is not None and value < min_val:
+            raise typer.BadParameter(f"Value is below the minimum allowed ({min_val}).")
+        if max_val is not None and value > max_val:
+            raise typer.BadParameter(f"Value is above the maximum allowed ({max_val}).")
+
+    return value
