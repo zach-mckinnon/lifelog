@@ -10,7 +10,6 @@ import typer
 import requests
 
 import lifelog.config.config_manager as cf
-from lifelog.commands.task import info
 from lifelog.commands import time, task, track, report, environmental_sync
 
 from rich.console import Console
@@ -266,7 +265,7 @@ def task_detail(task_id: Optional[int] = None):
     Show details of a specific task by ID.
     """
     if task_id:
-        return info(task_id)
+        return task.info(task_id)
 
 @app.command("init")
 def init_data():

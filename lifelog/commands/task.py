@@ -2,14 +2,16 @@
 import typer
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
+from tomlkit import table
+from typing import List, Optional
+
+from rich.console import Console
+
+from lifelog.commands.utils.feedback import get_feedback_saying
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_cron_jobs, load_cron_config, save_config
 from lifelog.commands.utils.shared_options import tags_option, notes_option, category_option, project_option, due_option, impt_option, recur_option
-from tomlkit import table
-from typing import List, Optional
-from lifelog.commands.utils.feedback import get_feedback_saying
-from rich.console import Console
+
 
 app = typer.Typer(help="Create and manage your personal tasks.")
 

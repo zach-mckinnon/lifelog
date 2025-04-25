@@ -10,6 +10,7 @@ from pathlib import Path
 import json
 from rich import print
 import typer
+
 app = typer.Typer(help="Environment data sync utilities.")
 
 DATA_DIR = Path.home() / ".lifelog"

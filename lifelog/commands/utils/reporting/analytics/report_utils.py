@@ -1,10 +1,8 @@
 # lifelog/utils/report_utils.py
 import termplotlib as tpl
-import statistics
 from collections import defaultdict
 from datetime import datetime
 import numpy as np
-from rich import print
 from rich.console import Console
 from rich.text import Text
 

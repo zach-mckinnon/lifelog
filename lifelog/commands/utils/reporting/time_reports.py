@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import json, csv
 from rich.console import Console
 from lifelog.config.config_manager import get_time_file
-from commands.utils.reporting.analytics.report_utils import (
+from lifelog.commands.utils.reporting.analytics.report_utils import (
     render_line_chart,
     render_pie_chart,
     render_calendar_heatmap

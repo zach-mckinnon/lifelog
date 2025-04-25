@@ -1,16 +1,13 @@
 # lifelog/utils/insight_engine.py
 
 import json
-import math
 import statistics
 from collections import defaultdict
 from datetime import datetime
-from pathlib import Path
 from typing import List, Dict, Any
 from scipy.stats import pearsonr, spearmanr
 import lifelog.config.config_manager as cf
 
-import lifelog.config.config_manager as cf
 
 
 LOG_FILE = cf.get_log_file()

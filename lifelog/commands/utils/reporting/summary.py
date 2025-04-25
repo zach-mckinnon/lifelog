@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 import csv, json
 from rich.console import Console
-from commands.utils.reporting.insight_engine import daily_averages, load_metric_data, load_time_data
+from lifelog.commands.utils.reporting.insight_engine import daily_averages, load_metric_data, load_time_data
 import lifelog.config.config_manager as cf
 from lifelog.commands.utils.tracker_utils import sum_entries
-from commands.utils.reporting.analytics.report_utils import render_line_chart, render_pie_chart
+from lifelog.commands.utils.reporting.analytics.report_utils import render_line_chart, render_pie_chart
 from rich.table import Table
 
 console = Console()

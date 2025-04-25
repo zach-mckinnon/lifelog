@@ -11,12 +11,7 @@ from lifelog.commands.utils.reporting.summary import (
     summary_metric,
     summary_time,
     summary_daily, 
-    summary_habits
 )
-# Module-specific reports
-from commands.utils.reporting.task_reports import summary_tasks
-from lifelog.commands.utils.reporting.environment import summary_environment
-# Advanced analytics
 
 
 app = typer.Typer(help="📊 Generate data reports and dashboards")
@@ -37,10 +32,10 @@ def summary_all(
     summary_metric(since=since, export=export)
     # 2. Time
     summary_time(since=since, export=export)
-    # 3. Tasks
-    summary_tasks(since=since, export=export)
-    # 4. Environment snapshot
-    summary_environment(export=export)
+    # # 3. Tasks
+    # summary_tasks(since=since, export=export)
+    # # 4. Environment snapshot
+    # summary_environment(export=export)
 
 @summary_app.command("time")
 def summary_time_cmd(
@@ -49,17 +44,6 @@ def summary_time_cmd(
 ):
     """⏱  Quick time summary."""
     summary_time(since=since, export=export)
-
-@summary_app.command("habits")
-def summary_habits_cmd(
-    since: str = typer.Option("7d", "--since", help="Time window for habit summary"),
-    export: Optional[str] = typer.Option(None, "--export", help="Optional json|csv filepath"),
-):
-    """
-    📝  Quick habit summary.
-    """
-    summary_habits(since=since, export=export)
-
 
 @summary_app.command("daily")
 def summary_daily_cmd(
@@ -71,13 +55,13 @@ def summary_daily_cmd(
     """
     summary_daily(since=since, export=export)
     
-@summary_app.command("tasks")
-def summary_tasks_cmd(
-    since: str = typer.Option("7d", "--since", help="Time window for task summary"),
-    export: Optional[str] = typer.Option(None, "--export", help="Optional json|csv filepath"),
-):
-    """📋 Quick task summary."""
-    summary_tasks(since=since, export=export)
+# @summary_app.command("tasks")
+# def summary_tasks_cmd(
+#     since: str = typer.Option("7d", "--since", help="Time window for task summary"),
+#     export: Optional[str] = typer.Option(None, "--export", help="Optional json|csv filepath"),
+# ):
+#     """📋 Quick task summary."""
+#     summary_tasks(since=since, export=export)
 
 @summary_app.command("track")
 def summary_track_cmd(

@@ -5,11 +5,12 @@ import typer
 from datetime import datetime
 from pathlib import Path
 import json
+
 from lifelog.commands.utils.tracker_utils import sum_entries
-from lifelog.config.config_manager import get_tracker_definition, load_cron_config, save_config
 import lifelog.config.config_manager as cf
 from lifelog.commands.utils.shared_options import tags_option, new_name_option, notes_option, min_option, max_option, description_option, unit_option, goal_option,period_option, kind_option
 from lifelog.config.config_manager import get_alias_map
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -35,7 +36,7 @@ def add(
     """
     Add a new metric definition.
     """
-    cfg = cf.load_cron_config()
+    cfg =cf.load_cron_config()
     tracker = cfg.setdefault("tracker", {})
 
     if name in cfg.get("tracker", {}):
@@ -86,7 +87,7 @@ def list_tracker():
     """
     Show all trackers and their settings.
     """
-    config =load_cron_config().get("tracker", {})
+    config =cf.load_cron_config().get("tracker", {})
     if not config:
         typer.echo("No trackers defined. Try `llog track add`.")
         return
@@ -144,7 +145,7 @@ def track(
     }
     save_entry(entry)
     
-    cfg = get_tracker_definition(name) or {}
+    cfg = cf.get_tracker_definition(name) or {}
     
     if any(g["type"] for g in cfg.get("goals", [])):
         total_today = sum_entries(name, since="today")
@@ -168,7 +169,7 @@ def modify(
     """
     Update an existing tracker definition.
     """
-    config =load_cron_config().setdefault("tracker", {})
+    config = cf.load_cron_config().setdefault("tracker", {})
     if name not in config:
         typer.echo(f"❌ No tracker named '{name}'")
         raise typer.Exit(code=1)
@@ -188,7 +189,7 @@ def modify(
         if val is not None:
             t[field] = val
 
-    save_config({"tracker": config})
+    cf.save_config({"tracker": config})
     typer.echo(f"✅ Updated tracker '{name}'")
 
 @app.command("done")
@@ -215,7 +216,7 @@ def save_entry(entry):
         json.dump(data, f, indent=2)
 
 def validate_metric(name: str, value: str):
-    definition = get_tracker_definition(name)
+    definition = cf.get_tracker_definition(name)
     if not definition:
         raise typer.BadParameter(f"Metric '{name}' is not defined in the config.")
 

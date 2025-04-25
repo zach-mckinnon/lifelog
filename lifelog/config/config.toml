@@ -21,13 +21,14 @@ description = "Energy Level"
 
 [paths]
 LOG_FILE = "~/.lifelog.json"
-time_file = "~/.lifelog_time_tracking.json"
-config_file = "~/.lifelog/config.toml"
+TIME_FILE = "~/.lifelog_time_tracking.json"
+CONFIG_FILE = "~/.lifelog/config.toml"
 
 [aliases]
 m = "mood"
-a = "anxiety"
 w = "water"
+tsk = "task"
+trk = "track"
 
 [cron.refresh_tasks]
 schedule = "0 7 * * *"

@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta
 import statistics, json, csv
 from rich.console import Console
-from commands.utils.reporting.insight_engine import load_metric_data, daily_averages
+from lifelog.commands.utils.reporting.insight_engine import load_metric_data, daily_averages
 from lifelog.config.config_manager import get_time_file
-from commands.utils.reporting.analytics.report_utils import render_radar_chart
-
+from lifelog.commands.utils.reporting.analytics.report_utils import render_radar_chart
 console = Console()
 
 def report_descriptive(since: str = "30d", export: str = None):
@@ -41,8 +40,8 @@ def report_descriptive(since: str = "30d", export: str = None):
 
     # 3. Task summary
     console.print("\n[blue]Task Summary:[/blue]")
-    from lifelog.commands.utils.reporting.task_reports import summary_tasks
-    summary_tasks(since, None)
+    
+    # summary_tasks(since, None)
 
     # 4. Export if requested
     if export:

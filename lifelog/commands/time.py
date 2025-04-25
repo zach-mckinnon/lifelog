@@ -1,12 +1,13 @@
 # lifelog/commands/time.py
 from typing import List, Optional
 import typer
-from pathlib import Path
 from datetime import datetime
 import json
+
+from rich.console import Console
+
 from lifelog.config.config_manager import get_time_file
 from lifelog.commands.utils.shared_options import tags_option, notes_option
-from rich.console import Console
 
 app = typer.Typer(help="Track time spent in different life categories.")
 

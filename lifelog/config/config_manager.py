@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
-from tomlkit import parse, document, dumps, loads
+from tomlkit import parse, dumps
 
 CONFIG_PATH = Path.home() / ".config" / "lifelog" / "config.toml"
 
@@ -55,7 +55,7 @@ def get_time_file() -> Path:
     Path to the time tracking log file.
     """
     paths = _load_paths()
-    return expand_path(paths.get("time_file", "~/.lifelog_time_tracking.json"))
+    return expand_path(paths.get("TIME_FILE", "~/.lifelog_time_tracking.json"))
 
 
 def get_task_file() -> Path:

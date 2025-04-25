@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 import csv, json
 import numpy as np
 from rich.console import Console
-from commands.utils.reporting.insight_engine import load_metric_data, daily_averages
-from commands.utils.reporting.analytics.report_utils import render_line_chart
+from lifelog.commands.utils.reporting.insight_engine import load_metric_data, daily_averages
+from lifelog.commands.utils.reporting.analytics.report_utils import render_line_chart
 
 console = Console()
 

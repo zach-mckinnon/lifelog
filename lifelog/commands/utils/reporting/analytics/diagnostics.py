@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 import json, csv
 from rich.console import Console
-from commands.utils.reporting.insight_engine import load_metric_data, daily_averages, compute_correlation
+from lifelog.commands.utils.reporting.insight_engine import load_metric_data, daily_averages, compute_correlation
 from lifelog.config.config_manager import get_time_file
-from commands.utils.reporting.analytics.report_utils import render_line_chart, render_calendar_heatmap
+from lifelog.commands.utils.reporting.analytics.report_utils import render_line_chart, render_calendar_heatmap
 
 console = Console()
 

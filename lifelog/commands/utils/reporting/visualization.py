@@ -1,8 +1,6 @@
 from rich.console import Console
-from commands.utils.reporting.analytics.report_utils import (
-    render_line_chart,
+from lifelog.commands.utils.reporting.analytics.report_utils import (
     render_scatter_plot,
-    render_pie_chart,
     render_calendar_heatmap,
     render_radar_chart,
 )

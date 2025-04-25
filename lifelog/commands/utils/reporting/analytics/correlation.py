@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 import csv, json
 from rich.console import Console
-from commands.utils.reporting.insight_engine import generate_insights
-from commands.utils.reporting.analytics.report_utils import render_scatter_plot
+from lifelog.commands.utils.reporting.insight_engine import generate_insights
+from lifelog.commands.utils.reporting.analytics.report_utils import render_scatter_plot
 
 console = Console()
 
