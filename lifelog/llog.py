@@ -29,6 +29,7 @@ app = typer.Typer(help="🧠 Lifelog CLI: Track your habits, health, time, and t
 console = Console()
 
 
+
 def check_first_command_of_day():
     today = datetime.now().date()
     flag_data = {}
@@ -281,5 +282,7 @@ def get_feedback_saying(context):
     return None
 
 
+lifelog_app = app
+
 if __name__ == "__main__":
-    app()
+    lifelog_app()
