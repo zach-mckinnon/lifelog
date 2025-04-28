@@ -1,3 +1,11 @@
+# lifelog/commands/utils/reporting/analytics/prescriptive.py
+'''
+Lifelog CLI - Prescriptive Reporting Module
+This module provides functionality to generate prescriptive reports based on user data patterns.
+It includes functions to analyze user data, identify patterns, and provide actionable insights for self-improvement.
+It is designed to help users make informed decisions about their habits and lifestyle choices based on their data.
+'''
+
 from datetime import datetime
 import csv, json
 from rich.console import Console

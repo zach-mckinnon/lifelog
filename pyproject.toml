@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.32",
     "scipy>=1.13",
     "tomlkit>=0.12",
+    "pywin32>=306",
 ]
 requires-python = ">=3.8"
 
@@ -28,3 +29,6 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["lifelog*"]
+
+[tool.setuptools.package-data]
+"lifelog" = ["config/*.toml"]

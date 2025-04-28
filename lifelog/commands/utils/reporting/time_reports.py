@@ -1,3 +1,12 @@
+# lifelog/commands/utils/reporting/time_reports.py
+'''
+Lifelog Time Reporting Module
+This module provides functionality to generate various time-related reports based on the user's data.
+It includes features for generating time trends, time distribution, and calendar heatmaps.
+The module uses JSON files for data storage and integrates with the Rich library for visualization.
+It is designed to enhance the user experience by providing visual representations of time data directly in the terminal.
+'''
+
 from datetime import datetime, timedelta
 import json, csv
 from rich.console import Console

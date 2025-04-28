@@ -1,3 +1,12 @@
+# lifelog/commands/utils/reporting/analytics/descriptive.py
+'''
+Lifelog CLI - Descriptive Analytics Module
+This module provides functionality to generate descriptive analytics reports for user data.
+It includes functions to compute mean, median, and standard deviation of tracker data, time usage statistics, and task summaries.
+It is designed to help users understand their data patterns and make informed decisions based on their usage statistics.
+It also provides options to export the reports in JSON or CSV format.   
+'''
+
 from datetime import datetime, timedelta
 import statistics, json, csv
 from rich.console import Console
@@ -6,12 +15,6 @@ from lifelog.config.config_manager import get_time_file
 from lifelog.commands.utils.reporting.analytics.report_utils import render_radar_chart
 console = Console()
 
-
-'''Descriptive analytics: overview of tracker stats, time usage, and tasks.
-   - Mean, median, and standard deviation of tracker data.  
-   - Time usage statistics (total and average per day).
-   - Task summary (to be implemented).
-   - Export options (JSON, CSV).'''
 
 def report_descriptive(since: str = "30d", export: str = None):
     """

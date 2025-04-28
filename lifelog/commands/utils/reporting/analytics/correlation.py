@@ -1,3 +1,12 @@
+# lifelog/commands/utils/reporting/analytics/correlation.py
+'''
+Lifelog CLI - Correlation Analysis Module
+This module provides functionality to analyze correlations between different trackers over a specified period.
+It includes functions to generate insights based on correlation scores, display the top correlated pairs of metrics, and export the results to CSV or JSON files.
+It is designed to help users identify relationships between their tracked metrics, providing valuable feedback for self-improvement and habit tracking.
+'''
+
+
 from datetime import datetime, timedelta
 import csv, json
 from rich.console import Console
@@ -6,14 +15,6 @@ from lifelog.commands.utils.reporting.analytics.report_utils import render_scatt
 
 console = Console()
 
-# Correlation analysis between trackers over a specified period
-# (e.g. "30d", "7d").
-# This function generates insights using the insight_engine and displays
-# the top correlated pairs of metrics. It also allows for exporting the
-# results to a JSON or CSV file.
-# The function is designed to be used in a command-line interface (CLI)
-# and provides a user-friendly output format using the rich library.
-# The function is not intended to be used as a standalone script but as part of a larger application.
 def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
     """
     🔍 Correlation analysis between trackers over the specified period.

@@ -1,3 +1,10 @@
+# lifelog/commands/utils/reporting/analytics/diagnostics.py
+'''
+Lifelog CLI - Diagnostic Reporting Module
+This module provides functionality to generate diagnostic reports based on user data patterns.
+It includes functions to analyze user data, identify low wellness days, and compute correlations between different metrics.
+It is designed to help users identify patterns and relationships in their data, providing valuable feedback for self-improvement and habit tracking.'''
+
 from datetime import datetime, timedelta
 import json, csv
 from rich.console import Console

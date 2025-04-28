@@ -1,14 +1,22 @@
+# lifelog/commands/utils/reporting/summary.py
+'''
+Lifelog CLI - Summary Reporting Module
+This module provides functionality to generate summary reports for various trackers and time tracking categories.
+It includes functions to summarize metrics, time tracking, and daily summaries. 
+It also supports exporting the summary data to CSV or JSON files.
+'''
+
 from datetime import datetime, timedelta
 import csv, json
 from rich.console import Console
 from lifelog.commands.utils.reporting.insight_engine import daily_averages, load_metric_data, load_time_data
 import lifelog.config.config_manager as cf
-from lifelog.commands.utils.tracker_utils import sum_entries
+from lifelog.commands.utils.shared_utils import sum_entries
 from lifelog.commands.utils.reporting.analytics.report_utils import render_line_chart, render_pie_chart
 from rich.table import Table
 
 console = Console()
-cfg = cf.load_cron_config()
+cfg = cf.load_config()
 
 # Summary of tracker totals
 def summary_metric(since: str = "7d", export: str = None):
@@ -30,8 +38,12 @@ def summary_metric(since: str = "7d", export: str = None):
 
     # Chart
     series = _daily_series(data)
-    dates, vals = zip(*sorted(series.items()))
-    render_line_chart(dates, vals, label="Total per tracker")
+    if not series:
+        console.print("[yellow]⚠️ No tracker data to summarize yet.[/yellow]")
+        return
+    else:
+        dates, vals = zip(*sorted(series.items()))
+        render_line_chart(dates, vals, label="Total per tracker")
 
     if export:
         _export(data, since, export)
@@ -88,7 +100,7 @@ def summary_daily(since: str = "7d", export: str = None):
         day = (cutoff.date() + timedelta(days=i)).isoformat()
 
         # Count completed tasks
-        tasks_done = sum(1 for t in task_logs if t.get("completed") and t.get("completed_date", "").startswith(day))
+        tasks_done = sum(1 for t in task_logs if t.get("done") and t.get("completed_date", "").startswith(day))
 
         # Average mood
         mood = daily_moods.get(day, "-")

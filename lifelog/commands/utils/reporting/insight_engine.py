@@ -1,4 +1,10 @@
 # lifelog/utils/insight_engine.py
+'''
+Lifelog Insight Engine Module
+This module provides functionality to analyze user data and generate insights based on correlations between different metrics.
+It includes functions to load metric and time data, compute daily averages, and generate insights based on correlation scores.
+It is designed to help users identify patterns and relationships in their data, providing valuable feedback for self-improvement and habit tracking.
+'''
 
 import json
 import statistics
@@ -9,19 +15,16 @@ from scipy.stats import pearsonr, spearmanr
 import lifelog.config.config_manager as cf
 
 
-
-LOG_FILE = cf.get_log_file()
-TIME_FILE = cf.get_time_file()
-
-
 def load_metric_data() -> List[Dict[str, Any]]:
-    if LOG_FILE.exists():
-        with open(LOG_FILE, "r") as f:
+    TRACK_FILE = cf.get_track_file()
+    if TRACK_FILE.exists():
+        with open(TRACK_FILE, "r") as f:
             return json.load(f).get("log", [])
     return []
 
 
 def load_time_data() -> List[Dict[str, Any]]:
+    TIME_FILE = cf.get_time_file()
     if TIME_FILE.exists():
         with open(TIME_FILE, "r") as f:
             return json.load(f).get("history", [])

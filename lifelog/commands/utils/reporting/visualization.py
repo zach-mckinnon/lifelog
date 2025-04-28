@@ -1,3 +1,11 @@
+# lifelog/commands/utils/reporting/visualization.py
+'''
+Lifelog CLI - Visualization Module
+This module provides functionality to visualize data in the command line interface (CLI).
+It includes functions to render scatter plots, calendar heatmaps, and radar charts using the Rich library.
+It is designed to enhance the user experience by providing visual representations of data directly in the terminal.
+'''
+
 from rich.console import Console
 from lifelog.commands.utils.reporting.analytics.report_utils import (
     render_scatter_plot,

@@ -1,4 +1,11 @@
 # lifelog/utils/report_utils.py
+''' 
+Lifelog CLI - Reporting Utilities Module
+This module provides functionality to render various types of charts and visualizations in the command line interface (CLI).
+It includes functions to render line charts, scatter plots, calendar heatmaps, radar charts, and pie charts using the Rich and Termplotlib libraries.
+It is designed to enhance the user experience by providing visual representations of data directly in the terminal.
+'''
+
 import termplotlib as tpl
 from collections import defaultdict
 from datetime import datetime

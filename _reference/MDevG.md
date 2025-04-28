@@ -16,11 +16,11 @@ It follows the project's principles:
 ### 1. **Plan the Command Structure**
 
 - Think about how the command will feel when typed:
-  ```bash
+
   llog meds take -add
   llog journal "tired today"
   llog track posture 20min
-  ```
+
 - Keep the structure natural and readable
 - Review the Usability Framework for tone and consistency
 
@@ -75,7 +75,7 @@ Add:
 - Use JSON files in user home directory:
 
   ```bash
-  ~/.lifelog.json
+  ~/.json
   ~/.lifelog_time_tracking.json
   ~/.lifelog_habits.json
   ~/.config/lifelog/config.toml
@@ -159,6 +159,4 @@ def help_command():
 - Be kind to the user with errors and wording
 - Use constants for shared keys like `timestamp`, `value`, `tags`
 
-## REFERENCES:
-
-- https://clig.dev/#philosophy
+## REFERENCES

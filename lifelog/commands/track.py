@@ -1,4 +1,10 @@
 # lifelog/commands/metric.py
+'''
+Lifelog CLI Track Module - Track and Log Metrics and Habits
+This module provides functionality to add, modify, and log metrics and habits.
+It includes commands to define new metrics, list existing ones, and log values for them.
+It also allows for modifying existing metrics and marking habits as done.
+'''
 from logging import config
 from typing import List, Optional
 import typer
@@ -6,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from lifelog.commands.utils.tracker_utils import sum_entries
+from lifelog.commands.utils.shared_utils import sum_entries, parse_args
 import lifelog.config.config_manager as cf
 from lifelog.commands.utils.shared_options import tags_option, new_name_option, notes_option, min_option, max_option, description_option, unit_option, goal_option,period_option, kind_option
 from lifelog.config.config_manager import get_alias_map
@@ -17,7 +23,7 @@ from rich.table import Table
 
 app = typer.Typer(help="Add or Log a single metric (e.g. mood, water, sleep, etc.)")
 console = Console()
-LOG_FILE = cf.get_log_file()
+
 
 @app.command(
         help="Add a new metric definition."
@@ -33,10 +39,10 @@ def add(
         period: str = period_option,
         kind: str = kind_option
     ):
-    """
-    Add a new metric definition.
-    """
-    cfg =cf.load_cron_config()
+    '''
+    Add a new metric definition to the tracker.
+    '''
+    cfg =cf.load_config()
     tracker = cfg.setdefault("tracker", {})
 
     if name in cfg.get("tracker", {}):
@@ -79,7 +85,7 @@ def add(
         metric_def["max"] = max
 
     tracker[name] = metric_def
-    cf.save_config(config)
+    cf.save_config(cfg)
     typer.echo(f"✅ Added metric '{name}' with type '{type}'")
 
 @app.command("list")
@@ -87,7 +93,7 @@ def list_tracker():
     """
     Show all trackers and their settings.
     """
-    config =cf.load_cron_config().get("tracker", {})
+    config =cf.load_config().get("tracker", {})
     if not config:
         typer.echo("No trackers defined. Try `llog track add`.")
         return
@@ -169,7 +175,7 @@ def modify(
     """
     Update an existing tracker definition.
     """
-    config = cf.load_cron_config().setdefault("tracker", {})
+    config = cf.load_config().setdefault("tracker", {})
     if name not in config:
         typer.echo(f"❌ No tracker named '{name}'")
         raise typer.Exit(code=1)
@@ -205,14 +211,15 @@ def done(
 
 
 def save_entry(entry):
-    if LOG_FILE.exists():
-        with open(LOG_FILE, "r") as f:
+    TRACK_FILE = cf.get_track_file()
+    if TRACK_FILE.exists():
+        with open(TRACK_FILE, "r") as f:
             data = json.load(f)
     else:
         data = []
 
     data.append(entry)
-    with open(LOG_FILE, "w") as f:
+    with open(TRACK_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
 def validate_metric(name: str, value: str):

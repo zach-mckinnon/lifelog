@@ -1,72 +1,38 @@
+[categories]
+work = "Work related tasks"
+school = "School or study tasks"
+home = "Home related tasks"
+personal = "Personal tasks"
+health = "Health and fitness tasks"
 
 [tracker]
 
-[tracker.mood]
-type = "int"
-min = 1
-max = 10
-description = "Mood from 1 (bad) to 10 (great)"
-
-[tracker.sleepq]
-type = "int"
-min = 1
-max = 10
-description = "Sleep quality"
-
-[tracker.energy]
-type = "int"
-min = 1
-max = 10
-description = "Energy Level"
-
 [paths]
-DAILY_QUOTE_FILE = "~/.lifelog/daily_zen_quote.json"
-FEEDBACK_FILE = "~/.lifelog/feedback_sayings.json"
-LOG_FILE = "~/.lifelog.json"
-TIME_FILE = "~/.lifelog_time_tracking.json"
 CONFIG_FILE = "~/.lifelog/config.toml"
-INIT_MARKER = "~/.lifelog_initialized"
-FIRST_COMMAND_FLAG_FILE = "~/.lifelog/first_command.json"
-TASK_FILE = "~/.lifelog_tasks.json"
+TRACK_FILE = "~/.lifelog/lifelog_track.json"
+TIME_FILE = "~/.lifelog/lifelog_time.json"
+TASK_FILE = "~/.lifelog/lifelog_tasks.json"
+DAILY_QUOTE_FILE = "~/.lifelog/daily_quote.json"
+ENV_DATA_FILE = "~/.lifelog/environment.json"
+FEEDBACK_FILE = "~/.lifelog/feedback.json"
+FC_FILE = "~/.lifelog/initialized.json"
 
 [aliases]
 m = "mood"
 w = "water"
-tsk = "task"
-trk = "track"
-
-[cron.refresh_tasks]
-schedule = "0 7 * * *"
-command = "llog task refresh"
-
-[cron.daily_summary]
-schedule = "30 20 * * *"
-command = "llog summary daily"
+sl = "sleep"
 
 [cron.recur_auto]
 schedule = "0 0 * * *"
 command = "llog task auto_recur"
 
+[cron.env_sync]
+schedule = "0 */4 * * *"
+command = "llog env sync-all"
+
 [settings]
 default_importance = 3
 show_completed_tasks = false
 
-[defaults.task]
-recur_format = "every:X" # for future customization
-due_format = "+XdT18:00"
-
-[cron.weather]
-schedule = "0 */4 * * *"
-command = "llog env weather"
-
-[cron.air]
-schedule = "15 */4 * * *"
-command = "llog env air"
-
-[cron.moon]
-schedule = "30 */6 * * *"
-command = "llog env moon"
-
-[cron.satellite]
-schedule = "45 */4 * * *"
-command = "llog env satellite"
+[meta]
+initialized = false

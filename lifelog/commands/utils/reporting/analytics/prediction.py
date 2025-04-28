@@ -1,3 +1,11 @@
+# lifelog/commands/utils/reporting/analytics/prediction.py
+'''
+Lifelog Prediction Module
+This module provides functionality to forecast future trends for various trackers based on historical data.
+It includes functions to generate forecasts using different models (simple or regression) and visualize the results.
+It is designed to help users understand potential future trends in their data, enabling better planning and decision-making.
+'''
+
 from datetime import datetime, timedelta
 import csv, json
 import numpy as np

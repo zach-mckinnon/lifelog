@@ -1,3 +1,10 @@
+# lifelog/commands/utils/environmental.py
+'''
+Lifelog Environmental Data Fetching Module
+This module provides functionality to fetch various environmental data such as weather, air quality, moon phases, and solar radiation.
+It uses external APIs to retrieve the data and returns it in a structured format.
+'''
+
 import requests
 
 def fetch_weather_data(lat, lon):
