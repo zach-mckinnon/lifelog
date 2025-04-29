@@ -5,6 +5,7 @@ cron_manager.py - Manage cron jobs for lifelog
 import platform
 import subprocess
 from pathlib import Path
+import sys
 from tomlkit import dumps
 import lifelog.config.config_manager as cf
 
@@ -72,37 +73,38 @@ def apply_cron_jobs():
 
 # TODO: Fix windows translation of cron jobs to tasks
 def apply_windows_tasks():
-    import win32com.client
-    scheduler = win32com.client.Dispatch('Schedule.Service')
-    scheduler.Connect()
-    root_folder = scheduler.GetFolder('\\')
+    if sys.platform == "win32":
+        import win32com.client
+        scheduler = win32com.client.Dispatch('Schedule.Service')
+        scheduler.Connect()
+        root_folder = scheduler.GetFolder('\\')
 
-    print("⚡ Setting up Windows Scheduled Tasks...")
+        print("⚡ Setting up Windows Scheduled Tasks...")
 
-    for name, schedule, command in build_cron_jobs():
-        time_fields = schedule.split()
-        try:
-            if len(time_fields) >= 6:
-                minute, hour, day, month, _, _ = time_fields[0:6]
+        for name, schedule, command in build_cron_jobs():
+            time_fields = schedule.split()
+            try:
+                if len(time_fields) >= 6:
+                    minute, hour, day, month, _, _ = time_fields[0:6]
 
-                if "*" in hour and "/" in hour:
-                    # Handle */N logic (every N hours)
-                    interval = int(hour.split("/")[1])
-                    for h in range(0, 24, interval):
-                        schedule_task_windows(scheduler, root_folder, h, int(minute), command, name)
-                elif "*" in minute and "/" in minute:
-                    # Handle */N minutes if you ever support it
-                    interval = int(minute.split("/")[1])
-                    # (Extra if you want every N minutes)
-                else:
-                    # Normal specific time
-                    schedule_task_windows(scheduler, root_folder, int(hour), int(minute), command, name)
-                
-                print(f"✅ Scheduled: {name}")
-        except Exception as e:
-            print(f"❌ Failed to schedule {name}: {e}")
+                    if "*" in hour and "/" in hour:
+                        # Handle */N logic (every N hours)
+                        interval = int(hour.split("/")[1])
+                        for h in range(0, 24, interval):
+                            schedule_task_windows(scheduler, root_folder, h, int(minute), command, name)
+                    elif "*" in minute and "/" in minute:
+                        # Handle */N minutes if you ever support it
+                        interval = int(minute.split("/")[1])
+                        # (Extra if you want every N minutes)
+                    else:
+                        # Normal specific time
+                        schedule_task_windows(scheduler, root_folder, int(hour), int(minute), command, name)
+                    
+                    print(f"✅ Scheduled: {name}")
+            except Exception as e:
+                print(f"❌ Failed to schedule {name}: {e}")
 
-    print("✅ Windows tasks setup complete!")
+        print("✅ Windows tasks setup complete!")
 
 def schedule_task_windows(scheduler, root_folder, hour, minute, command, name):
     
