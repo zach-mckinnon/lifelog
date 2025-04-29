@@ -82,30 +82,30 @@ def help_command():
 
     # Add actual rows
     table.add_row(
-        "track ✏️",
-        "llog track [tracker] [value] [extras]\nllog track add\nllog track list\nllog track modify\nllog track done"
-    )
+    "[bold purple]Trackers[/bold purple] 📊",
+    "[bold green]Add[/bold green]: Define a new thing you want to track (like steps, mood, or water intake). You need to give it a [italic]title[/italic] and specify the [italic]type[/italic] of data it will store ([mono]int[/mono], [mono]float[/mono], [mono]bool[/mono], or [mono]str[/mono]). You can also add a category (e.g., [mono]llog track add Steps --type int --category Health[/mono])\n"
+    "[bold blue]Record[/bold blue]: (Use without a subcommand) Log a new value for an existing tracker. Just type the tracker's [italic]title[/italic] followed by the [italic]value[/italic] (e.g., [mono]llog track Water 2.5[/mono] or [mono]llog track Mood Happy[/mono]). If the title matches a command, use that command instead.\n"
+    "[bold yellow]Modify[/bold yellow]: Change the [italic]title[/italic], [italic]category[/italic], [italic]tags[/italic], or [italic]notes[/italic] of an existing tracker using its [italic]ID[/italic] (find the ID with 'list'). (e.g., [mono]llog track modify 3 New Mood --category Wellbeing +positive[/mono])\n"
+    "[bold magenta]List[/bold magenta]: Show all the trackers you have defined, along with their details, type, category, and any goals you've set (e.g., [mono]llog track list[/mono])\n"
+)
     table.add_row(
-        "time ⏱",
-        "Start a new Time Log: llog time start [title] [+tags] [notes] [-p past time to start] [-c/--cat category] [-pr/--proj project]" \
-        "Stop the current active time log: llog time stop  [+tags] [notes]" \
-        "Get the status of the active time log: llog time status"
-    )
+    "[bold blue]Time Tracking[/bold blue] ⏱️",
+    "[bold green]Start[/bold green]: Begin tracking time for an activity. You need to give it a [italic]title[/italic] (use quotes for spaces!). You can also add a category, project, or even a time in the past to start from (e.g., [mono]llog time start \"Working on report\" --project Office[/mono] or [mono]llog time start Reading --past \"30 minutes ago\"[/mono])\n"
+    "[bold red]Stop[/bold red]: End the current time tracking session. You can optionally add tags or notes when you stop (e.g., [mono]llog time stop +interruption Note: Had a coffee break[/mono])\n"
+    "[bold cyan]Status[/bold cyan]: See what activity you are currently tracking and since when (e.g., [mono]llog time status[/mono])\n"
+    "[bold magenta]Summary[/bold magenta]: Get a summary of the time you've tracked, grouped by activity title, category, or project. You can also filter by day, week, or month (e.g., [mono]llog time summary[/mono] or [mono]llog time summary --by category --period week[/mono])\n"
+)
     table.add_row(
-        "task ✅",
-        "llog task info [id]" \
-        "llog task add" \
-        "llog task start [id]" \
-        "llog task list" \
-        "llog task modify [id]" \
-        "llog task delete [id]" \
-        "llog task stop" \
-        "llog task done [id]" \
-    )
-    table.add_row(
-        "report 📊",
-        "llog report summary\nllog report summary time\nllog report summary daily\nllog report summary track\nllog report diagnostics\nllog report correlations\nllog report predict\nllog report prescribe\nllog report describe"
-    )
+    "[bold green]Tasks[/bold green] ✅",
+    "[bold blue]Info[/bold blue]: See details for a task using its [italic]ID[/italic] (e.g., [mono]llog task info 3[/mono])\n"
+    "[bold green]Add[/bold green]: Create a new task (e.g., [mono]llog task add Buy groceries[/mono])\n"
+    "[bold cyan]Start[/bold cyan]: Begin working on a task using its [italic]ID[/italic] (e.g., [mono]llog task start 5[/mono])\n"
+    "[bold magenta]List[/bold magenta]: Show all your current tasks (try adding [mono]--help[/mono] for sorting and filtering!)\n"
+    "[bold yellow]Modify[/bold yellow]: Change details of a task using its [italic]ID[/italic] (e.g., [mono]llog task modify 2 --due tomorrow[/mono])\n"
+    "[bold red]Delete[/bold red]: Remove a task using its [italic]ID[/italic] (e.g., [mono]llog task delete 1[/mono])\n"
+    "[bold orange]Stop[/bold orange]: Pause the task you are currently working on\n"
+    "[bold purple]Done[/bold purple]: Mark a task as finished using its [italic]ID[/italic] (e.g., [mono]llog task done 4[/mono])\n"
+)
 
     console.print(table)
     console.print(
@@ -153,12 +153,7 @@ def init():
 
     files_to_create = {
         TRACK_FILE: {
-            "habits": [
-                {"name": "Go Outside", "description": "Get 15 minutes of sunlight"},
-                {"name": "Drink Water", "description": "Track hydration throughout the day"},
-                {"name": "Sleep Before Midnight", "description": "Go to bed before 12am"},
-            ],
-            "log": []
+            "trackers": [],
         },
         TIME_FILE: {
             "history": []

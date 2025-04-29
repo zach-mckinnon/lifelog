@@ -80,57 +80,86 @@ def serialize_task(task):
             task_copy[key] = task_copy[key].isoformat()
     return task_copy
 
+import re
+from datetime import datetime, timedelta
+
 def parse_date_string(time_string: str, future: bool = False) -> datetime:
     """
-    Parses a relative time string like '1d', '2h', '1dT16:00' into a datetime.
-    If the string contains 'T', it is treated as a time part.
-    If `future` is True, it calculates the future date; otherwise, it calculates the past date.
+    Parses a smart or relative time string into a datetime.
+    Supports:
+    - '1d', '2w', '1m', '1y'
+    - 'today', 'todayT19:00'
+    - 'tomorrow'
+    - 'next week'
+    - '08:30' (means today at that time)
+    - combinations like '2wT15:00'
     """
 
-    if "T" in time_string:
-        duration_part, time_part = time_string.split("T")
+    now = datetime.now()
+
+    # 1. Handle known keywords
+    ts = time_string.lower().strip()
+
+    # Separate time part if 'T' exists
+    if "T" in ts:
+        base_part, time_part = ts.split("T")
+    elif re.match(r"^\d{1,2}:\d{2}$", ts):  # Only time like '08:30'
+        base_part, time_part = "", ts
     else:
-        duration_part, time_part = time_string, None
+        base_part, time_part = ts, None
 
-    regex = re.compile(
-        r"((?P<years>\d+)y)?"
-        r"((?P<months>\d+)mn)?"
-        r"((?P<weeks>\d+)w)?"
-        r"((?P<days>\d+)d)?"
-        r"((?P<hours>\d+)h)?"
-        r"((?P<minutes>\d+)m)?"
-    )
-    match = regex.match(duration_part)
+    target = None
 
-    if match:
-        parts = match.groupdict()
-        time_delta_kwargs = {}
-        if parts.get("years"):
-            time_delta_kwargs["days"] = int(parts["years"]) * 365
-        if parts.get("months"):
-            time_delta_kwargs["days"] = time_delta_kwargs.get("days", 0) + int(parts["months"]) * 30
-        if parts.get("weeks"):
-            time_delta_kwargs["weeks"] = int(parts["weeks"])
-        if parts.get("days"):
-            time_delta_kwargs["days"] = time_delta_kwargs.get("days", 0) + int(parts["days"])
-        if parts.get("hours"):
-            time_delta_kwargs["hours"] = int(parts["hours"])
-        if parts.get("minutes"):
-            time_delta_kwargs["minutes"] = int(parts["minutes"])
+    if base_part in ["today", ""]:
+        target = now
+    elif base_part == "yesterday":
+        target = now - timedelta(days=1)
+    elif base_part == "tomorrow":
+        target = now + timedelta(days=1)
+    elif base_part == "next week":
+        target = now + timedelta(weeks=1)
+    elif base_part == "next month":
+        target = now + timedelta(days=30)
+    else:
+        # 2. Handle relative like 1d, 2w, etc
+        regex = re.compile(
+            r"((?P<years>\d+)y)?"
+            r"((?P<months>\d+)mn)?"
+            r"((?P<weeks>\d+)w)?"
+            r"((?P<days>\d+)d)?"
+            r"((?P<hours>\d+)h)?"
+            r"((?P<minutes>\d+)m)?"
+        )
+        match = regex.match(base_part)
 
-        now = datetime.now()
-        delta = timedelta(**time_delta_kwargs)
-        target = now + delta if future else now - delta
+        if match:
+            parts = match.groupdict()
+            time_delta_kwargs = {}
+            if parts.get("years"):
+                time_delta_kwargs["days"] = int(parts["years"]) * 365
+            if parts.get("months"):
+                time_delta_kwargs["days"] = time_delta_kwargs.get("days", 0) + int(parts["months"]) * 30
+            if parts.get("weeks"):
+                time_delta_kwargs["weeks"] = int(parts["weeks"])
+            if parts.get("days"):
+                time_delta_kwargs["days"] = time_delta_kwargs.get("days", 0) + int(parts["days"])
+            if parts.get("hours"):
+                time_delta_kwargs["hours"] = int(parts["hours"])
+            if parts.get("minutes"):
+                time_delta_kwargs["minutes"] = int(parts["minutes"])
 
-        if time_part:
-            try:
-                hour, minute = map(int, time_part.split(":"))
-                target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            except ValueError:
-                return None  # invalid time part like bad format
+            delta = timedelta(**time_delta_kwargs)
+            target = now + delta if future else now - delta
 
-        return target
-    return None
+    if target and time_part:
+        try:
+            hour, minute = map(int, time_part.split(":"))
+            target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        except ValueError:
+            return None  # invalid time part like bad format
+
+    return target
+
     
 def parse_args(args: List[str]):
     """
@@ -138,8 +167,6 @@ def parse_args(args: List[str]):
     title/tracker, options, tags, notes
     """
     
-    title_parts = []
-    past = False
     tags = []
     notes = []
 
@@ -153,17 +180,12 @@ def parse_args(args: List[str]):
             parsed_tags = [tag.lstrip("+").lower() for tag in tags]
             for tag in parsed_tags:
                 _ensure_tag_exists(tag) 
-        elif time_pattern.match(arg) and arg.startswith("-p"):
-            past = arg
-        elif not tags and not past:
-            title_parts.append(arg)
         else:
             notes.append(arg)
 
-    title = " ".join(title_parts) if title_parts else None
     notes = " ".join(notes) if notes else None
 
-    return title, tags, notes, past
+    return tags, notes
 
 def _ensure_tag_exists(tag: str):
     doc = cf.load_config()
@@ -222,3 +244,10 @@ def parse_recur_string(recur_str: str) -> dict:
         "days_of_week": days_of_week
     }
 
+def safe_format_notes(notes_raw):
+    if isinstance(notes_raw, list):
+        return " ".join(str(note) for note in notes_raw)
+    elif isinstance(notes_raw, str):
+        return notes_raw
+    else:
+        return "-"

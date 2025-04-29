@@ -21,11 +21,11 @@ from rich.text import Text
 from rich import box
 import calendar
 
-from lifelog.commands.utils.shared_utils import parse_date_string, parse_recur_string, serialize_task, parse_args
+from lifelog.commands.utils.shared_utils import parse_date_string, parse_recur_string, safe_format_notes, serialize_task, parse_args
 from lifelog.commands.utils.feedback import get_feedback_saying
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs, save_config
-from lifelog.commands.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option
+from lifelog.commands.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
 
 
 app = typer.Typer(help="Create and manage your personal tasks.")
@@ -37,24 +37,33 @@ MAX_TASKS_DISPLAY = 50
 # Add a new task.
 @app.command()
 def add(
-    args: List[str] = typer.Argument(..., help="Title +tags Notes..."),
+    title: str = typer.Argument(..., help="The title of the task you need to get done."),
     category: Optional[str] = category_option,
     project: Optional[str] = project_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
+    past: Optional[str] = past_option,
     recur: Optional[str] = recur_option,
-
+    args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
 ):
     """
     Add a new task.
     """
     try:
-        title, tags, notes, past = parse_args(args)
-        if not title:
-            raise ValueError("Please ensure you have a title! How else will you know what to do??")
+        if args != None:
+            tags, notes = parse_args(args)
+        else:
+            tags, notes = [], []
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
+    
+    except ValueError as e:
+        console.print(f"[error]{e}[/error]")
+        raise typer.Exit(code=1)
+    
+    if not title:
+            raise ValueError("Please ensure you have a title! How else will you know what to do??")
     
     doc = cf.load_config()
     existing_categories = cf.get_config_section("categories").keys()
@@ -117,7 +126,6 @@ def add(
         "title": title,
         "project": project,
         "category": category,
-        "tags": tags,
         "impt": impt,
         "created": datetime.now().isoformat(),
         "due": due_dt.isoformat() if isinstance(due_dt, datetime) else due_dt,
@@ -125,7 +133,8 @@ def add(
         "start": None,
         "end": None,
         "recur": recur_data,
-        "notes":notes,
+        "tags": tags if tags else [],
+        "notes": notes if notes else [],
         "tracking": []
 
     }
@@ -164,14 +173,15 @@ def add(
 # TODO: Improve the filtering and sorting options to properly work for priority by default.
 @app.command()
 def list(
-    args: Optional[List[str]] = typer.Argument(None, help="Optional search: Title keywords or +tags."),
+    title: Optional[str] = typer.Argument("", help="The title of the activity you're tracking."),
     category: Optional[str] = category_option,
     project: Optional[str] = project_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
     sort: Optional[str] = typer.Option("id", help="Sort by 'priority', 'due', 'created', or 'id'."),
     status: Optional[str] = typer.Option(None, help="Filter by status (e.g. 'backlog', 'active', 'completed')."),
-    show_completed: bool = typer.Option(False, help="Include completed tasks.")
+    show_completed: bool = typer.Option(False, help="Include completed tasks."),
+    args: Optional[List[str]] = typer.Argument(None, help="Optional search: Title keywords or +tags.")
 ):
     """
     List your tasks, sorted and filtered your way! 🌈
@@ -183,7 +193,7 @@ def list(
         tasks = [t for t in tasks if t.get("status") != "done"]
 
     # Parse search input
-    title, tags, notes, past = parse_args(args or [])
+    tags, notes= parse_args(args or [])
 
     # Smart Sorting
     sort_options = {
@@ -198,7 +208,6 @@ def list(
         console.print(f"[yellow]Available options:[/yellow] {', '.join(sort_options.keys())}")
         raise typer.Exit(code=1)
     
-    # Apply Filters
     if title:
         tasks = [t for t in tasks if title.lower() in t.get("title", "").lower()]
 
@@ -211,17 +220,27 @@ def list(
     if project:
         tasks = [t for t in tasks if t.get("project") == project]
 
-    if due:
-        tasks = [t for t in tasks if t.get("due") and due in t["due"]]
-
     if impt is not None:
         tasks = [t for t in tasks if t.get("impt") == impt]
-    
+
     if status:
         tasks = [t for t in tasks if t.get("status") == status]
 
-    if notes:
-        tasks = [t for t in tasks if notes.lower() in (t.get("notes") or "").lower()]
+    if tags:
+        tags_raw = [t for t in tasks if t.get("tags") == tags]
+        tags = ", ".join(tags_raw) if tags_raw else "-"
+
+    if notes: 
+        notes_raw = [t for t in tasks if t.get("notes") == notes]
+        notes = safe_format_notes(notes_raw)
+
+    # 3. Apply due filter ONLY if user asked for it
+    if due:
+        tasks = [t for t in tasks if t.get("due") and due in t["due"]]
+
+    # 4. Finally, if show_completed is False, filter out "done" tasks
+    if not show_completed and not status:
+        tasks = [t for t in tasks if t.get("status") != "done"]
     
     
     sort_func = sort_options.get(sort, sort_options["id"])
@@ -230,7 +249,7 @@ def list(
     
     tasks.sort(key=sort_func, reverse=reverse_sort)
 
-    if len(tasks) == MAX_TASKS_DISPLAY:
+    if len(tasks) >= MAX_TASKS_DISPLAY:
         console.print(f"[dim]Showing first {MAX_TASKS_DISPLAY} tasks. Use filters to narrow down.[/dim]")
     tasks = tasks[:MAX_TASKS_DISPLAY]
 
@@ -248,22 +267,31 @@ def list(
     table.add_column("Category", style="cyan")
     table.add_column("Project", style="magenta")
     table.add_column("Tags", style="green")
+    table.add_column("Notes", overflow="crop", max_width=15, style="white")
 
     for task in tasks:
         prio = task.get("priority", 0)
         color = priority_color(prio)
         prio_str = f"[{color}]{prio}[/]"
 
+        # --- FIX TAGS ---
+        tags_raw = task.get("tags", [])
+        tags = ", ".join(tags_raw) if tags_raw else "-"
+
+        # --- FIX NOTES ---
+        notes_raw = task.get("notes", [])
+        notes = safe_format_notes(notes_raw)
+
         table.add_row(
-            str(task["id"]),
-            task["title"],
+            str(task.get("id", "-")),
+            task.get("title", "-"),
             prio_str,
             task.get("due", "-"),
             task.get("category", "-"),
             task.get("project", "-"),
-            ", ".join(task.get("tags", [])) or "-"
+            tags,    
+            notes    
         )
-
     console.print(table)
 
 
@@ -289,10 +317,10 @@ def agenda():
     today_tasks = [t for t in tasks if t.get("due") and datetime.fromisoformat(t["due"]).date() == today]
     tomorrow_tasks = [t for t in tasks if t.get("due") and datetime.fromisoformat(t["due"]).date() == tomorrow]
     upcoming_tasks = [
-        t for t in tasks 
-        if t.get("due") 
-        and tomorrow < datetime.fromisoformat(t["due"]).date() <= two_weeks_later
-    ]
+    t for t in tasks 
+    if (t.get("due") and tomorrow < datetime.fromisoformat(t["due"]).date() <= two_weeks_later)
+    or (not t.get("due"))
+]
 
     # Build sections
     panels = []
@@ -328,6 +356,331 @@ def agenda():
     console.rule("[bold cyan]📅 Agenda View[/bold cyan]")
     console.print("\n")
     console.print(Columns([calendar_panel, agenda_panel], equal=False, expand=False))
+
+
+
+# Get information on a task TO DO: Make the ability to just say llog task task# to get info. 
+@app.command()
+def info(id: int):
+    """
+    Show full details for a task.
+    """
+    tasks = load_tasks()
+    task = next((t for t in tasks if t["id"] == id), None)
+    if not task:
+        console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
+        raise typer.Exit(code=1)
+
+    for key, value in task.items():
+        console.print(f"[bold blue]{key.capitalize()}:[/bold blue] {value}")
+
+
+# Start tracking a task (Like moving to in-progress)
+@app.command()
+def start(id: int):
+    """
+    Start or resume a task. Only one task can be tracked at a time.
+    """
+    tasks = load_tasks()
+    task = next((t for t in tasks if t["id"] == id), None)
+    task_title = ""
+    if task:
+        task_title = task.get("title", "Unknown Task")
+    if not task:
+        console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
+        raise typer.Exit(code=1)
+
+    if task["status"] not in ["backlog", "active"]:
+        console.print(f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (pending or active only).")
+        raise typer.Exit(code=1)
+
+    task["status"] = "active"
+    if not task.get("start"):
+        task["start"] = datetime.now().isoformat()
+    save_tasks(tasks)
+
+    
+    data = {}
+    TIME_FILE = cf.get_time_file()
+    if TIME_FILE.exists():
+        with open(TIME_FILE, "r") as f:
+            data = json.load(f)
+
+    if "active" in data:
+        console.print(f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {data['active']["title"]}")
+        raise typer.Exit(code=1)
+
+    data["active"] = {
+        "title": f"{task_title}",
+        "start": datetime.now().isoformat(),
+        "task" : True
+    }
+
+    with open(TIME_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+    console.print(f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task['title']}")
+
+
+# Modify an existing task.
+@app.command()
+def modify(
+    id: int = typer.Argument(..., help="The ID of the task to modify"),
+    title: str = typer.Argument(..., help="The title of the activity you're tracking."),
+    args: Optional[List[str]] = typer.Argument(None, help="Optional: New title +tags Notes..."),
+    project: Optional[str] = project_option, 
+    category: Optional[str] = category_option, 
+    impt: Optional[int] = impt_option,
+    due: Optional[str] = due_option,
+    recur: Optional[str] = recur_option,
+):
+    """
+    Modify an existing task's fields. Only provide fields you want to update.
+    """
+    tasks = load_tasks()
+    task = next((t for t in tasks if t["id"] == id), None)
+    if not task:
+        console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
+        raise typer.Exit(code=1)
+
+    try:
+        if args != None:
+            tags, notes = parse_args(args)
+        else:
+            tags, notes = [], []
+    
+    except ValueError as e:
+        console.print(f"[error]{e}[/error]")
+        raise typer.Exit(code=1)
+    
+    if not task:
+        console.print(f"[bold red]❌ task with ID {id} not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # ---- Apply safe modifications only ----
+    changes_made = False
+
+    if title and title != task.get("title"):
+        task["title"] = title
+        changes_made = True
+
+    if category and category != task.get("category"):
+        task["category"] = category
+        changes_made = True
+
+    if tags:
+        current_tags = task.get("tags", [])
+        task["tags"] = current_tags + tags  
+    if notes:
+        current_notes = task.get("notes", [])
+        task["notes"] = current_notes.append(notes)
+
+        
+    if not changes_made:
+        console.print("[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
+        raise typer.Exit(code=0)
+
+    if project is not None:
+        task["project"] = project
+    if category is not None:
+        task["category"] = category
+    if due is not None:
+        task["due"] = due
+    if impt is not None:
+        task["impt"] = impt
+    if recur is not None:
+        task["recur"] = recur
+        task["recur_base"] = task.get("recur_base", datetime.now().isoformat()) # Keep existing or set new
+
+    task["priority"] = calculate_priority(task)
+    
+    save_tasks(tasks)
+    console.print(f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
+
+
+# Delete a task.
+@app.command()
+def delete(id: int):
+    """
+    Delete a task by ID.
+    """
+    tasks = load_tasks()
+    tasks = [t for t in tasks if t["id"] != id]
+    save_tasks(tasks)
+    console.print(f"[red]🗑️ Deleted[/red] task [bold blue][{id}][/bold blue].")
+
+
+# Pause a task (Like putting back to to-do) but keep logged time and do not set to done. 
+@app.command()
+def stop(
+    args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
+):
+    """
+    Pause the currently active task and stop timing, without marking it done.
+    """
+    tasks = load_tasks()
+    title, tags, notes, past = parse_args(args or [])
+
+    if not TIME_FILE.exists():
+        TIME_FILE = cf.get_time_file()
+        console.print("[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
+        raise typer.Exit(code=1)
+
+    with open(TIME_FILE, "r") as f:
+        data = json.load(f)
+
+    if "active" not in data:
+        console.print("[yellow]⚠️ Warning[/yellow]: No active task is being tracked.")
+        raise typer.Exit(code=1)
+
+    active = data["active"]
+    if not active["task"] == True:
+        console.print("[yellow]⚠️ Warning[/yellow]: Active task is not linked to a task.")
+        raise typer.Exit(code=1)
+    
+    # ─── Find linked Task ─────────────────────────────────────────────────────
+    id = int(active["category"].split(":")[1])
+    task = next((t for t in tasks if t["id"] == id), None)
+    
+    if not task:
+        console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
+        raise typer.Exit(code=1)
+    
+    # ─── Finalize Timing Info ─────────────────────────────────────────────────
+    start_time = datetime.fromisoformat(active["start"])
+    if past:
+        end_time = datetime.now() - parse_date_string(past)
+    else:
+        end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds() / 60
+
+    # ─── Merge tags and notes ─────────────────────────────────────────────────
+    final_tags = (active.get("tags") or []) + (tags or [])
+    final_notes = (active.get("notes") or "")
+    if notes:
+        final_notes += " " + notes
+
+    # ─── Clone Active for History Entry ───────────────────────────────────────
+    history_entry = active.copy()
+    history_entry.update({
+        "end": end_time.isoformat(),
+        "duration_minutes": round(duration, 2),
+        "tags": final_tags,
+        "notes": final_notes,
+    })
+    
+    # ─── Append to Global Time History ────────────────────────────────────────
+    history = data.get("history", [])
+    history.append(history_entry)
+    data["history"] = history
+
+    data.pop("active")
+
+    # ─── Update Task Tracking Array ───────────────────────────────────────────
+    task.setdefault("tracking", [])
+    task_tracking_entry = {
+        "start": history_entry["start"],
+        "end": history_entry["end"],
+        "duration_minutes": history_entry["duration_minutes"],
+        "tags": history_entry["tags"],
+        "notes": history_entry["notes"],
+    }
+    task["tracking"].append(task_tracking_entry)
+
+    # ─── Set Task Back to Backlog ─────────────────────────────────────────────
+    task["status"] = "backlog"
+
+    save_tasks(tasks)
+    with open(TIME_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+    
+    console.print(f"[yellow]⏸️ Paused[/yellow] task [bold blue][{id}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
+
+
+# Set a task to completed. 
+@app.command()
+def done(id: int, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
+    """
+    Mark a task as completed.
+    """
+    tasks = load_tasks()
+    title, tags, notes, past = parse_args(args or [])
+
+    TIME_FILE = cf.get_time_file()
+    if TIME_FILE.exists():
+        with open(TIME_FILE, "r") as f:
+            data = json.load(f)
+
+    if "active" not in data:
+        console.print("[yellow]⚠️ Warning[/yellow]: No active task is being tracked. No time tracking will be saved. ")
+
+    active = data["active"]
+    console.log(active)
+    if active["task"] == False:
+        console.print("[yellow]⚠️ Warning[/yellow]: Active task is not linked to a task.")
+        for i in tasks["history"]:
+            if i["id"] == id:
+                task = i
+                
+    
+    # ─── Find linked Task ─────────────────────────────────────────────────────
+    task_title = active["title"]
+    task = next((t for t in tasks if t["title"] == task_title), None)
+    
+    if not task:
+        console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
+        raise typer.Exit(code=1)
+    
+    # ─── Finalize Timing Info ─────────────────────────────────────────────────
+    start_time = datetime.fromisoformat(active["start"])
+    if past:
+        end_time = datetime.now() - parse_date_string(past)
+    else:
+        end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds() / 60
+
+    # ─── Merge tags and notes ─────────────────────────────────────────────────
+    final_tags = (active.get("tags") or []) + (tags or [])
+    final_notes = (active.get("notes") or "")
+    if notes:
+        final_notes += " " + notes
+
+    # ─── Clone Active for History Entry ───────────────────────────────────────
+    history_entry = active.copy()
+    history_entry.update({
+        "end": end_time.isoformat(),
+        "duration_minutes": round(duration, 2),
+        "tags": final_tags,
+        "notes": final_notes,
+    })
+    
+    # ─── Append to Global Time History ────────────────────────────────────────
+    history = data.get("history", [])
+    history.append(history_entry)
+    data["history"] = history
+
+    data.pop("active")
+
+    # ─── Update Task Tracking Array ───────────────────────────────────────────
+    task.setdefault("tracking", [])
+    task_tracking_entry = {
+        "start": history_entry["start"],
+        "end": history_entry["end"],
+        "duration_minutes": history_entry["duration_minutes"],
+        "tags": history_entry["tags"],
+        "notes": history_entry["notes"],
+    }
+    task["tracking"].append(task_tracking_entry)
+
+    # ─── Set Task Back to Backlog ─────────────────────────────────────────────
+    task["status"] = "done"
+
+    save_tasks(tasks)
+    with open(TIME_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+    
+    console.print(f"[yellow]Task Complete! [/yellow] task [bold blue][{id}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
+    console.print(get_feedback_saying("task_done"))
 
 
 def build_calendar_panel(now: datetime, tasks: list) -> Panel:
@@ -394,12 +747,12 @@ def build_agenda_table(tasks, title="🗓️ Agenda"):
     table.add_column("ID", justify="center", style="white")
     table.add_column("Priority", justify="center")
     table.add_column("Due Date", justify="center")
-    table.add_column("Task", justify="center", style="cyan")
+    table.add_column("Task", justify="left", style="cyan", max_width=40, overflow="crop", no_wrap=True)
     table.add_column("Created", justify="center", style="green")
-    table.add_column("Project", justify="center", style="")
-    table.add_column("Category", justify="center", style="green")
-    table.add_column("Tags", justify="center", style="blue")
-    table.add_column("Notes", justify="center", style="white")
+    table.add_column("Project", justify="center", style="", max_width=15, overflow="crop", no_wrap=True)
+    table.add_column("Category", justify="center", style="green", max_width=15, overflow="crop", no_wrap=True)
+    table.add_column("Tags", justify="center", style="blue", max_width=15, overflow="crop", no_wrap=True)
+    table.add_column("Notes", justify="left", style="white", max_width=15, overflow="crop", no_wrap=True)
 
 
     for task in tasks:
@@ -410,307 +763,22 @@ def build_agenda_table(tasks, title="🗓️ Agenda"):
         created_raw = task.get("created")
         project = task.get("project", "-")
         category = task.get("category", "-")
-        notes = task.get("notes", "-")
+        
+        notes_raw = task.get("notes", [])
+        notes = safe_format_notes(notes_raw)
 
-        due = datetime.fromisoformat(due_raw).strftime("%m/%d/%y %H:%M") if due_raw else due_raw
+        due = datetime.fromisoformat(due_raw).strftime("%m/%d/%y %H:%M") if due_raw else "-"
         created = datetime.fromisoformat(created_raw).strftime("%m/%d/%y %H:%M") if created_raw else created_raw
         tags = ", ".join(task.get("tags", [])) if task.get("tags") else "-"
         now = datetime.now()
         due_color = get_due_color(due_raw, now) if due_raw else "white"
         due_text = Text(due, style=due_color)
-        prio_color = priority_color(prio)
-        priority = Text(prio, style=prio_color)
-        table.add_row(id_, priority, due_text, title, created, tags, project, category, notes)
+        prio_raw = task.get("priority", 0)
+        prio_color_value = priority_color(prio_raw)
+        prio_text = Text(str(prio_raw), style=prio_color_value)
+        table.add_row(id_, prio_text, due_text, title, created, tags, project, category, notes)
 
     return table
-
-
-# Get information on a task TO DO: Make the ability to just say llog task task# to get info. 
-@app.command()
-def info(task_id: int):
-    """
-    Show full details for a task.
-    """
-    tasks = load_tasks()
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if not task:
-        console.print(f"[bold red]❌ Error[/bold red]: Task ID {task_id} not found.")
-        raise typer.Exit(code=1)
-
-    for key, value in task.items():
-        console.print(f"[bold blue]{key.capitalize()}:[/bold blue] {value}")
-
-
-# Start tracking a task (Like moving to in-progress)
-@app.command()
-def start(task_id: int):
-    """
-    Start or resume a task. Only one task can be tracked at a time.
-    """
-    tasks = load_tasks()
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    task_title = ""
-    if task:
-        task_title = task.get("title", "Unknown Task")
-    if not task:
-        console.print(f"[bold red]❌ Error[/bold red]: Task ID {task_id} not found.")
-        raise typer.Exit(code=1)
-
-    if task["status"] not in ["backlog", "active"]:
-        console.print(f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{task_id}[/bold blue]] is not in a startable state (pending or active only).")
-        raise typer.Exit(code=1)
-
-    task["status"] = "active"
-    if not task.get("start"):
-        task["start"] = datetime.now().isoformat()
-    save_tasks(tasks)
-
-    
-    data = {}
-    TIME_FILE = cf.get_time_file()
-    if TIME_FILE.exists():
-        with open(TIME_FILE, "r") as f:
-            data = json.load(f)
-
-    if "active" in data:
-        console.print(f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {data['active']["title"]}")
-        raise typer.Exit(code=1)
-
-    data["active"] = {
-        "title": f"{task_title}",
-        "start": datetime.now().isoformat(),
-        "task" : True
-    }
-
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-    console.print(f"[green]▶️ Started[/green] task [bold blue][{task_id}][/bold blue]: {task['title']}")
-
-
-# Modify an existing task.
-@app.command()
-def modify(
-    task_id: int = typer.Argument(..., help="The ID of the task to modify"),
-    title: Optional[str] = typer.Option(None, help="New title for the task"),
-    project: Optional[str] = project_option, 
-    category: Optional[str] = category_option, 
-    impt: Optional[int] = impt_option,
-    due: Optional[str] = due_option,
-    recur: Optional[str] = recur_option,
-):
-    """
-    Modify an existing task's fields. Only provide fields you want to update.
-    """
-    tasks = load_tasks()
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if not task:
-        console.print(f"[bold red]❌ Error[/bold red]: Task ID {task_id} not found.")
-        raise typer.Exit(code=1)
-
-
-    if title is not None:
-        task["title"] = title
-    if project is not None:
-        task["project"] = project
-    if category is not None:
-        task["category"] = category
-    if due is not None:
-        task["due"] = due
-    if impt is not None:
-        task["impt"] = impt
-    if recur is not None:
-        task["recur"] = recur
-        task["recur_base"] = task.get("recur_base", datetime.now().isoformat()) # Keep existing or set new
-
-    task["priority"] = calculate_priority(task)
-    save_tasks(tasks)
-    console.print(f"[green]✏️ Updated[/green] task [bold blue][{task_id}][/bold blue].")
-
-
-# Delete a task.
-@app.command()
-def delete(task_id: int):
-    """
-    Delete a task by ID.
-    """
-    tasks = load_tasks()
-    tasks = [t for t in tasks if t["id"] != task_id]
-    save_tasks(tasks)
-    console.print(f"[red]🗑️ Deleted[/red] task [bold blue][{task_id}][/bold blue].")
-
-
-# Pause a task (Like putting back to to-do) but keep logged time and do not set to done. 
-@app.command()
-def stop(
-    args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
-):
-    """
-    Pause the currently active task and stop timing, without marking it done.
-    """
-    tasks = load_tasks()
-    title, tags, notes, past = parse_args(args or [])
-
-    if not TIME_FILE.exists():
-        TIME_FILE = cf.get_time_file()
-        console.print("[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
-        raise typer.Exit(code=1)
-
-    with open(TIME_FILE, "r") as f:
-        data = json.load(f)
-
-    if "active" not in data:
-        console.print("[yellow]⚠️ Warning[/yellow]: No active task is being tracked.")
-        raise typer.Exit(code=1)
-
-    active = data["active"]
-    if not active["task"] == True:
-        console.print("[yellow]⚠️ Warning[/yellow]: Active tracker is not linked to a task.")
-        raise typer.Exit(code=1)
-    
-    # ─── Find linked Task ─────────────────────────────────────────────────────
-    task_id = int(active["category"].split(":")[1])
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    
-    if not task:
-        console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
-        raise typer.Exit(code=1)
-    
-    # ─── Finalize Timing Info ─────────────────────────────────────────────────
-    start_time = datetime.fromisoformat(active["start"])
-    if past:
-        end_time = datetime.now() - parse_date_string(past)
-    else:
-        end_time = datetime.now()
-    duration = (end_time - start_time).total_seconds() / 60
-
-    # ─── Merge tags and notes ─────────────────────────────────────────────────
-    final_tags = (active.get("tags") or []) + (tags or [])
-    final_notes = (active.get("notes") or "")
-    if notes:
-        final_notes += " " + notes
-
-    # ─── Clone Active for History Entry ───────────────────────────────────────
-    history_entry = active.copy()
-    history_entry.update({
-        "end": end_time.isoformat(),
-        "duration_minutes": round(duration, 2),
-        "tags": final_tags,
-        "notes": final_notes,
-    })
-    
-    # ─── Append to Global Time History ────────────────────────────────────────
-    history = data.get("history", [])
-    history.append(history_entry)
-    data["history"] = history
-
-    data.pop("active")
-
-    # ─── Update Task Tracking Array ───────────────────────────────────────────
-    task.setdefault("tracking", [])
-    task_tracking_entry = {
-        "start": history_entry["start"],
-        "end": history_entry["end"],
-        "duration_minutes": history_entry["duration_minutes"],
-        "tags": history_entry["tags"],
-        "notes": history_entry["notes"],
-    }
-    task["tracking"].append(task_tracking_entry)
-
-    # ─── Set Task Back to Backlog ─────────────────────────────────────────────
-    task["status"] = "backlog"
-
-    save_tasks(tasks)
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-    
-    console.print(f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task_id}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
-
-
-# Set a task to completed. 
-@app.command()
-def done(task_id: int, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
-    """
-    Mark a task as completed.
-    """
-    tasks = load_tasks()
-    title, tags, notes, past = parse_args(args or [])
-
-    TIME_FILE = cf.get_time_file()
-    if TIME_FILE.exists():
-        with open(TIME_FILE, "r") as f:
-            data = json.load(f)
-
-    if "active" not in data:
-        console.print("[yellow]⚠️ Warning[/yellow]: No active task is being tracked. No time tracking will be saved. ")
-
-    active = data["active"]
-    console.log(active)
-    if active["task"] == False:
-        console.print("[yellow]⚠️ Warning[/yellow]: Active tracker is not linked to a task.")
-        for i in tasks["history"]:
-            if i["id"] == task_id:
-                task = i
-                
-    
-    # ─── Find linked Task ─────────────────────────────────────────────────────
-    task_title = active["title"]
-    task = next((t for t in tasks if t["title"] == task_title), None)
-    
-    if not task:
-        console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
-        raise typer.Exit(code=1)
-    
-    # ─── Finalize Timing Info ─────────────────────────────────────────────────
-    start_time = datetime.fromisoformat(active["start"])
-    if past:
-        end_time = datetime.now() - parse_date_string(past)
-    else:
-        end_time = datetime.now()
-    duration = (end_time - start_time).total_seconds() / 60
-
-    # ─── Merge tags and notes ─────────────────────────────────────────────────
-    final_tags = (active.get("tags") or []) + (tags or [])
-    final_notes = (active.get("notes") or "")
-    if notes:
-        final_notes += " " + notes
-
-    # ─── Clone Active for History Entry ───────────────────────────────────────
-    history_entry = active.copy()
-    history_entry.update({
-        "end": end_time.isoformat(),
-        "duration_minutes": round(duration, 2),
-        "tags": final_tags,
-        "notes": final_notes,
-    })
-    
-    # ─── Append to Global Time History ────────────────────────────────────────
-    history = data.get("history", [])
-    history.append(history_entry)
-    data["history"] = history
-
-    data.pop("active")
-
-    # ─── Update Task Tracking Array ───────────────────────────────────────────
-    task.setdefault("tracking", [])
-    task_tracking_entry = {
-        "start": history_entry["start"],
-        "end": history_entry["end"],
-        "duration_minutes": history_entry["duration_minutes"],
-        "tags": history_entry["tags"],
-        "notes": history_entry["notes"],
-    }
-    task["tracking"].append(task_tracking_entry)
-
-    # ─── Set Task Back to Backlog ─────────────────────────────────────────────
-    task["status"] = "done"
-
-    save_tasks(tasks)
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-    
-    console.print(f"[yellow]Task Complete! [/yellow] task [bold blue][{task_id}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
-    console.print(get_feedback_saying("task_done"))
 
 
 def auto_recur():
@@ -776,7 +844,6 @@ def load_tasks():
         with open(TASK_FILE, "r") as f:
             return json.load(f)
     return []
-
 
 # Save tasks to JSON
 def save_tasks(tasks):

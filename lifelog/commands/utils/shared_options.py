@@ -10,79 +10,13 @@ import re
 from typing import List, Optional
 import typer
 
-task_schema = {
-    "type": "object",
-    "properties": {
-        "id": {"type": "string"},
-        "title": {"type": "string"},
-        "project": {"type": ["string", "null"]},
-        "category": {"type": ["string", "null"]},
-        "tags": {
-            "type": "array",
-            "items": {"type": "string"}
-        },
-        "impt": {"type": "integer"},
-        "created": {"type": "string"},  # ISO datetime
-        "due": {"type": ["string", "null"]},  # ISO datetime or None
-        "status": {"type": "string"},
-        "start": {"type": ["string", "null"]},
-        "end": {"type": ["string", "null"]},
-        "recur": {
-            "oneOf": [
-                {"type": "null"},
-                {
-                    "type": "object",
-                    "properties": {
-                        "interval": {"type": "integer"},
-                        "unit": {"type": "string"},
-                        "days_of_week": {
-                            "type": "array",
-                            "items": {"type": "integer"}
-                        }
-                    },
-                    "required": ["interval", "unit"]
-                }
-            ]
-        },
-        "notes": {"type": ["string", "null"]},
-        "tracking": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "start": {"type": "string"},
-                    "end": {"type": "string"},
-                    "duration_minutes": {"type": "number"},
-                    "notes": {"type": ["string", "null"]}
-                },
-                "required": ["start", "end", "duration_minutes"]
-            }
-        },
-        "priority": {"type": "number"}
-    },
-    "required": ["id", "title", "created", "status"]
-}
 
-time_schema = {
-    "type":"object",
-    "properties":{
-        "id": {"type":"string"},
-        "name": {"type":"string"},
-        "category": {"type":"string"},
-        "project": {"type":"string"},
-        "created": {"type":"string"},
-        "start": {"type":"string"},
-        "end": {"type":"string"},
-        "duration": {"type":"integer"},
-        "tags": {
-            "type":"array",
-            "items":{"type":"string"}
-        },
-        "notes": {"type":"string"}
-    },
-    "required": ["id", "name", "created"],
-}
-
+def get_option(options: dict, key: str, default=None):
+    """
+    Helper to safely get an option from parsed args.
+    Returns the value if exists, otherwise returns default.
+    """
+    return options.get(key, default)
 # ─── Core Task Options ───────────────────────────────────────────────────────────
 
 category_option = typer.Option(
@@ -125,7 +59,6 @@ recur_option = typer.Option(
 
 tags_option = typer.Option(
     [],
-    "-t", "--tags",
     help="List of tags (e.g. +food +work). Space-separated, prefixed with +.",
     show_default=False,
 )
@@ -139,7 +72,7 @@ notes_option = typer.Option(
 
 past_option = typer.Option(
     None,
-    "--past",
+    "-p","--past",
     help="Backdate by offset (e.g. 1h, 2d or 30m).",
     show_default=False,
 )
