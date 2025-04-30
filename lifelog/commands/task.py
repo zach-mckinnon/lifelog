@@ -538,8 +538,8 @@ def stop(
         raise typer.Exit(code=1)
     
     # ─── Find linked Task ─────────────────────────────────────────────────────
-    id = int(active["category"].split(":")[1])
-    task = next((t for t in tasks if t["id"] == id), None)
+    title = int(active["title"].split(":")[1])
+    task = next((t for t in tasks if t["title"] == title), None)
     
     if not task:
         console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
