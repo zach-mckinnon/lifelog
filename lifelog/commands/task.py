@@ -520,9 +520,8 @@ def stop(
     """
     tasks = load_tasks()
     tags, notes= parse_args(args or [])
-
+    TIME_FILE = cf.get_time_file()
     if not TIME_FILE.exists():
-        TIME_FILE = cf.get_time_file()
         console.print("[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
         raise typer.Exit(code=1)
 
