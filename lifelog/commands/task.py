@@ -10,7 +10,6 @@ import json
 from datetime import datetime, timedelta
 from tomlkit import table
 from typing import List, Optional
-from jsonschema import validate, ValidationError
 
 from rich.console import Console, Group
 from rich.prompt import Confirm
