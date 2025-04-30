@@ -4,7 +4,6 @@ import os
 from typing import Any, Dict
 from lifelog.config.config_manager import load_config
 import typer
-import rich
 from rich.console import Console
 
 app = typer.Typer(help="Debugging and development tools.")

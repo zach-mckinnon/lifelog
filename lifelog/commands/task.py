@@ -407,7 +407,7 @@ def start(id: int):
             data = json.load(f)
 
     if "active" in data:
-        console.print(f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {data['active']["title"]}")
+        console.print(f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {data['active']['title']}")
         raise typer.Exit(code=1)
 
     data["active"] = {

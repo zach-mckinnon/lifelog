@@ -8,13 +8,9 @@ This CLI allows users to log their daily activities, manage tasks, and sync envi
 from datetime import datetime
 import json
 from pathlib import Path
-import random
-import subprocess
-import sys
 from tomlkit import table
 import typer
 import requests # type: ignore
-import platform
 
 from lifelog.commands.utils import get_quotes
 import lifelog.config.config_manager as cf
