@@ -6,14 +6,14 @@ authors = [{ name = "Zach McKinnon" }]
 readme = "README.md"
 license = { text = "MIT" }
 dependencies = [
-    "typer>=0.15",
-    "rich>=14.0",
-    "termplotlib>=0.3.9",
-    "numpy>=2.2",
-    "requests>=2.32",
-    "scipy>=1.13",
-    "tomlkit>=0.12",
-    "pywin32>=306; sys_platform == 'win32'" ,
+    "typer",
+    "rich",
+    "termplotlib",
+    "numpy",
+    "requests",
+    "scipy",
+    "tomlkit",
+    "pywin32; sys_platform == 'win32'" ,
 ]
 requires-python = ">=3.8"
 
