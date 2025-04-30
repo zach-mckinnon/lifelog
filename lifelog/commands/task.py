@@ -512,13 +512,14 @@ def delete(id: int):
 # Pause a task (Like putting back to to-do) but keep logged time and do not set to done. 
 @app.command()
 def stop(
+    past: Optional[str] = past_option,
     args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
 ):
     """
     Pause the currently active task and stop timing, without marking it done.
     """
     tasks = load_tasks()
-    title, tags, notes, past = parse_args(args or [])
+    tags, notes= parse_args(args or [])
 
     if not TIME_FILE.exists():
         TIME_FILE = cf.get_time_file()
@@ -548,7 +549,7 @@ def stop(
     # ─── Finalize Timing Info ─────────────────────────────────────────────────
     start_time = datetime.fromisoformat(active["start"])
     if past:
-        end_time = datetime.now() - parse_date_string(past)
+        end_time = parse_date_string(past)
     else:
         end_time = datetime.now()
     duration = (end_time - start_time).total_seconds() / 60

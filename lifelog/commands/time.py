@@ -103,7 +103,7 @@ def stop(
     start_time = datetime.fromisoformat(data["active"]["start"])
     if past:
         # If the user wants to set a past time, we need to adjust the start time
-        end_time = parse_date_string(past)
+        end_time = parse_date_string(past, future=False)
     else:
         end_time = datetime.now()
     
