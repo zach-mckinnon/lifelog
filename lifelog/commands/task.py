@@ -177,7 +177,7 @@ def list(
     project: Optional[str] = project_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
-    sort: Optional[str] = typer.Option("id", help="Sort by 'priority', 'due', 'created', or 'id'."),
+    sort: Optional[str] = typer.Option("priority", help="Sort by 'priority', 'due', 'created', or 'id'."),
     status: Optional[str] = typer.Option(None, help="Filter by status (e.g. 'backlog', 'active', 'completed')."),
     show_completed: bool = typer.Option(False, help="Include completed tasks."),
     args: Optional[List[str]] = typer.Argument(None, help="Optional search: Title keywords or +tags.")
@@ -258,39 +258,34 @@ def list(
         return
 
     # Build the Table
-    table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("ID", justify="right")
-    table.add_column("Title")
-    table.add_column("Priority")
-    table.add_column("Due", style="yellow")
-    table.add_column("Category", style="cyan")
-    table.add_column("Project", style="magenta")
-    table.add_column("Tags", style="green")
-    table.add_column("Notes", overflow="crop", max_width=15, style="white")
+    table = Table(
+    show_header=True,          # hide header row to save space
+    box=None,                   # remove all borders
+    pad_edge=False,             # no padding around table edges :contentReference[oaicite:0]{index=0}
+    collapse_padding=True,      # merge adjacent cell padding :contentReference[oaicite:1]{index=1}
+    padding=(0, 1),             # zero vertical, 1-space horizontal padding :contentReference[oaicite:2]{index=2}
+    expand=True,                # auto-fit to terminal width :contentReference[oaicite:3]{index=3}
+)
+    table.add_column("ID", justify="right", width=2 )
+    table.add_column("Title", overflow="ellipsis", min_width=8,  )
+    table.add_column("Priority", overflow="ellipsis", )
+    table.add_column("Due", style="yellow", overflow="ellipsis", width=5 )
 
     for task in tasks:
-        prio = task.get("priority", 0)
+        id_str = str(task.get("id", "-"))
+        title = task.get("title", "-")
+        due_raw = task.get("due", "")
+        due_str = "-"
+        if due_raw:
+            due_dt = datetime.fromisoformat(due_raw)
+            due_str = due_dt.strftime("%m/%d") 
+        
+        prio = str(task.get("priority", "-"))
         color = priority_color(prio)
-        prio_str = f"[{color}]{prio}[/]"
+        prio_text = Text(prio)
+        prio_text.stylize(color)
 
-        # --- FIX TAGS ---
-        tags_raw = task.get("tags", [])
-        tags = ", ".join(tags_raw) if tags_raw else "-"
-
-        # --- FIX NOTES ---
-        notes_raw = task.get("notes", [])
-        notes = safe_format_notes(notes_raw)
-
-        table.add_row(
-            str(task.get("id", "-")),
-            task.get("title", "-"),
-            prio_str,
-            task.get("due", "-"),
-            task.get("category", "-"),
-            task.get("project", "-"),
-            tags,    
-            notes    
-        )
+        table.add_row(id_str, title, prio_text, due_str)
     console.print(table)
 
 
@@ -410,6 +405,7 @@ def start(id: int):
         raise typer.Exit(code=1)
 
     data["active"] = {
+        "id" : task["id"],
         "title": f"{task_title}",
         "start": datetime.now().isoformat(),
         "task" : True
@@ -520,6 +516,7 @@ def stop(
     """
     tasks = load_tasks()
     tags, notes= parse_args(args or [])
+    
     TIME_FILE = cf.get_time_file()
     if not TIME_FILE.exists():
         console.print("[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
@@ -538,8 +535,8 @@ def stop(
         raise typer.Exit(code=1)
     
     # ─── Find linked Task ─────────────────────────────────────────────────────
-    title = int(active["title"].split(":")[1])
-    task = next((t for t in tasks if t["title"] == title), None)
+    task_id = active.get("id")   # already an integer
+    task    = next((t for t in tasks if t["id"] == task_id), None)
     
     if not task:
         console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
@@ -598,53 +595,63 @@ def stop(
 
 # Set a task to completed. 
 @app.command()
-def done(id: int, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
+def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
     """
     Mark a task as completed.
     """
+    # ─── Load tasks and parse any extra tags/notes ────────────────────────────
     tasks = load_tasks()
-    title, tags, notes, past = parse_args(args or [])
+    tags, notes = parse_args(args or [])
 
+    # ─── Load or initialize time‐tracking file ───────────────────────────────
     TIME_FILE = cf.get_time_file()
-    if TIME_FILE.exists():
+    try:
         with open(TIME_FILE, "r") as f:
             data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {"history": []}
 
+    # ─── If no active timer, warn & mark done, then exit early ────────────────
     if "active" not in data:
-        console.print("[yellow]⚠️ Warning[/yellow]: No active task is being tracked. No time tracking will be saved. ")
+        console.print("[yellow]⚠️ No active timer. No new log saved.[/yellow]")
+        task = next((t for t in tasks if t["id"] == id), None)
+        if task:
+            total = sum(e["duration_minutes"] for e in task.get("tracking", []))
+            console.print(f"[cyan]Total tracked so far:[/cyan] {total:.2f}m")
 
+            # mark task done
+            task["status"] = "done"
+
+            # write time file first to clear any leftover active entry
+            with open(TIME_FILE, "w") as f:
+                json.dump(data, f, indent=2)
+
+            save_tasks(tasks)
+            console.print(f"[green]✔️ Done[/green] [{id}]: {task['title']}")
+        return
+
+    # ─── We know there is an active entry ────────────────────────────────────
     active = data["active"]
-    console.log(active)
-    if active["task"] == False:
-        console.print("[yellow]⚠️ Warning[/yellow]: Active task is not linked to a task.")
-        for i in tasks["history"]:
-            if i["id"] == id:
-                task = i
-                
-    
-    # ─── Find linked Task ─────────────────────────────────────────────────────
-    task_title = active["title"]
-    task = next((t for t in tasks if t["title"] == task_title), None)
-    
+
+    # ─── Lookup by the stored ID, not by title ───────────────────────────────
+    task_id = active.get("id")
+    task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
         console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
         raise typer.Exit(code=1)
-    
-    # ─── Finalize Timing Info ─────────────────────────────────────────────────
+
+    # ─── Compute duration ─────────────────────────────────────────────────────
     start_time = datetime.fromisoformat(active["start"])
-    if past:
-        end_time = datetime.now() - parse_date_string(past)
-    else:
-        end_time = datetime.now()
+    end_time = parse_date_string(past) if past else datetime.now()
     duration = (end_time - start_time).total_seconds() / 60
 
-    # ─── Merge tags and notes ─────────────────────────────────────────────────
+    # ─── Merge any tags/notes provided at stop time ──────────────────────────
     final_tags = (active.get("tags") or []) + (tags or [])
-    final_notes = (active.get("notes") or "")
+    final_notes = active.get("notes", "") or ""
     if notes:
         final_notes += " " + notes
 
-    # ─── Clone Active for History Entry ───────────────────────────────────────
+    # ─── Build and append the history entry ──────────────────────────────────
     history_entry = active.copy()
     history_entry.update({
         "end": end_time.isoformat(),
@@ -652,33 +659,33 @@ def done(id: int, args: Optional[List[str]] = typer.Argument(None, help="Optiona
         "tags": final_tags,
         "notes": final_notes,
     })
-    
-    # ─── Append to Global Time History ────────────────────────────────────────
-    history = data.get("history", [])
-    history.append(history_entry)
-    data["history"] = history
+    data.setdefault("history", []).append(history_entry)
 
-    data.pop("active")
+    # remove the active marker
+    data.pop("active", None)
 
-    # ─── Update Task Tracking Array ───────────────────────────────────────────
-    task.setdefault("tracking", [])
-    task_tracking_entry = {
+    # ─── Also append to the task’s own tracking array ────────────────────────
+    task.setdefault("tracking", []).append({
         "start": history_entry["start"],
         "end": history_entry["end"],
         "duration_minutes": history_entry["duration_minutes"],
         "tags": history_entry["tags"],
         "notes": history_entry["notes"],
-    }
-    task["tracking"].append(task_tracking_entry)
+    })
 
-    # ─── Set Task Back to Backlog ─────────────────────────────────────────────
+    # ─── Finally set the task status to done ────────────────────────────────
     task["status"] = "done"
 
-    save_tasks(tasks)
+    # ─── Persist both files (time file first, then tasks) ────────────────────
     with open(TIME_FILE, "w") as f:
         json.dump(data, f, indent=2)
-    
-    console.print(f"[yellow]Task Complete! [/yellow] task [bold blue][{id}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
+    save_tasks(tasks)
+
+    # ─── User feedback ───────────────────────────────────────────────────────
+    console.print(
+        f"[yellow]Task Complete! [/yellow] task [bold blue][{id}][/bold blue]: "
+        f"{task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes"
+    )
     console.print(get_feedback_saying("task_done"))
 
 
