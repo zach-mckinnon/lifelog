@@ -7,13 +7,15 @@ It is designed to help users understand potential future trends in their data, e
 '''
 
 from datetime import datetime, timedelta
-import csv, json
+import csv
+import json
 import numpy as np
 from rich.console import Console
 from lifelog.commands.utils.reporting.insight_engine import load_metric_data, daily_averages
 from lifelog.commands.utils.reporting.analytics.report_utils import render_line_chart
 
 console = Console()
+
 
 def report_prediction(model: str = "simple", days: int = 7, export: str = None):
     """
@@ -55,12 +57,14 @@ def report_prediction(model: str = "simple", days: int = 7, export: str = None):
 
         # 4. Build future dates
         last_date = datetime.fromisoformat(dates[-1]).date()
-        future_dates = [(last_date + timedelta(days=i + 1)).isoformat() for i in range(days)]
+        future_dates = [(last_date + timedelta(days=i + 1)).isoformat()
+                        for i in range(days)]
 
         # 5. Render line chart combining history + forecast
         combined_dates = dates + future_dates
         combined_vals = values + forecast_vals
-        render_line_chart(combined_dates, combined_vals, label="Value & Forecast")
+        render_line_chart(combined_dates, combined_vals,
+                          label="Value & Forecast")
 
         # 6. Export if requested
         if export:
@@ -94,4 +98,5 @@ def _export_forecast(
         }
         with open(filepath, 'w') as f:
             json.dump(out, f, indent=2)
-    console.print(f"[green]Exported forecast for '{tracker}' to {filepath}[/green]")
+    console.print(
+        f"[green]Exported forecast for '{tracker}' to {filepath}[/green]")

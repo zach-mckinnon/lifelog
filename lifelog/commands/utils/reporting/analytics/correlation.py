@@ -8,12 +8,14 @@ It is designed to help users identify relationships between their tracked metric
 
 
 from datetime import datetime, timedelta
-import csv, json
+import csv
+import json
 from rich.console import Console
 from lifelog.commands.utils.reporting.insight_engine import generate_insights
 from lifelog.commands.utils.reporting.analytics.report_utils import render_scatter_plot
 
 console = Console()
+
 
 def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
     """
@@ -26,7 +28,8 @@ def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
     # 1. Parse the "since" argument and set the cutoff date
     # 2. Generate insights using the insight_engine
     cutoff = _parse_since(since)
-    console.print(f"[bold]Correlation Analysis:[/] since {cutoff.date().isoformat()} (showing top {top_n})")
+    console.print(
+        f"[bold]Correlation Analysis:[/] since {cutoff.date().isoformat()} (showing top {top_n})")
 
     insights = generate_insights()
     top_insights = insights[:top_n]
@@ -39,7 +42,8 @@ def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
         spearman = ins['correlation']['spearman']
         trend = ins.get('trend', '')
         note = ins.get('note', '')
-        console.print(f"{idx}. [bold]{m1} ↔ {m2}[/bold]: Pearson={pearson}, Spearman={spearman} ({trend})")
+        console.print(
+            f"{idx}. [bold]{m1} ↔ {m2}[/bold]: Pearson={pearson}, Spearman={spearman} ({trend})")
         console.print(f"   {note}\n")
 
         # Optional scatter plot
@@ -56,7 +60,7 @@ def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
 
 
 # Helper function to parse the "since" argument
-# and convert it to a datetime object.  
+# and convert it to a datetime object.
 def _parse_since(s: str) -> datetime:
     now = datetime.now()
     unit = s[-1]
@@ -81,11 +85,13 @@ def _export_insights(insights: list[dict], filepath: str):
     if ext == 'csv':
         with open(filepath, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['metric1','metric2','pearson','spearman','trend','note'])
+            writer.writerow(['metric1', 'metric2', 'pearson',
+                            'spearman', 'trend', 'note'])
             for ins in insights:
                 m1, m2 = ins['metrics']
                 c = ins['correlation']
-                writer.writerow([m1, m2, c['pearson'], c['spearman'], ins.get('trend',''), ins.get('note','')])
+                writer.writerow([m1, m2, c['pearson'], c['spearman'], ins.get(
+                    'trend', ''), ins.get('note', '')])
     elif ext == 'json':
         with open(filepath, 'w') as f:
             json.dump(insights, f, indent=2)

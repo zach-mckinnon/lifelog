@@ -12,7 +12,6 @@ import random
 import lifelog.config.config_manager as cf
 
 
-
 def load_feedback_sayings():
     """Loads the feedback sayings from the JSON file."""
     FEEDBACK_FILE = cf.get_feedback_file()
@@ -24,12 +23,14 @@ def load_feedback_sayings():
             print("[yellow]⚠️ Warning[/yellow]: Could not decode feedback sayings.")
     return {}
 
+
 def get_feedback_saying(context):
     """Retrieves a random feedback saying for a given context."""
     sayings = load_feedback_sayings()
     if context in sayings and sayings[context]:
         return random.choice(sayings[context])
     return None
+
 
 def default_feedback_sayings():
     """Returns the default positive feedback sayings dictionary."""

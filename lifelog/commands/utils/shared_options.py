@@ -19,6 +19,7 @@ def get_option(options: dict, key: str, default=None):
     return options.get(key, default)
 # ─── Core Task Options ───────────────────────────────────────────────────────────
 
+
 category_option = typer.Option(
     None,
     "-c", "--cat",
@@ -66,7 +67,7 @@ tags_option = typer.Option(
 notes_option = typer.Option(
     None,
     help="Optional notes or additional context. Must precede any argument starting with a dash (-), "
-          "or place after '--' to separate from command options.",
+    "or place after '--' to separate from command options.",
     show_default=False,
 )
 

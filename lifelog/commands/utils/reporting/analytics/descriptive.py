@@ -8,7 +8,9 @@ It also provides options to export the reports in JSON or CSV format.
 '''
 
 from datetime import datetime, timedelta
-import statistics, json, csv
+import statistics
+import json
+import csv
 from rich.console import Console
 from lifelog.commands.utils.reporting.insight_engine import load_metric_data, daily_averages
 from lifelog.config.config_manager import get_time_file
@@ -21,14 +23,16 @@ def report_descriptive(since: str = "30d", export: str = None):
     📊 Descriptive analytics: overview of tracker stats, time usage, and tasks.
     """
     cutoff = _parse_since(since)
-    console.print(f"[bold]Descriptive Analytics:[/] since {cutoff.date().isoformat()}\n")
+    console.print(
+        f"[bold]Descriptive Analytics:[/] since {cutoff.date().isoformat()}\n")
 
     # 1. Tracker statistics (mean, median, stdev)
     entries = load_metric_data()
     tracker_daily = daily_averages(entries)  # {tracker: {date: value}}
     stats: dict[str, dict[str, float]] = {}
     for tracker, day_map in tracker_daily.items():
-        values = [v for d, v in day_map.items() if datetime.fromisoformat(d) >= cutoff]
+        values = [v for d, v in day_map.items(
+        ) if datetime.fromisoformat(d) >= cutoff]
         if not values:
             continue
         stats[tracker] = {
@@ -42,15 +46,17 @@ def report_descriptive(since: str = "30d", export: str = None):
     # 2. Time usage stats
     tf = get_time_file()
     time_data = json.load(open(tf, 'r')).get('history', [])
-    filtered = [h for h in time_data if datetime.fromisoformat(h['start']) >= cutoff]
+    filtered = [h for h in time_data if datetime.fromisoformat(
+        h['start']) >= cutoff]
     total_time = sum(rec.get('duration_minutes', 0) for rec in filtered)
     days = (datetime.now().date() - cutoff.date()).days + 1
     avg_time = round(total_time / days, 2) if days > 0 else 0.0
-    console.print(f"\n[blue]Time Usage:[/] total {total_time} min — avg/day {avg_time} min")
+    console.print(
+        f"\n[blue]Time Usage:[/] total {total_time} min — avg/day {avg_time} min")
 
     # 3. Task summary
     console.print("\n[blue]Task Summary:[/blue]")
-    
+
     # summary_tasks(since, None)
 
     # 4. Export if requested

@@ -15,6 +15,7 @@ from rich.text import Text
 
 console = Console()
 
+
 def render_line_chart(dates, values, label=""):
     """Renders a line chart using termplotlib with enhanced styling."""
     fig = tpl.figure()
@@ -29,6 +30,7 @@ def render_line_chart(dates, values, label=""):
     )
     console.print(fig.get_string())
 
+
 def render_scatter_plot(x, y, xlabel="", ylabel=""):
     """Renders a scatter plot using termplotlib with enhanced styling."""
     fig = tpl.figure()
@@ -37,10 +39,11 @@ def render_scatter_plot(x, y, xlabel="", ylabel=""):
         y,
         xlabel=Text(xlabel, style="italic"),
         ylabel=Text(ylabel, style="italic"),
-        width=console.width - 10, # Adjust width for console
+        width=console.width - 10,  # Adjust width for console
         height=15
     )
     console.print(fig.get_string())
+
 
 def render_calendar_heatmap(date_to_value):
     """Renders a basic calendar-like heatmap in the CLI."""
@@ -58,13 +61,16 @@ def render_calendar_heatmap(date_to_value):
         normalized_value = value / max_val if max_val > 0 else 0
         bar_length = int(normalized_value * 20)
         bar = "[green]█[/green]" * bar_length
-        console.print(f"[bold]{day}:[/bold] {bar} [italic]{round(value, 1)}[/italic]")
+        console.print(
+            f"[bold]{day}:[/bold] {bar} [italic]{round(value, 1)}[/italic]")
+
 
 def render_radar_chart(metric_scores):
     """Placeholder for radar chart rendering (CLI limitation)."""
     console.print("\n[bold blue]Radar Summary:[/bold blue]")
     for k, v in metric_scores.items():
         console.print(f"- [bold cyan]{k}:[/bold cyan] [green]{v}[/green]")
+
 
 def render_pie_chart(category_totals):
     """Renders a basic pie chart in the CLI using block characters."""
@@ -74,7 +80,9 @@ def render_pie_chart(category_totals):
         percent = (val / total) * 100 if total else 0
         bar_length = int(percent / 4)
         bar = "[yellow]■[/yellow]" * bar_length
-        console.print(f"[bold]{cat:10}:[/bold] {bar} ([cyan]{round(percent)}%[/cyan])")
+        console.print(
+            f"[bold]{cat:10}:[/bold] {bar} ([cyan]{round(percent)}%[/cyan])")
+
 
 def correlation_score(x, y):
     """Calculates the Pearson correlation coefficient between two lists."""
@@ -84,5 +92,6 @@ def correlation_score(x, y):
         corr = np.corrcoef(x, y)[0, 1]
         return round(corr, 2)
     except Exception as e:
-        console.print(f"[bold red]Error calculating correlation:[/bold red] {e}")
+        console.print(
+            f"[bold red]Error calculating correlation:[/bold red] {e}")
         return 0.0

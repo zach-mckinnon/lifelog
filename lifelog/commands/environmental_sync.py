@@ -50,6 +50,7 @@ def save_env_data(section, data):
 
     print(f"[green]✅ Saved {section} data to environment.json[/green]")
 
+
 def weather():
     cfg = cf.load_config()
     location = cfg.get("location", {})
@@ -60,6 +61,7 @@ def weather():
         return
     data = fetch_weather_data(lat, lon)
     save_env_data("weather", data)
+
 
 def air():
     cfg = cf.load_config()
@@ -72,6 +74,7 @@ def air():
     data = fetch_air_quality_data(lat, lon)
     save_env_data("air_quality", data)
 
+
 def moon():
     cfg = cf.load_config()
     location = cfg.get("location", {})
@@ -83,6 +86,7 @@ def moon():
         return
     data = fetch_moon_data(lat, lon, key)
     save_env_data("moon", data)
+
 
 def satellite():
     cfg = cf.load_config()

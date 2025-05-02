@@ -7,7 +7,8 @@ It also supports exporting the summary data to CSV or JSON files.
 '''
 
 from datetime import datetime, timedelta
-import csv, json
+import csv
+import json
 from rich.console import Console
 from lifelog.commands.utils.reporting.insight_engine import daily_averages, load_metric_data, load_time_data
 import lifelog.config.config_manager as cf
@@ -19,13 +20,16 @@ console = Console()
 cfg = cf.load_config()
 
 # Summary of tracker totals
+
+
 def summary_metric(since: str = "7d", export: str = None):
     """
     ✏️  Summary of all trackers logged in the period.
     """
     now = datetime.now()
     cutoff = _parse_since(since)
-    console.print(f"[bold]Trackers ({since} since {cutoff.date().isoformat()}):[/bold]")
+    console.print(
+        f"[bold]Trackers ({since} since {cutoff.date().isoformat()}):[/bold]")
 
     # Aggregate
     trackers = _load_trackers()
@@ -50,18 +54,22 @@ def summary_metric(since: str = "7d", export: str = None):
         _export(data, since, export)
 
 # Summary of time tracking
+
+
 def summary_time(since: str = "7d", export: str = None):
     """
     ⏱  Summary of time tracked per category.
     """
     from lifelog.config.config_manager import get_time_file
     cutoff = _parse_since(since)
-    console.print(f"[bold]Time ({since} since {cutoff.date().isoformat()}):[/bold]")
+    console.print(
+        f"[bold]Time ({since} since {cutoff.date().isoformat()}):[/bold]")
 
     tf = get_time_file()
     time_data = json.load(open(tf, 'r'))
     history = time_data.get('history', [])
-    recent = [h for h in history if datetime.fromisoformat(h['start']) >= cutoff]
+    recent = [h for h in history if datetime.fromisoformat(
+        h['start']) >= cutoff]
 
     totals = {}
     for rec in recent:
@@ -80,11 +88,12 @@ def summary_daily(since: str = "7d", export: str = None):
     now = datetime.now()
     cutoff = _parse_since(since)
     today = now.date()
-    
+
     # Load data
     time_data = load_time_data()
     metric_data = load_metric_data()
-    daily_moods = daily_averages(metric_data).get("mood", {})  # {day: mood avg}
+    daily_moods = daily_averages(metric_data).get(
+        "mood", {})  # {day: mood avg}
 
     # Placeholder for task completion (if available)
     # Assuming you have a method or file to load task completion logs per day
@@ -102,7 +111,8 @@ def summary_daily(since: str = "7d", export: str = None):
         day = (cutoff.date() + timedelta(days=i)).isoformat()
 
         # Count completed tasks
-        tasks_done = sum(1 for t in task_logs if t.get("done") and t.get("completed_date", "").startswith(day))
+        tasks_done = sum(1 for t in task_logs if t.get("done")
+                         and t.get("completed_date", "").startswith(day))
 
         # Average mood
         mood = daily_moods.get(day, "-")
@@ -122,7 +132,8 @@ def summary_daily(since: str = "7d", export: str = None):
         })
 
     # Render table
-    table = Table(title=f"📅 Daily Summary (since {cutoff.date().isoformat()})", show_lines=True)
+    table = Table(
+        title=f"📅 Daily Summary (since {cutoff.date().isoformat()})", show_lines=True)
     table.add_column("Date", style="cyan")
     table.add_column("Tasks Done", style="green")
     table.add_column("Mood", style="magenta")
@@ -144,6 +155,7 @@ def summary_daily(since: str = "7d", export: str = None):
 
 # Helpers
 
+
 def _parse_since(s: str) -> datetime:
     now = datetime.now()
     unit = s[-1]
@@ -152,9 +164,12 @@ def _parse_since(s: str) -> datetime:
     except ValueError:
         amt = int(s)
         unit = 'd'
-    if unit == 'd': return now - timedelta(days=amt)
-    if unit == 'w': return now - timedelta(weeks=amt)
-    if unit == 'm': return now - timedelta(days=30*amt)
+    if unit == 'd':
+        return now - timedelta(days=amt)
+    if unit == 'w':
+        return now - timedelta(weeks=amt)
+    if unit == 'm':
+        return now - timedelta(days=30*amt)
     return now - timedelta(days=amt)
 
 
@@ -174,8 +189,10 @@ def _export(data: dict, since: str, filepath: str):
     if ext == 'csv':
         with open(filepath, 'w', newline='') as f:
             w = csv.writer(f)
-            w.writerow(['key','value'])
-            for k,v in data.items(): w.writerow([k,v])
+            w.writerow(['key', 'value'])
+            for k, v in data.items():
+                w.writerow([k, v])
     else:
-        json.dump({'since': since, 'data': data}, open(filepath, 'w'), indent=2)
+        json.dump({'since': since, 'data': data},
+                  open(filepath, 'w'), indent=2)
     console.print(f"[green]Exported summary to {filepath}[/green]")

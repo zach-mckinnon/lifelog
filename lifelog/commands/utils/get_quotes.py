@@ -12,6 +12,7 @@ from pathlib import Path
 import requests
 import lifelog.config.config_manager as cf
 
+
 def fetch_on_this_day():
     today = datetime.now()
     url = f"https://today.zenquotes.io/api/{today.month}/{today.day}"
@@ -24,9 +25,10 @@ def fetch_on_this_day():
         print(f"Warning: Could not fetch 'On This Day' data: {e}")
         return {}
 
+
 def fetch_daily_zen_quote():
     """Fetches the quote of the day from ZenQuotes."""
-    api_url="https://zenquotes.io/api/random"
+    api_url = "https://zenquotes.io/api/random"
     try:
         response = requests.get(api_url)
         response.raise_for_status()
@@ -34,12 +36,15 @@ def fetch_daily_zen_quote():
         if data and isinstance(data, list) and len(data) > 0:
             return data[0]["q"] + " — " + data[0]["a"]
         else:
-            print("[yellow]⚠️ Warning[/yellow]: Could not parse quote from ZenQuotes API.")
+            print(
+                "[yellow]⚠️ Warning[/yellow]: Could not parse quote from ZenQuotes API.")
             return None
     except requests.exceptions.RequestException as e:
-        print(f"[yellow]⚠️ Warning[/yellow]: Could not fetch quote from ZenQuotes API: {e}")
+        print(
+            f"[yellow]⚠️ Warning[/yellow]: Could not fetch quote from ZenQuotes API: {e}")
         return None
-    
+
+
 def get_motivational_quote():
     """
     Retrieves a daily quote.
@@ -62,7 +67,8 @@ def get_motivational_quote():
                     # Same quote, don't resave
                     return new_quote
             except json.JSONDecodeError:
-                print("[yellow]⚠️ Warning[/yellow]: Could not decode stored daily quote.")
+                print(
+                    "[yellow]⚠️ Warning[/yellow]: Could not decode stored daily quote.")
 
         # Save only if new or no existing quote
         save_motivation_quote({"date": str(today), "quote": new_quote})
@@ -77,8 +83,9 @@ def get_motivational_quote():
                 return stored_quote_data["quote"]
         except json.JSONDecodeError:
             print("[yellow]⚠️ Warning[/yellow]: Stored daily quote file is corrupt.")
-    
+
     return None
+
 
 def save_motivation_quote(quote_data):
     """Saves the daily ZenQuote to a JSON file."""
@@ -88,4 +95,5 @@ def save_motivation_quote(quote_data):
         with open(DAILY_QUOTE_FILE, "w") as f:
             json.dump(quote_data, f, indent=2)
     except IOError:
-        print(f"[yellow]⚠️ Warning[/yellow]: Could not save daily quote to {DAILY_QUOTE_FILE}")
+        print(
+            f"[yellow]⚠️ Warning[/yellow]: Could not save daily quote to {DAILY_QUOTE_FILE}")

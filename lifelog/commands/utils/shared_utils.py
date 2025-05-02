@@ -17,7 +17,7 @@ import lifelog.config.config_manager as cf
 console = Console()
 
 
-# TODO: Add more general functions for aggregating data and mathmatics for metrics, habits, etc. 
+# TODO: Add more general functions for aggregating data and mathmatics for metrics, habits, etc.
 
 # TODO: Improve this by making it more generalized for csumming and aggregating different values and to be more resilient to missing data.
 def sum_entries(name: str, since: str = "today") -> float:
@@ -54,7 +54,8 @@ def sum_entries(name: str, since: str = "today") -> float:
                 total += float(e["value"])
     return total
 
-def count_entries(name: str, since: str="today") -> int:
+
+def count_entries(name: str, since: str = "today") -> int:
     TRACK_FILE = cf.get_track_file()
 
     if since == "today":
@@ -70,12 +71,13 @@ def count_entries(name: str, since: str="today") -> int:
 
     with open(TRACK_FILE, "r") as f:
         entries = json.load(f)
-    
+
     for e in entries:
         if e.get("tracker") == name:
-             entry_ts = datetime.fromisoformat(e["timestamp"])
+            entry_ts = datetime.fromisoformat(e["timestamp"])
 
-    return sum(1 for e in entries if e["metric"]==name and entry_ts>=cutoff)
+    return sum(1 for e in entries if e["metric"] == name and entry_ts >= cutoff)
+
 
 def serialize_task(task):
     task_copy = task.copy()
@@ -83,6 +85,7 @@ def serialize_task(task):
         if isinstance(task_copy.get(key), datetime):
             task_copy[key] = task_copy[key].isoformat()
     return task_copy
+
 
 def parse_date_string(time_string: str, future: bool = False, now: datetime = datetime.now()) -> datetime:
     """
@@ -124,12 +127,18 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
         delta = timedelta()
         for value, unit in units:
             value = int(value)
-            if unit == 'y': delta += timedelta(days=365 * value)
-            elif unit == 'mn': delta += timedelta(days=30 * value)
-            elif unit == 'w': delta += timedelta(weeks=value)
-            elif unit == 'd': delta += timedelta(days=value)
-            elif unit == 'h': delta += timedelta(hours=value)
-            elif unit == 'm': delta += timedelta(minutes=value)
+            if unit == 'y':
+                delta += timedelta(days=365 * value)
+            elif unit == 'mn':
+                delta += timedelta(days=30 * value)
+            elif unit == 'w':
+                delta += timedelta(weeks=value)
+            elif unit == 'd':
+                delta += timedelta(days=value)
+            elif unit == 'h':
+                delta += timedelta(hours=value)
+            elif unit == 'm':
+                delta += timedelta(minutes=value)
         target = now + delta if future else now - delta
 
     # Handle absolute formats like 4/5, 4/5/25, 4/5/2025
@@ -150,34 +159,37 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
     if time_part:
         try:
             hour, minute = map(int, time_part.split(":"))
-            target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            target = target.replace(
+                hour=hour, minute=minute, second=0, microsecond=0)
         except Exception:
-            raise ValueError(f"Invalid time part '{time_part}' in '{time_string}'")
+            raise ValueError(
+                f"Invalid time part '{time_part}' in '{time_string}'")
 
     if target is None:
         raise ValueError(f"Could not parse: '{time_string}'")
 
     return target
 
+
 def parse_args(args: List[str]):
     """
     Parses command-line arguments into structured components:
     title/tracker, options, tags, notes
     """
-    
+
     tags = []
     notes = []
 
     time_pattern = re.compile(
         r"^(\d+y)?(\d+mn)?(\d+w)?(\d+d)?(\d+h)?(\d+m)?$"
     )
-    
+
     for arg in args:
         if arg.startswith("+"):
             tags.append(arg[1:])  # Strip '+'
             parsed_tags = [tag.lstrip("+").lower() for tag in tags]
             for tag in parsed_tags:
-                _ensure_tag_exists(tag) 
+                _ensure_tag_exists(tag)
         else:
             notes.append(arg)
 
@@ -185,14 +197,16 @@ def parse_args(args: List[str]):
 
     return tags, notes
 
+
 def _ensure_tag_exists(tag: str):
     doc = cf.load_config()
     doc.setdefault("tags", {})  # Make sure [tags] section exists
     existing_tags = doc["tags"]
     if tag not in existing_tags:
         existing_tags[tag] = tag
-            
+
         cf.save_config(doc)
+
 
 def create_recur_schedule(recur_str: str) -> dict:
     """
@@ -201,24 +215,26 @@ def create_recur_schedule(recur_str: str) -> dict:
     { "interval": 1, "unit": "week", "days_of_week": [0,2,4] }
     """
     unit_map = {"d": "day", "w": "week", "m": "month", "y": "year"}
-    
+
     while True:
-        console.print("[cyan] Enter the interval to recur at. If you need specific weekdays, choose 'week'.")
-        unit_input = typer.prompt("🗓️([d]ay, [w]eek, [m]onth, [y]ear)").lower().strip()
+        console.print(
+            "[cyan] Enter the interval to recur at. If you need specific weekdays, choose 'week'.")
+        unit_input = typer.prompt(
+            "🗓️([d]ay, [w]eek, [m]onth, [y]ear)").lower().strip()
         if unit_input in unit_map:
             unit_full = unit_map[unit_input]
             break
         console.print("[red]Invalid unit. Enter d, w, m, or y.[/red]")
 
-   
     while True:
-        interval = typer.prompt("🔁 Enter recurrence interval number (e.g., Every # [unit from last response.])")
+        interval = typer.prompt(
+            "🔁 Enter recurrence interval number (e.g., Every # [unit from last response.])")
         if interval.isdigit() and int(interval) > 0:
             interval = int(interval)
             break
-        console.print("[red]Please enter a positive integer for interval.[/red]")
+        console.print(
+            "[red]Please enter a positive integer for interval.[/red]")
 
-   
     recur_dict = {
         "interval": interval,
         "unit": unit_full
@@ -226,13 +242,17 @@ def create_recur_schedule(recur_str: str) -> dict:
 
     # Step 3 (optional): Days of week for weekly interval
     if unit_full == "week":
-        days_lookup = {"m": 0, "t": 1, "w": 2, "th": 3, "f": 4, "s": 5, "su": 6}
-        console.print("📅 Specify days of the week for recurrence (e.g., m/t/w/th/f/s/su). Leave empty for the same weekday as today.")
-        
+        days_lookup = {"m": 0, "t": 1, "w": 2,
+                       "th": 3, "f": 4, "s": 5, "su": 6}
+        console.print(
+            "📅 Specify days of the week for recurrence (e.g., m/t/w/th/f/s/su). Leave empty for the same weekday as today.")
+
         while True:
-            days_input = typer.prompt("Days of week (separate with /)").lower().strip()
+            days_input = typer.prompt(
+                "Days of week (separate with /)").lower().strip()
             if not days_input:
-                recur_dict["days_of_week"] = [datetime.now().weekday()]  # default to today's weekday
+                # default to today's weekday
+                recur_dict["days_of_week"] = [datetime.now().weekday()]
                 break
             day_parts = days_input.split("/")
             valid = True
@@ -240,7 +260,8 @@ def create_recur_schedule(recur_str: str) -> dict:
             for day_code in day_parts:
                 if day_code not in days_lookup:
                     valid = False
-                    console.print(f"[red]Invalid weekday '{day_code}'. Try again.[/red]")
+                    console.print(
+                        f"[red]Invalid weekday '{day_code}'. Try again.[/red]")
                     break
                 days_of_week.append(days_lookup[day_code])
             if valid:
@@ -248,6 +269,7 @@ def create_recur_schedule(recur_str: str) -> dict:
                 break
     print(recur_dict)
     return recur_dict
+
 
 def safe_format_notes(notes_raw):
     if isinstance(notes_raw, list):

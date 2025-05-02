@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from tomlkit import table
 import typer
-import requests # type: ignore
+import requests  # type: ignore
 
 from lifelog.commands.utils import get_quotes
 import lifelog.config.config_manager as cf
@@ -37,7 +37,8 @@ ENV_DATA_FILE = None
 
 
 # Initialize the config manager and ensure the files exist
-app = typer.Typer(help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
+app = typer.Typer(
+    help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
 console = Console()
 
 # Ensure the app is initialized
@@ -49,12 +50,18 @@ sync_app.command()(environmental_sync.satellite)
 app.add_typer(sync_app, name="sync", help="Fetch external environmental data")
 
 # Register all modules
-app.add_typer(track.app, name="track", help="Track recurring self-measurements like mood, energy, pain, as well as habits and goals.", invoke_without_command=True,)
-app.add_typer(time.app, name="time", help="Track time in categories like resting, working, socializing.")
-app.add_typer(task.app, name="task", help="Create, track, and complete actionable tasks.")
-app.add_typer(report.app, name="report", help="View detailed reports and insights.")
-app.add_typer(environmental_sync.app, name="env", help="Sync and view environmental data.")
+app.add_typer(track.app, name="track",
+              help="Track recurring self-measurements like mood, energy, pain, as well as habits and goals.", invoke_without_command=True,)
+app.add_typer(time.app, name="time",
+              help="Track time in categories like resting, working, socializing.")
+app.add_typer(task.app, name="task",
+              help="Create, track, and complete actionable tasks.")
+app.add_typer(report.app, name="report",
+              help="View detailed reports and insights.")
+app.add_typer(environmental_sync.app, name="env",
+              help="Sync and view environmental data.")
 app.add_typer(debug.app, name="debug", help="Debugging and development tools.")
+
 
 @app.callback(invoke_without_command=True)
 def _ensure(ctx: typer.Context):
@@ -73,35 +80,36 @@ def help_command():
     llog help - Show help information for the CLI.  
     """
 
-    table = Table(title="🧠 Lifelog CLI – Command Guide", show_lines=True, expand=True)
+    table = Table(title="🧠 Lifelog CLI – Command Guide",
+                  show_lines=True, expand=True)
     table.add_column("Command Examples", style="cyan")
 
     # Add actual rows
     table.add_row(
-    "[bold purple]Trackers[/bold purple] 📊",
-    "[bold green]Add[/bold green]: Define a new thing you want to track (like steps, mood, or water intake). You need to give it a [italic]title[/italic] and specify the [italic]type[/italic] of data it will store ([mono]int[/mono], [mono]float[/mono], [mono]bool[/mono], or [mono]str[/mono]). You can also add a category (e.g., [mono]llog track add Steps --type int --category Health[/mono])\n"
-    "[bold blue]Record[/bold blue]: (Use without a subcommand) Log a new value for an existing tracker. Just type the tracker's [italic]title[/italic] followed by the [italic]value[/italic] (e.g., [mono]llog track Water 2.5[/mono] or [mono]llog track Mood Happy[/mono]). If the title matches a command, use that command instead.\n"
-    "[bold yellow]Modify[/bold yellow]: Change the [italic]title[/italic], [italic]category[/italic], [italic]tags[/italic], or [italic]notes[/italic] of an existing tracker using its [italic]ID[/italic] (find the ID with 'list'). (e.g., [mono]llog track modify 3 New Mood --category Wellbeing +positive[/mono])\n"
-    "[bold magenta]List[/bold magenta]: Show all the trackers you have defined, along with their details, type, category, and any goals you've set (e.g., [mono]llog track list[/mono])\n"
-)
+        "[bold purple]Trackers[/bold purple] 📊",
+        "[bold green]Add[/bold green]: Define a new thing you want to track (like steps, mood, or water intake). You need to give it a [italic]title[/italic] and specify the [italic]type[/italic] of data it will store ([mono]int[/mono], [mono]float[/mono], [mono]bool[/mono], or [mono]str[/mono]). You can also add a category (e.g., [mono]llog track add Steps --type int --category Health[/mono])\n"
+        "[bold blue]Record[/bold blue]: (Use without a subcommand) Log a new value for an existing tracker. Just type the tracker's [italic]title[/italic] followed by the [italic]value[/italic] (e.g., [mono]llog track Water 2.5[/mono] or [mono]llog track Mood Happy[/mono]). If the title matches a command, use that command instead.\n"
+        "[bold yellow]Modify[/bold yellow]: Change the [italic]title[/italic], [italic]category[/italic], [italic]tags[/italic], or [italic]notes[/italic] of an existing tracker using its [italic]ID[/italic] (find the ID with 'list'). (e.g., [mono]llog track modify 3 New Mood --category Wellbeing +positive[/mono])\n"
+        "[bold magenta]List[/bold magenta]: Show all the trackers you have defined, along with their details, type, category, and any goals you've set (e.g., [mono]llog track list[/mono])\n"
+    )
     table.add_row(
-    "[bold blue]Time Tracking[/bold blue] ⏱️",
-    "[bold green]Start[/bold green]: Begin tracking time for an activity. You need to give it a [italic]title[/italic] (use quotes for spaces!). You can also add a category, project, or even a time in the past to start from (e.g., [mono]llog time start \"Working on report\" --project Office[/mono] or [mono]llog time start Reading --past \"30 minutes ago\"[/mono])\n"
-    "[bold red]Stop[/bold red]: End the current time tracking session. You can optionally add tags or notes when you stop (e.g., [mono]llog time stop +interruption Note: Had a coffee break[/mono])\n"
-    "[bold cyan]Status[/bold cyan]: See what activity you are currently tracking and since when (e.g., [mono]llog time status[/mono])\n"
-    "[bold magenta]Summary[/bold magenta]: Get a summary of the time you've tracked, grouped by activity title, category, or project. You can also filter by day, week, or month (e.g., [mono]llog time summary[/mono] or [mono]llog time summary --by category --period week[/mono])\n"
-)
+        "[bold blue]Time Tracking[/bold blue] ⏱️",
+        "[bold green]Start[/bold green]: Begin tracking time for an activity. You need to give it a [italic]title[/italic] (use quotes for spaces!). You can also add a category, project, or even a time in the past to start from (e.g., [mono]llog time start \"Working on report\" --project Office[/mono] or [mono]llog time start Reading --past \"30 minutes ago\"[/mono])\n"
+        "[bold red]Stop[/bold red]: End the current time tracking session. You can optionally add tags or notes when you stop (e.g., [mono]llog time stop +interruption Note: Had a coffee break[/mono])\n"
+        "[bold cyan]Status[/bold cyan]: See what activity you are currently tracking and since when (e.g., [mono]llog time status[/mono])\n"
+        "[bold magenta]Summary[/bold magenta]: Get a summary of the time you've tracked, grouped by activity title, category, or project. You can also filter by day, week, or month (e.g., [mono]llog time summary[/mono] or [mono]llog time summary --by category --period week[/mono])\n"
+    )
     table.add_row(
-    "[bold green]Tasks[/bold green] ✅",
-    "[bold blue]Info[/bold blue]: See details for a task using its [italic]ID[/italic] (e.g., [mono]llog task info 3[/mono])\n"
-    "[bold green]Add[/bold green]: Create a new task (e.g., [mono]llog task add Buy groceries[/mono])\n"
-    "[bold cyan]Start[/bold cyan]: Begin working on a task using its [italic]ID[/italic] (e.g., [mono]llog task start 5[/mono])\n"
-    "[bold magenta]List[/bold magenta]: Show all your current tasks (try adding [mono]--help[/mono] for sorting and filtering!)\n"
-    "[bold yellow]Modify[/bold yellow]: Change details of a task using its [italic]ID[/italic] (e.g., [mono]llog task modify 2 --due tomorrow[/mono])\n"
-    "[bold red]Delete[/bold red]: Remove a task using its [italic]ID[/italic] (e.g., [mono]llog task delete 1[/mono])\n"
-    "[bold orange]Stop[/bold orange]: Pause the task you are currently working on\n"
-    "[bold purple]Done[/bold purple]: Mark a task as finished using its [italic]ID[/italic] (e.g., [mono]llog task done 4[/mono])\n"
-)
+        "[bold green]Tasks[/bold green] ✅",
+        "[bold blue]Info[/bold blue]: See details for a task using its [italic]ID[/italic] (e.g., [mono]llog task info 3[/mono])\n"
+        "[bold green]Add[/bold green]: Create a new task (e.g., [mono]llog task add Buy groceries[/mono])\n"
+        "[bold cyan]Start[/bold cyan]: Begin working on a task using its [italic]ID[/italic] (e.g., [mono]llog task start 5[/mono])\n"
+        "[bold magenta]List[/bold magenta]: Show all your current tasks (try adding [mono]--help[/mono] for sorting and filtering!)\n"
+        "[bold yellow]Modify[/bold yellow]: Change details of a task using its [italic]ID[/italic] (e.g., [mono]llog task modify 2 --due tomorrow[/mono])\n"
+        "[bold red]Delete[/bold red]: Remove a task using its [italic]ID[/italic] (e.g., [mono]llog task delete 1[/mono])\n"
+        "[bold orange]Stop[/bold orange]: Pause the task you are currently working on\n"
+        "[bold purple]Done[/bold purple]: Mark a task as finished using its [italic]ID[/italic] (e.g., [mono]llog task done 4[/mono])\n"
+    )
 
     console.print(table)
     console.print(
@@ -137,7 +145,7 @@ def init():
     Initialize default data files and starter entries.
     """
     console.print("[bold green]🛠 Initializing Lifelog...[/bold green]")
-    
+
     global TRACK_FILE, TIME_FILE, TASK_FILE, FC_FILE, FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
     TRACK_FILE = cf.get_track_file()
     TIME_FILE = cf.get_time_file()
@@ -197,9 +205,10 @@ def init():
         }
         doc["cron"] = cron_section
         cf.save_config(doc)
-        doc = cf.load_config() 
+        doc = cf.load_config()
         apply_scheduled_jobs()
-        console.print("[green]✅ Recurrence system initialized. Auto-recur will run nightly.[/green]")
+        console.print(
+            "[green]✅ Recurrence system initialized. Auto-recur will run nightly.[/green]")
     else:
         console.print("[yellow]⚡ Auto-recur schedule already exists.[/yellow]")
 
@@ -221,7 +230,8 @@ def check_first_command_of_day():
             with open(FC_FILE, "r") as f:
                 flag_data = json.load(f)
         except json.JSONDecodeError:
-            console.print("[yellow]⚠️ Warning[/yellow]: Could not read first command flag.")
+            console.print(
+                "[yellow]⚠️ Warning[/yellow]: Could not read first command flag.")
 
     last_executed_date = flag_data.get("last_executed")
 
@@ -238,16 +248,20 @@ def save_first_command_flag(date_str):
         with open(FC_FILE, "w") as f:
             json.dump({"last_executed": date_str}, f)
     except IOError:
-        console.print(f"[yellow]⚠️ Warning[/yellow]: Could not save first command flag.")
+        console.print(
+            f"[yellow]⚠️ Warning[/yellow]: Could not save first command flag.")
 
 # Example integration:
+
+
 @app.command("hello")
 def greet_user():
     '''Greets the user with a daily quote if available.'''
     daily_quote = get_quotes.get_motivational_quote()
     if daily_quote:
-        console.print(f"[bold green]☀️ Good day![/bold green] Here's your daily inspiration: [italic]{daily_quote}[/italic]")
-        
+        console.print(
+            f"[bold green]☀️ Good day![/bold green] Here's your daily inspiration: [italic]{daily_quote}[/italic]")
+
     else:
         console.print("[bold green]☀️ Good day![/bold green]")
 
@@ -275,9 +289,9 @@ def get_user_location():
                     "latitude": latitude,
                     "longitude": longitude
                 }
-                cf.save_config(cfg) 
+                cf.save_config(cfg)
                 return
-            
+
     except Exception:
         pass
 
@@ -287,13 +301,13 @@ def get_user_location():
         if zip_code.isdigit() and len(zip_code) == 5:
             cfg = cf.load_config()
             cfg["location"] = {"zip": zip_code}
-            cf.save_config(cfg) 
+            cf.save_config(cfg)
             break
         else:
             print("Please enter a valid 5-digit ZIP code.")
 
 # TODO: Add a command to list different config options and their current values, such as categories, projects, etc.
-# TODO: Add a command to configure user preferences, such as default categories, projects, location, etc. 
+# TODO: Add a command to configure user preferences, such as default categories, projects, location, etc.
 
 
 lifelog_app = app

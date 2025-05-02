@@ -19,7 +19,7 @@ def load_metric_data() -> List[Dict[str, Any]]:
     TRACK_FILE = cf.get_track_file()
     if TRACK_FILE.exists():
         with open(TRACK_FILE, "r") as f:
-            return json.load(f).get("log", [])
+            return json.load(f).get("trackers", [])
     return []
 
 
@@ -99,4 +99,5 @@ if __name__ == "__main__":
     insights = generate_insights()
     print("\n✨ Top Correlated Patterns Found:")
     for i, insight in enumerate(insights, 1):
-        print(f"{i}. {insight['note']} (Pearson: {insight['correlation']['pearson']})")
+        print(
+            f"{i}. {insight['note']} (Pearson: {insight['correlation']['pearson']})")

@@ -6,6 +6,8 @@ personal = "Personal tasks"
 health = "Health and fitness tasks"
 
 [tracker]
+[mood]
+[water]
 
 [paths]
 CONFIG_FILE = "~/.lifelog/config.toml"

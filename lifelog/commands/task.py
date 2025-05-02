@@ -34,15 +34,19 @@ console = Console()
 MAX_TASKS_DISPLAY = 50
 
 # Add a new task.
+
+
 @app.command()
 def add(
-    title: str = typer.Argument(..., help="The title of the task you need to get done."),
+    title: str = typer.Argument(...,
+                                help="The title of the task you need to get done."),
     category: Optional[str] = category_option,
     project: Optional[str] = project_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
     recur: Optional[bool] = recur_option,
-    args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
+    args: Optional[List[str]] = typer.Argument(
+        None, help="Optional +tags and notes."),
 ):
     """
     Add a new task.
@@ -56,15 +60,16 @@ def add(
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
-    
+
     if not title:
-            console.print("[bold red]Your task must have a title! How else will you know what to do??[/bold red]")
-            if Confirm.ask(f"[yellow]Add a title (no to exit)?[/yellow]"):
-                title = typer.prompt("Enter a title")
-    
+        console.print(
+            "[bold red]Your task must have a title! How else will you know what to do??[/bold red]")
+        if Confirm.ask(f"[yellow]Add a title (no to exit)?[/yellow]"):
+            title = typer.prompt("Enter a title")
+
     doc = cf.load_config()
     existing_categories = cf.get_config_section("categories").keys()
-    
+
     if category not in existing_categories and category != None:
         console.print(f"[blue]⚠️ Category '{category}' not found.[/blue]")
         if Confirm.ask(f"[yellow]Would you like to create it now?[/yellow]"):
@@ -72,30 +77,32 @@ def add(
                 doc.setdefault("categories", {})
                 doc["categories"][category] = category
                 cf.save_config(doc)
-                console.print(f"[green]✅ Category '{category}' added to your config.[/green]")
+                console.print(
+                    f"[green]✅ Category '{category}' added to your config.[/green]")
             except Exception as e:
-                console.print(f"[bold red]Failed to create category: {e}[/bold red]")
+                console.print(
+                    f"[bold red]Failed to create category: {e}[/bold red]")
                 raise typer.Exit(code=1)
-            
-    
+
     if project:
         doc.setdefault("projects", {})
         if project not in doc["projects"]:
-            console.print(f"[yellow]⚠️ Project '{project}' not found.[/yellow]")
+            console.print(
+                f"[yellow]⚠️ Project '{project}' not found.[/yellow]")
             if Confirm.ask(f"[yellow]Create project '{project}' now?[/yellow]"):
                 try:
                     doc["projects"][project] = project
                     cf.save_config(doc)
-                    console.print(f"[green]✅ Project '{project}' added to your config.[/green]")
+                    console.print(
+                        f"[green]✅ Project '{project}' added to your config.[/green]")
                 except Exception as e:
-                    console.print(f"[bold red]Failed to create project: {e}[/bold red]")
+                    console.print(
+                        f"[bold red]Failed to create project: {e}[/bold red]")
                     raise typer.Exit(code=1)
             else:
                 raise typer.Exit(code=1)
-        
-    impt = impt if impt else 1
 
-    
+    impt = impt if impt else 1
 
     if due:
         while True:
@@ -103,17 +110,20 @@ def add(
                 due_dt = parse_date_string(due, future=True, now=now)
                 break  # valid, exit loop
             except Exception as e:
-                console.print(f"[bold red]❌ Invalid due date format: {e}[/bold red]")
+                console.print(
+                    f"[bold red]❌ Invalid due date format: {e}[/bold red]")
                 if not Confirm.ask("[cyan]Would you like to enter a new date?[/cyan]"):
                     raise typer.Exit(code=1)
-                due = typer.prompt("Enter a valid due date (e.g. 1d, tomorrow, 2025-12-31)")
+                due = typer.prompt(
+                    "Enter a valid due date (e.g. 1d, tomorrow, 2025-12-31)")
     else:
         due_dt = None
 
     tasks = load_tasks()
     for task in tasks:
         if task["title"] == title:
-            console.print(f"[bold yellow]⚠️ Task with the same title already exists![/bold yellow]")
+            console.print(
+                f"[bold yellow]⚠️ Task with the same title already exists![/bold yellow]")
             if Confirm.ask("[cyan]Would you like to overwrite it?[/cyan]"):
                 tasks.remove(task)
                 break
@@ -144,9 +154,10 @@ def add(
             recur_data = create_recur_schedule(recur) if recur else None
             task["recur_base"] = now.isoformat()
             task["recur"] = recur_data
-        
+
         except Exception as e:
-            console.print(f"[bold red]❌ Invalid recurrence format: {e}[/bold red]")
+            console.print(
+                f"[bold red]❌ Invalid recurrence format: {e}[/bold red]")
             raise typer.Exit(code=1)
     else:
         recur = None
@@ -161,9 +172,9 @@ def add(
             try:
                 create_due_alert(task)
             except Exception as e:
-                console.print(f"[bold red]❌ Failed to create due alert: {e}[/bold red]")
+                console.print(
+                    f"[bold red]❌ Failed to create due alert: {e}[/bold red]")
                 raise typer.Exit(code=1)
-
 
     task["priority"] = calculate_priority(task)
     tasks.append(task)
@@ -174,22 +185,28 @@ def add(
         raise typer.Exit(code=1)
 
     saying = get_feedback_saying("task_added")
-    console.print(f"[green]✅ Task added[/green]: [bold blue][{task['id']}][/bold blue] {task['title']}")
+    console.print(
+        f"[green]✅ Task added[/green]: [bold blue][{task['id']}][/bold blue] {task['title']}")
     console.print(saying)
-    
+
 
 # TODO: Improve the filtering and sorting options to properly work for priority by default.
 @app.command()
 def list(
-    title: Optional[str] = typer.Argument("", help="The title of the activity you're tracking."),
+    title: Optional[str] = typer.Argument(
+        "", help="The title of the activity you're tracking."),
     category: Optional[str] = category_option,
     project: Optional[str] = project_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
-    sort: Optional[str] = typer.Option("priority", help="Sort by 'priority', 'due', 'created', or 'id'."),
-    status: Optional[str] = typer.Option(None, help="Filter by status (e.g. 'backlog', 'active', 'completed')."),
-    show_completed: bool = typer.Option(False, help="Include completed tasks."),
-    args: Optional[List[str]] = typer.Argument(None, help="Optional search: Title keywords or +tags.")
+    sort: Optional[str] = typer.Option(
+        "priority", help="Sort by 'priority', 'due', 'created', or 'id'."),
+    status: Optional[str] = typer.Option(
+        None, help="Filter by status (e.g. 'backlog', 'active', 'completed')."),
+    show_completed: bool = typer.Option(
+        False, help="Include completed tasks."),
+    args: Optional[List[str]] = typer.Argument(
+        None, help="Optional search: Title keywords or +tags.")
 ):
     """
     List your tasks, sorted and filtered your way! 🌈
@@ -204,7 +221,7 @@ def list(
         tasks = [t for t in tasks if t.get("status") != "done"]
 
     # Parse search input
-    tags, notes= parse_args(args or [])
+    tags, notes = parse_args(args or [])
 
     # Smart Sorting
     sort_options = {
@@ -216,14 +233,16 @@ def list(
     }
     if sort not in sort_options:
         console.print(f"[bold red]❌ Invalid sort option: '{sort}'.[/bold red]")
-        console.print(f"[yellow]Available options:[/yellow] {', '.join(sort_options.keys())}")
+        console.print(
+            f"[yellow]Available options:[/yellow] {', '.join(sort_options.keys())}")
         raise typer.Exit(code=1)
-    
+
     if title:
         tasks = [t for t in tasks if title.lower() in t.get("title", "").lower()]
 
     if tags:
-        tasks = [t for t in tasks if any(tag in t.get("tags", []) for tag in tags)]
+        tasks = [t for t in tasks if any(
+            tag in t.get("tags", []) for tag in tags)]
 
     if category:
         tasks = [t for t in tasks if t.get("category") == category]
@@ -241,7 +260,7 @@ def list(
         tags_raw = [t for t in tasks if t.get("tags") == tags]
         tags = ", ".join(tags_raw) if tags_raw else "-"
 
-    if notes: 
+    if notes:
         notes_raw = [t for t in tasks if t.get("notes") == notes]
         notes = safe_format_notes(notes_raw)
 
@@ -252,36 +271,41 @@ def list(
     # 4. Finally, if show_completed is False, filter out "done" tasks
     if not show_completed and not status:
         tasks = [t for t in tasks if t.get("status") != "done"]
-    
-    
+
     sort_func = sort_options.get(sort, sort_options["id"])
 
     reverse_sort = sort == "priority"  # Only reverse if sorting by priority
-    
+
     tasks.sort(key=sort_func, reverse=reverse_sort)
 
     if len(tasks) >= MAX_TASKS_DISPLAY:
-        console.print(f"[dim]Showing first {MAX_TASKS_DISPLAY} tasks. Use filters to narrow down.[/dim]")
+        console.print(
+            f"[dim]Showing first {MAX_TASKS_DISPLAY} tasks. Use filters to narrow down.[/dim]")
     tasks = tasks[:MAX_TASKS_DISPLAY]
 
     # Nothing Found
     if not tasks:
-        console.print("[italic blue]🧹 Nothing to do! Enjoy your day. 🌟[/italic blue]")
+        console.print(
+            "[italic blue]🧹 Nothing to do! Enjoy your day. 🌟[/italic blue]")
         return
 
     # Build the Table
     table = Table(
-    show_header=True,          # hide header row to save space
-    box=None,                   # remove all borders
-    pad_edge=False,             # no padding around table edges :contentReference[oaicite:0]{index=0}
-    collapse_padding=True,      # merge adjacent cell padding :contentReference[oaicite:1]{index=1}
-    padding=(0, 1),             # zero vertical, 1-space horizontal padding :contentReference[oaicite:2]{index=2}
-    expand=True,                # auto-fit to terminal width :contentReference[oaicite:3]{index=3}
-)
-    table.add_column("ID", justify="right", width=2 )
-    table.add_column("Title", overflow="ellipsis", min_width=8,  )
+        show_header=True,          # hide header row to save space
+        box=None,                   # remove all borders
+        # no padding around table edges :contentReference[oaicite:0]{index=0}
+        pad_edge=False,
+        # merge adjacent cell padding :contentReference[oaicite:1]{index=1}
+        collapse_padding=True,
+        # zero vertical, 1-space horizontal padding :contentReference[oaicite:2]{index=2}
+        padding=(0, 1),
+        # auto-fit to terminal width :contentReference[oaicite:3]{index=3}
+        expand=True,
+    )
+    table.add_column("ID", justify="right", width=2)
+    table.add_column("Title", overflow="ellipsis", min_width=8,)
     table.add_column("Priority", overflow="ellipsis", )
-    table.add_column("Due", style="yellow", overflow="ellipsis", width=5 )
+    table.add_column("Due", style="yellow", overflow="ellipsis", width=5)
 
     for task in tasks:
         id_str = str(task.get("id", "-"))
@@ -290,8 +314,8 @@ def list(
         due_str = "-"
         if due_raw:
             due_dt = datetime.fromisoformat(due_raw)
-            due_str = due_dt.strftime("%m/%d") 
-        
+            due_str = due_dt.strftime("%m/%d")
+
         prio = str(task.get("priority", "-"))
         color = priority_color(prio)
         prio_text = Text(prio)
@@ -299,7 +323,6 @@ def list(
 
         table.add_row(id_str, title, prio_text, due_str)
     console.print(table)
-
 
 
 @app.command()
@@ -326,7 +349,7 @@ def agenda():
         return (-prio, due_dt)
 
     top_three = sorted(tasks, key=sort_key)[:3]
- 
+
  # ─── Build a very compact table ──────────────────────────────────────────
     table = Table(
         show_header=True,
@@ -360,9 +383,9 @@ def agenda():
     # ─── Render vertically ────────────────────────────────────────────────────
     console.print(calendar_panel)
     console.print(table)
-    
 
-# Get information on a task TO DO: Make the ability to just say llog task task# to get info. 
+
+# Get information on a task TO DO: Make the ability to just say llog task task# to get info.
 @app.command()
 def info(id: int):
     """
@@ -395,7 +418,8 @@ def start(id: int):
         raise typer.Exit(code=1)
 
     if task["status"] not in ["backlog", "active"]:
-        console.print(f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (pending or active only).")
+        console.print(
+            f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (pending or active only).")
         raise typer.Exit(code=1)
 
     task["status"] = "active"
@@ -403,7 +427,6 @@ def start(id: int):
         task["start"] = now.isoformat()
     save_tasks(tasks)
 
-    
     data = {}
     TIME_FILE = cf.get_time_file()
     if TIME_FILE.exists():
@@ -411,30 +434,34 @@ def start(id: int):
             data = json.load(f)
 
     if "active" in data:
-        console.print(f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {data['active']['title']}")
+        console.print(
+            f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {data['active']['title']}")
         raise typer.Exit(code=1)
 
     data["active"] = {
-        "id" : task["id"],
+        "id": task["id"],
         "title": f"{task_title}",
         "start": now.isoformat(),
-        "task" : True
+        "task": True
     }
 
     with open(TIME_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-    console.print(f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task['title']}")
+    console.print(
+        f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task['title']}")
 
 
 # Modify an existing task.
 @app.command()
 def modify(
     id: int = typer.Argument(..., help="The ID of the task to modify"),
-    title: str = typer.Argument(..., help="The title of the activity you're tracking."),
-    args: Optional[List[str]] = typer.Argument(None, help="Optional: New title +tags Notes..."),
-    project: Optional[str] = project_option, 
-    category: Optional[str] = category_option, 
+    title: str = typer.Argument(...,
+                                help="The title of the activity you're tracking."),
+    args: Optional[List[str]] = typer.Argument(
+        None, help="Optional: New title +tags Notes..."),
+    project: Optional[str] = project_option,
+    category: Optional[str] = category_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
     recur: Optional[str] = recur_option,
@@ -454,11 +481,11 @@ def modify(
             tags, notes = parse_args(args)
         else:
             tags, notes = [], []
-    
+
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
-    
+
     if not task:
         console.print(f"[bold red]❌ task with ID {id} not found.[/bold red]")
         raise typer.Exit(code=1)
@@ -476,14 +503,14 @@ def modify(
 
     if tags:
         current_tags = task.get("tags", [])
-        task["tags"] = current_tags + tags  
+        task["tags"] = current_tags + tags
     if notes:
         current_notes = task.get("notes", [])
         task["notes"] = current_notes.append(notes)
 
-        
     if not changes_made:
-        console.print("[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
+        console.print(
+            "[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
         raise typer.Exit(code=0)
 
     if project is not None:
@@ -496,12 +523,14 @@ def modify(
         task["impt"] = impt
     if recur is not None:
         task["recur"] = recur
-        task["recur_base"] = task.get("recur_base", now.isoformat()) # Keep existing or set new
+        task["recur_base"] = task.get(
+            "recur_base", now.isoformat())  # Keep existing or set new
 
     task["priority"] = calculate_priority(task)
-    
+
     save_tasks(tasks)
-    console.print(f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
+    console.print(
+        f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
 
 
 # Delete a task.
@@ -516,44 +545,49 @@ def delete(id: int):
     console.print(f"[red]🗑️ Deleted[/red] task [bold blue][{id}][/bold blue].")
 
 
-# Pause a task (Like putting back to to-do) but keep logged time and do not set to done. 
+# Pause a task (Like putting back to to-do) but keep logged time and do not set to done.
 @app.command()
 def stop(
     past: Optional[str] = past_option,
-    args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
+    args: Optional[List[str]] = typer.Argument(
+        None, help="Optional +tags and notes."),
 ):
     """
     Pause the currently active task and stop timing, without marking it done.
     """
     now = datetime.now()
     tasks = load_tasks()
-    tags, notes= parse_args(args or [])
-    
+    tags, notes = parse_args(args or [])
+
     TIME_FILE = cf.get_time_file()
     if not TIME_FILE.exists():
-        console.print("[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
+        console.print(
+            "[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
         raise typer.Exit(code=1)
 
     with open(TIME_FILE, "r") as f:
         data = json.load(f)
 
     if "active" not in data:
-        console.print("[yellow]⚠️ Warning[/yellow]: No active task is being tracked.")
+        console.print(
+            "[yellow]⚠️ Warning[/yellow]: No active task is being tracked.")
         raise typer.Exit(code=1)
 
     active = data["active"]
     if not active["task"] == True:
-        console.print("[yellow]⚠️ Warning[/yellow]: Active task is not linked to a task.")
+        console.print(
+            "[yellow]⚠️ Warning[/yellow]: Active task is not linked to a task.")
         raise typer.Exit(code=1)
-    
+
     # ─── Find linked Task ─────────────────────────────────────────────────────
     task_id = active.get("id")   # already an integer
-    task    = next((t for t in tasks if t["id"] == task_id), None)
-    
+    task = next((t for t in tasks if t["id"] == task_id), None)
+
     if not task:
-        console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
+        console.print(
+            "[bold red]❌ Error[/bold red]: Task for active tracking not found.")
         raise typer.Exit(code=1)
-    
+
     # ─── Finalize Timing Info ─────────────────────────────────────────────────
     start_time = datetime.fromisoformat(active["start"])
     if past:
@@ -576,7 +610,7 @@ def stop(
         "tags": final_tags,
         "notes": final_notes,
     })
-    
+
     # ─── Append to Global Time History ────────────────────────────────────────
     history = data.get("history", [])
     history.append(history_entry)
@@ -601,11 +635,12 @@ def stop(
     save_tasks(tasks)
     with open(TIME_FILE, "w") as f:
         json.dump(data, f, indent=2)
-    
-    console.print(f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task["id"]}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
+
+    console.print(
+        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task["id"]}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
 
 
-# Set a task to completed. 
+# Set a task to completed.
 @app.command()
 def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
     """
@@ -628,7 +663,8 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
         console.print("[yellow]⚠️ No active timer. No new log saved.[/yellow]")
         task = next((t for t in tasks if t["id"] == id), None)
         if task:
-            total = sum(e["duration_minutes"] for e in task.get("tracking", []))
+            total = sum(e["duration_minutes"]
+                        for e in task.get("tracking", []))
             console.print(f"[cyan]Total tracked so far:[/cyan] {total:.2f}m")
 
             # mark task done
@@ -649,7 +685,8 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     task_id = active.get("id")
     task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
-        console.print("[bold red]❌ Error[/bold red]: Task for active tracking not found.")
+        console.print(
+            "[bold red]❌ Error[/bold red]: Task for active tracking not found.")
         raise typer.Exit(code=1)
 
     # ─── Compute duration ─────────────────────────────────────────────────────
@@ -708,18 +745,18 @@ def burndown(
     📉 Remaining priority burndown over the next N days_of_week.
     """
     tasks = load_tasks()
-    
+
     now = datetime.now()
     plt.date_form(input_form='Y-m-d H:M:S', output_form='d/m/Y')
     start_date = now - timedelta(days=2)
     end_date = now + timedelta(days=3)
-    
+
     all_dates = []
     current_date = start_date
     while current_date <= end_date:
         all_dates.append(current_date.strftime('%Y-%m-%d'))
         current_date += timedelta(days=1)
-    
+
     all_tasks_in_range = []
     for d in all_dates:
         not_done_count = 0
@@ -728,28 +765,33 @@ def burndown(
                 due_date_str = task.get("due")
                 if due_date_str:
                     try:
-                        due_date = datetime.fromisoformat(due_date_str).strftime('%Y-%m-%d %H:%M:%S')
-                        
+                        due_date = datetime.fromisoformat(
+                            due_date_str).strftime('%Y-%m-%d %H:%M:%S')
+
                         print(due_date)
                         if due_date <= d:
                             not_done_count += 1
                     except ValueError as e:
-                        console.print(f"Warning: Could not parse date: {due_date_str} for task: {task.get('title')}. Error: {e}")
-    
+                        console.print(
+                            f"Warning: Could not parse date: {due_date_str} for task: {task.get('title')}. Error: {e}")
+
         all_tasks_in_range.append(not_done_count)
 
     if all_tasks_in_range != []:
         plt.clf()
         plt.theme("matrix")
-        formatted_dates = [datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y") for date_str in all_dates]
-        plt.plot(formatted_dates, all_tasks_in_range, marker = "*")
-        plt.xticks(formatted_dates, [date.strftime("%m/%d") for date in [datetime.strptime(d, "%Y-%m-%d") for d in all_dates]])
+        formatted_dates = [datetime.strptime(
+            date_str, "%Y-%m-%d").strftime("%d/%m/%Y") for date_str in all_dates]
+        plt.plot(formatted_dates, all_tasks_in_range, marker="*")
+        plt.xticks(formatted_dates, [date.strftime(
+            "%m/%d") for date in [datetime.strptime(d, "%Y-%m-%d") for d in all_dates]])
         plt.xlabel("Date")
         plt.ylabel("Tasks Due")
         plt.title("Task Burndown")
         plt.show()
     else:
-        console.print(f"Warning: Not enough data to create chart.. let's fill it up! ")
+        console.print(
+            f"Warning: Not enough data to create chart.. let's fill it up! ")
 
 
 def build_calendar_panel(now: datetime, tasks: list) -> Panel:
@@ -778,12 +820,12 @@ def build_calendar_panel(now: datetime, tasks: list) -> Panel:
 
     cal_text = highlight_month(month_str, due_days, now.day)
     return Panel(cal_text, border_style="#7d00ff", expand=False)
-    
+
 
 def auto_recur():
     tasks = load_tasks()
     now = datetime.now()
-    today_weekday = now.weekday() 
+    today_weekday = now.weekday()
     new_tasks = []
 
     for task in tasks:
@@ -817,24 +859,27 @@ def auto_recur():
                     if days_of_week_since % (interval * 7) == 0:
                         new_tasks.append(clone_task(task, now))
         elif unit == "month":
-            months_since = (now.year - base_dt.year) * 12 + (now.month - base_dt.month)
+            months_since = (now.year - base_dt.year) * \
+                12 + (now.month - base_dt.month)
             if months_since % interval == 0 and now.day == base_dt.day:
                 new_tasks.append(clone_task(task, now))
 
         elif unit == "year":
             years_since = now.year - base_dt.year
-            if (years_since > 0 and now.month == base_dt.month and now.day   == base_dt.day):
+            if (years_since > 0 and now.month == base_dt.month and now.day == base_dt.day):
                 new_tasks.append(clone_task(task, now))
 
     save_tasks(tasks + new_tasks)
     if new_tasks:
-        console.print(f"[green]🔁 Recreated {len(new_tasks)} recurring task(s).[/green]")
+        console.print(
+            f"[green]🔁 Recreated {len(new_tasks)} recurring task(s).[/green]")
 
 
 def clone_task(task, now):
     new_task = task.copy()
     new_task["id"] = next_id(load_tasks())
-    new_task["created"] = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    new_task["created"] = now.replace(
+        hour=0, minute=0, second=0, microsecond=0).isoformat()
     if task.get("due"):
         try:
             due_dt = datetime.fromisoformat(task["due"])
@@ -854,6 +899,8 @@ def clone_task(task, now):
     return new_task
 
 # Load the task from the json file storing them.
+
+
 def load_tasks():
     TASK_FILE = cf.get_task_file()
     if TASK_FILE.exists():
@@ -862,6 +909,8 @@ def load_tasks():
     return []
 
 # Save tasks to JSON
+
+
 def save_tasks(tasks):
     TASK_FILE = cf.get_task_file()
     TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -869,7 +918,7 @@ def save_tasks(tasks):
         json.dump(tasks, f, indent=2)
 
 
-# Get the next ID in tasks. 
+# Get the next ID in tasks.
 def next_id(tasks):
     return max([t.get("id", 0) for t in tasks] + [0]) + 1
 
@@ -896,7 +945,7 @@ def get_due_color(due_str: str, now: datetime) -> str:
         return "#fa9898"
     else:
         return "white"
-    
+
 
 def priority_color(priority_value):
     priority_as_int = float(priority_value)
@@ -910,8 +959,10 @@ def priority_color(priority_value):
         return "green3"
     else:
         return "blueviolet"
-    
+
 # Calculate the priority using an Eisenhower Matrix.
+
+
 def calculate_priority(task):
     coeff = {
         "importance": 5.0,
@@ -971,7 +1022,9 @@ def create_due_alert(task):
         alert_time = due_time - timedelta(minutes=alert_minutes)
     else:
         # Parse like '1d', '2h', etc.
-        parsed_delta_start = parse_date_string(user_input, future=True, now=now)  # pretend it's future to get a positive delta
+        # pretend it's future to get a positive delta
+        parsed_delta_start = parse_date_string(
+            user_input, future=True, now=now)
         if parsed_delta_start is None:
             console.print("[error]Invalid time format for alert![/error]")
             raise typer.Exit(code=1)
@@ -980,9 +1033,9 @@ def create_due_alert(task):
         offset = parsed_delta_start - datetime.now()
         # Now subtract that offset from the due time
         alert_time = due_time - offset
-    
+
     cron_time = f"{alert_time.minute} {alert_time.hour} {alert_time.day} {alert_time.month} *"
-    
+
     doc = cf.load_config()
     cron_section = doc.get("cron", table())
     cron_section[f"task_alert_{task['id']}"] = {

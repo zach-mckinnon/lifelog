@@ -25,8 +25,10 @@ from rich import box
 from rich.table import Table
 
 
-app = typer.Typer(help="Add or Log a single metric (e.g. mood, water, sleep, etc.)")
+app = typer.Typer(
+    help="Add or Log a single metric (e.g. mood, water, sleep, etc.)")
 console = Console()
+
 
 class TrackerType(str, Enum):
     INT = "int"
@@ -34,16 +36,21 @@ class TrackerType(str, Enum):
     BOOL = "bool"
     STR = "str"
 
-# TODO: Fix Tracking to be a bit more generic but allow for goals with a specifc structure for goals object inside tracker obj. 
+# TODO: Fix Tracking to be a bit more generic but allow for goals with a specifc structure for goals object inside tracker obj.
+
+
 @app.command(
-        help="Add a new metric definition."
-    )
+    help="Add a new metric definition."
+)
 def add(
-    title: str = typer.Argument(..., help="The title of the activity you're tracking."),
+    title: str = typer.Argument(...,
+                                help="The title of the activity you're tracking."),
     category: Optional[str] = category_option,
-    type: TrackerType = typer.Option(..., "-t", "--type", help="The data type (int, float, bool, str)."),
-    args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
-    ):
+    type: TrackerType = typer.Option(..., "-t", "--type",
+                                     help="The data type (int, float, bool, str)."),
+    args: Optional[List[str]] = typer.Argument(
+        None, help="Optional +tags and notes."),
+):
     '''
     Add a new metric definition to the tracker.
     '''
@@ -56,21 +63,23 @@ def add(
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
-    
+
     if not title:
-        raise ValueError("Please ensure you have a title! How else will you know what to do??")
-    
+        raise ValueError(
+            "Please ensure you have a title! How else will you know what to do??")
+
     trackers = load_trackers()
-    
+
     for tracker in trackers:
         if tracker.get("title") == title:
-            typer.echo(f"Looks like a tracker called '{title}' already exists! Would you like to try a different name or update the existing one?")
+            typer.echo(
+                f"Looks like a tracker called '{title}' already exists! Would you like to try a different name or update the existing one?")
             raise typer.Exit(code=1)
-    
 
     valid_types = ["int", "float", "bool", "str"]
     if type not in valid_types:
-        typer.echo(f"Invalid type: '{type}'. Type must be one of these types: {', '.join(valid_types)}.")
+        typer.echo(
+            f"Invalid type: '{type}'. Type must be one of these types: {', '.join(valid_types)}.")
         raise typer.Exit(code=1)
 
     doc = cf.load_config()
@@ -83,16 +92,18 @@ def add(
                 doc.setdefault("categories", {})
                 doc["categories"][category] = category
                 cf.save_config(doc)
-                console.print(f"[green]✅ Category '{category}' added to your config.[/green]")
+                console.print(
+                    f"[green]✅ Category '{category}' added to your config.[/green]")
             except Exception as e:
-                console.print(f"[bold red]Failed to create category: {e}[/bold red]")
+                console.print(
+                    f"[bold red]Failed to create category: {e}[/bold red]")
                 raise typer.Exit(code=1)
-            
+
     if Confirm.ask("Would you like to add a goal to this tracker?"):
         goal = create_goal_interactive(type)
     else:
         goal = None
-        
+
     # build your definition
     tracker_def = {
         "id": next_id(trackers),
@@ -104,7 +115,6 @@ def add(
         "created": now.isoformat(),
         "goals": [goal] if goal else [],
     }
-    
 
     trackers.append(tracker_def)
     save_tracker(trackers)
@@ -126,7 +136,7 @@ def default_track(
     if not title_and_value or len(title_and_value) == 0:
         console.print("[bold red]❌ Please provide a tracker title.[/bold red]")
         raise typer.Exit(code=1)
-    
+
      # SAFETY: check if user accidentally typed a real command like "add"
     command_names = ctx.command.list_commands(ctx)
     first = title_and_value[0].lower()
@@ -137,7 +147,8 @@ def default_track(
 
         if first == "add":
             if len(remaining_args) < 2:
-                console.print("[bold red]❌ 'add' command needs at least a title and --type.[/bold red]")
+                console.print(
+                    "[bold red]❌ 'add' command needs at least a title and --type.[/bold red]")
                 raise typer.Exit()
 
             # Parse 'walk' -t float
@@ -164,7 +175,8 @@ def default_track(
 
         elif first == "modify":
             if len(remaining_args) < 2:
-                console.print("[bold red]❌ 'modify' command needs at least an id and title.[/bold red]")
+                console.print(
+                    "[bold red]❌ 'modify' command needs at least an id and title.[/bold red]")
                 raise typer.Exit()
 
             id_ = int(remaining_args[0])
@@ -184,12 +196,11 @@ def default_track(
 
             ctx.invoke(command, id=id_, title=title, **opt_args)
             raise typer.Exit()
-        
+
         else:
             ctx.invoke(command, *remaining_args)
             raise typer.Exit()
-        
-    
+
     title = title_and_value[0]
     value = None
     if len(title_and_value) > 1:
@@ -199,26 +210,29 @@ def default_track(
             value = title_and_value[1]  # maybe a string for STR type trackers
 
     trackers = load_trackers()
-    
-    tracker = next((t for t in trackers if t["title"].lower() == title.lower()), None)
+
+    tracker = next(
+        (t for t in trackers if t["title"].lower() == title.lower()), None)
 
     if not tracker:
-        console.print(f"[bold red]🔍 We couldn't find a tracker called '{title}'. Would you like to create it? Use track add to create a new tracker![/bold red]")
+        console.print(
+            f"[bold red]🔍 We couldn't find a tracker called '{title}'. Would you like to create it? Use track add to create a new tracker![/bold red]")
         raise typer.Exit(code=1)
 
     goals = tracker.get("goals", [])
-    
+
     value = validate_value_against_tracker(tracker, value)
     # -------- Record the entry --------
     entry = {
         "timestamp": now.isoformat(),
         "value": value
     }
-    
+
     tracker.setdefault("entries", []).append(entry)
 
     save_tracker(trackers)
-    console.print(f"[green]✅ Recorded value for '{title}'![/green] ➡️ [cyan]{value}[/cyan] at {entry['timestamp']}")
+    console.print(
+        f"[green]✅ Recorded value for '{title}'![/green] ➡️ [cyan]{value}[/cyan] at {entry['timestamp']}")
 
     # -------- If a goal exists, generate goal report --------
     if goals:
@@ -241,9 +255,11 @@ def default_track(
 @app.command("modify")
 def modify(
     id: int = typer.Argument(..., help="Tracker ID to modify"),
-    title: str = typer.Argument(..., help="The title of the activity you're tracking."),
+    title: str = typer.Argument(...,
+                                help="The title of the activity you're tracking."),
     category: Optional[str] = category_option,
-    args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes."),
+    args: Optional[List[str]] = typer.Argument(
+        None, help="Optional +tags and notes."),
 ):
     """
     Modify an existing tracker: only title, category, tags, and notes.
@@ -258,14 +274,14 @@ def modify(
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
-    
 
     trackers = load_trackers()
 
     tracker = next((t for t in trackers if t.get("id") == id), None)
 
     if not tracker:
-        console.print(f"[bold red]❌ Tracker with ID {id} not found.[/bold red]")
+        console.print(
+            f"[bold red]❌ Tracker with ID {id} not found.[/bold red]")
         raise typer.Exit(code=1)
 
     # ---- Apply safe modifications only ----
@@ -281,18 +297,20 @@ def modify(
 
     if tags:
         current_tags = tracker.get("tags", [])
-        tracker["tags"] = current_tags + tags  
+        tracker["tags"] = current_tags + tags
     if notes:
         current_notes = tracker.get("notes", [])
         tracker["notes"] = current_notes.append(notes)
 
     if not changes_made:
-        console.print("[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
+        console.print(
+            "[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
         raise typer.Exit(code=0)
 
     # Save
     save_tracker(trackers)
-    console.print(f"[green]✅ Tracker [bold]{id}[/bold] updated successfully.[/green]")
+    console.print(
+        f"[green]✅ Tracker [bold]{id}[/bold] updated successfully.[/green]")
 
 
 @app.command("list")
@@ -304,7 +322,8 @@ def list():
     trackers = load_trackers()
 
     if not trackers:
-        console.print("[italic]No trackers found. Add one with 'llog track add'![/italic]")
+        console.print(
+            "[italic]No trackers found. Add one with 'llog track add'![/italic]")
         return
 
     # Create the table
@@ -314,7 +333,7 @@ def list():
         box=box.ROUNDED,
         show_lines=True,
     )
-    
+
     table.add_column("ID", justify="right")
     table.add_column("Title")
     table.add_column("Type")
@@ -333,7 +352,7 @@ def list():
         title = t.get("title", "-")
         type_ = t.get("type", "-")
         category = t.get("category", "-")
-        
+
         tags_raw = t.get("tags", [])
         tags = ", ".join(tags_raw) if tags_raw else "-"
 
@@ -359,9 +378,11 @@ def list():
             try:
                 report = generate_goal_report(t)
                 goal_str = goal_title
-                progress_display = "\n".join(format_goal_display(goal_title, report))
+                progress_display = "\n".join(
+                    format_goal_display(goal_title, report))
             except Exception as e:
-                console.print(f"[yellow]⚠️ Could not generate report for {title}: {e}[/yellow]")
+                console.print(
+                    f"[yellow]⚠️ Could not generate report for {title}: {e}[/yellow]")
 
         # Always add a row, even if goal or report failed
         table.add_row(
@@ -375,7 +396,7 @@ def list():
             goal_str,
             progress_display
         )
-        
+
     console.print(table)
 
 
@@ -404,7 +425,7 @@ def format_goal_display(goal_title: str, report: dict) -> List[str]:
             lines.append(f"[bold green]{status}[/bold green]")
         else:
             lines.append(f"[yellow]{status}[/yellow]")
-    
+
     return lines
 
 
@@ -428,7 +449,8 @@ def validate_type(title: str, value: str):
     """Validate a metric value against its definition and any associated goals"""
     definition = cf.get_tracker_definition(title)
     if not definition:
-        raise typer.BadParameter(f"Metric '{title}' is not defined in the config.")
+        raise typer.BadParameter(
+            f"Metric '{title}' is not defined in the config.")
 
     expected_type = definition.get("type")
     min_val = definition.get("min")
@@ -450,21 +472,24 @@ def validate_type(title: str, value: str):
         else:
             value = str(value)
     except ValueError:
-        raise typer.BadParameter(f"Value '{value}' is not a valid {expected_type}.")
+        raise typer.BadParameter(
+            f"Value '{value}' is not a valid {expected_type}.")
 
     # Basic validation (min/max)
     if isinstance(value, (int, float)):
         if min_val is not None and value < min_val:
-            raise typer.BadParameter(f"Value is below the minimum allowed ({min_val}).")
+            raise typer.BadParameter(
+                f"Value is below the minimum allowed ({min_val}).")
         if max_val is not None and value > max_val:
-            raise typer.BadParameter(f"Value is above the maximum allowed ({max_val}).")
-    
+            raise typer.BadParameter(
+                f"Value is above the maximum allowed ({max_val}).")
+
     # Validate against goals if they exist
     goals = definition.get("goals", [])
     if goals:
         for goal in goals:
             goal_kind = goal.get("kind")
-            
+
             # Validate based on goal type
             if goal_kind == "range" and isinstance(value, (int, float)):
                 min_amount = goal.get("min_amount")
@@ -472,15 +497,18 @@ def validate_type(title: str, value: str):
                 if min_amount is not None and max_amount is not None:
                     if not (min_amount <= value <= max_amount):
                         # This is not an error, just information
-                        console.print(f"[yellow]Note: Value {value} is outside the goal range ({min_amount}-{max_amount}).[/yellow]")
-            
+                        console.print(
+                            f"[yellow]Note: Value {value} is outside the goal range ({min_amount}-{max_amount}).[/yellow]")
+
             elif goal_kind in ["sum", "count", "milestone", "duration", "reduction"] and isinstance(value, (int, float)):
                 target = goal.get("amount") or goal.get("target", 0)
                 if goal_kind == "reduction" and value < target:
-                    console.print(f"[green]Great! Value {value} is below your reduction target of {target}.[/green]")
+                    console.print(
+                        f"[green]Great! Value {value} is below your reduction target of {target}.[/green]")
                 elif goal_kind != "reduction" and value >= target:
-                    console.print(f"[green]Goal achieved! Value {value} meets or exceeds your target of {target}.[/green]")
-    
+                    console.print(
+                        f"[green]Goal achieved! Value {value} meets or exceeds your target of {target}.[/green]")
+
     return value
 
 
@@ -508,7 +536,8 @@ def validate_value_against_tracker(tracker: dict, value: Any) -> Any:
         elif tracker_type == "str":
             return prompt("Enter a string value")
         else:
-            raise typer.BadParameter(f"Unsupported tracker type '{tracker_type}'.")
+            raise typer.BadParameter(
+                f"Unsupported tracker type '{tracker_type}'.")
 
     try:
         if tracker_type == "int":
@@ -529,7 +558,9 @@ def validate_value_against_tracker(tracker: dict, value: Any) -> Any:
         elif tracker_type == "str":
             return str(value)
         else:
-            raise typer.BadParameter(f"Unsupported tracker type '{tracker_type}'.")
+            raise typer.BadParameter(
+                f"Unsupported tracker type '{tracker_type}'.")
     except (ValueError, TypeError):
-        console.print(f"[bold red]⚠️ '{value}' is not a valid {tracker_type}. Let's try again.[/bold red]")
+        console.print(
+            f"[bold red]⚠️ '{value}' is not a valid {tracker_type}. Let's try again.[/bold red]")
         return _prompt_correct_value()

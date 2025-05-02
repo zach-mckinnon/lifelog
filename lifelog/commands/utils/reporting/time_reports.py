@@ -8,7 +8,8 @@ It is designed to enhance the user experience by providing visual representation
 '''
 
 from datetime import datetime, timedelta
-import json, csv
+import json
+import csv
 from rich.console import Console
 from lifelog.config.config_manager import get_time_file
 from lifelog.commands.utils.reporting.analytics.report_utils import (
@@ -25,19 +26,22 @@ def report_time_trend(since: str = "7d", export: str = None):
     📈 Plot time spent per day over the period.
     """
     cutoff = _parse_since(since)
-    console.print(f"[bold]Time Trend:[/] {since} since {cutoff.date().isoformat()}")
+    console.print(
+        f"[bold]Time Trend:[/] {since} since {cutoff.date().isoformat()}")
 
     # Load and filter
     tf = get_time_file()
     data = json.load(open(tf, 'r'))
     history = data.get('history', [])
-    filtered = [h for h in history if datetime.fromisoformat(h['start']) >= cutoff]
+    filtered = [h for h in history if datetime.fromisoformat(
+        h['start']) >= cutoff]
 
     # Aggregate per day
     day_totals: dict[str, float] = {}
     for rec in filtered:
         day = datetime.fromisoformat(rec['start']).date().isoformat()
-        day_totals[day] = day_totals.get(day, 0) + rec.get('duration_minutes', 0)
+        day_totals[day] = day_totals.get(
+            day, 0) + rec.get('duration_minutes', 0)
 
     # Prepare series
     dates = sorted(day_totals.keys())
@@ -53,11 +57,13 @@ def report_time_distribution(since: str = "7d", export: str = None):
     🥧 Show pie chart of total time per category.
     """
     cutoff = _parse_since(since)
-    console.print(f"[bold]Time Distribution:[/] {since} since {cutoff.date().isoformat()}")
+    console.print(
+        f"[bold]Time Distribution:[/] {since} since {cutoff.date().isoformat()}")
 
     tf = get_time_file()
     data = json.load(open(tf, 'r'))
-    history = [h for h in data.get('history', []) if datetime.fromisoformat(h['start']) >= cutoff]
+    history = [h for h in data.get(
+        'history', []) if datetime.fromisoformat(h['start']) >= cutoff]
 
     # Aggregate per category
     totals: dict[str, float] = {}
@@ -75,17 +81,20 @@ def report_time_calendar(since: str = "30d", export: str = None):
     📅 Calendar heatmap of minutes per weekday.
     """
     cutoff = _parse_since(since)
-    console.print(f"[bold]Time Calendar:[/] {since} since {cutoff.date().isoformat()}")
+    console.print(
+        f"[bold]Time Calendar:[/] {since} since {cutoff.date().isoformat()}")
 
     tf = get_time_file()
     data = json.load(open(tf, 'r'))
-    history = [h for h in data.get('history', []) if datetime.fromisoformat(h['start']) >= cutoff]
+    history = [h for h in data.get(
+        'history', []) if datetime.fromisoformat(h['start']) >= cutoff]
 
     # Aggregate per weekday
     weekday_totals: dict[str, float] = {}
     for rec in history:
         wd = datetime.fromisoformat(rec['start']).strftime("%a")
-        weekday_totals[wd] = weekday_totals.get(wd, 0) + rec.get('duration_minutes', 0)
+        weekday_totals[wd] = weekday_totals.get(
+            wd, 0) + rec.get('duration_minutes', 0)
 
     render_calendar_heatmap(weekday_totals)
     if export:

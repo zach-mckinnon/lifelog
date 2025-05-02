@@ -6,13 +6,15 @@ It includes functions to analyze user data, identify low wellness days, and comp
 It is designed to help users identify patterns and relationships in their data, providing valuable feedback for self-improvement and habit tracking.'''
 
 from datetime import datetime, timedelta
-import json, csv
+import json
+import csv
 from rich.console import Console
 from lifelog.commands.utils.reporting.insight_engine import load_metric_data, daily_averages, compute_correlation
 from lifelog.config.config_manager import get_time_file
 from lifelog.commands.utils.reporting.analytics.report_utils import render_line_chart, render_calendar_heatmap
 
 console = Console()
+
 
 def report_diagnostics(since: str = "30d", export: str = None):
     """
@@ -22,7 +24,8 @@ def report_diagnostics(since: str = "30d", export: str = None):
     export: optional CSV/JSON filepath.
     """
     cutoff = _parse_since(since)
-    console.print(f"[bold]Diagnostic Report:[/] since {cutoff.date().isoformat()}\n")
+    console.print(
+        f"[bold]Diagnostic Report:[/] since {cutoff.date().isoformat()}\n")
 
     # 1. Load data
     metric_entries = load_metric_data()
@@ -31,7 +34,8 @@ def report_diagnostics(since: str = "30d", export: str = None):
 
     # 2. Identify low-mood days (< threshold)
     mood_map = tracker_daily.get('mood', {})
-    low_days = [d for d, v in mood_map.items() if v <= 3 and datetime.fromisoformat(d) >= cutoff]
+    low_days = [d for d, v in mood_map.items(
+    ) if v <= 3 and datetime.fromisoformat(d) >= cutoff]
     console.print(f"[red]Low mood days:[/] {len(low_days)} days since {since}")
 
     # 3. Check sleep & energy correlations on those days
@@ -41,8 +45,10 @@ def report_diagnostics(since: str = "30d", export: str = None):
     energy_vals = [energy_map.get(d, 0) for d in low_days]
 
     # 4. Compute correlations
-    corr_sleep = compute_correlation(sleep_vals, [mood_map[d] for d in low_days])
-    corr_energy = compute_correlation(energy_vals, [mood_map[d] for d in low_days])
+    corr_sleep = compute_correlation(
+        sleep_vals, [mood_map[d] for d in low_days])
+    corr_energy = compute_correlation(
+        energy_vals, [mood_map[d] for d in low_days])
     console.print(f"Correlation (sleep vs mood): {corr_sleep['pearson']}")
     console.print(f"Correlation (energy vs mood): {corr_energy['pearson']}\n")
 
@@ -58,12 +64,14 @@ def report_diagnostics(since: str = "30d", export: str = None):
         ts = datetime.fromisoformat(rec['start'])
         if ts >= cutoff:
             wd = ts.strftime('%a')
-            weekday_totals[wd] = weekday_totals.get(wd, 0) + rec.get('duration_minutes', 0)
+            weekday_totals[wd] = weekday_totals.get(
+                wd, 0) + rec.get('duration_minutes', 0)
     render_calendar_heatmap(weekday_totals)
 
     # 7. Export if requested
     if export:
-        _export_diagnostics(low_days, corr_sleep, corr_energy, weekday_totals, export)
+        _export_diagnostics(low_days, corr_sleep,
+                            corr_energy, weekday_totals, export)
 
 
 def _parse_since(s: str) -> datetime:
@@ -74,9 +82,12 @@ def _parse_since(s: str) -> datetime:
     except ValueError:
         amt = int(s)
         unit = 'd'
-    if unit == 'd': return now - timedelta(days=amt)
-    if unit == 'w': return now - timedelta(weeks=amt)
-    if unit == 'm': return now - timedelta(days=30*amt)
+    if unit == 'd':
+        return now - timedelta(days=amt)
+    if unit == 'w':
+        return now - timedelta(weeks=amt)
+    if unit == 'm':
+        return now - timedelta(days=30*amt)
     return now - timedelta(days=amt)
 
 
@@ -91,11 +102,12 @@ def _export_diagnostics(low_days, corr_sleep, corr_energy, weekday_totals, filep
     if ext == 'csv':
         with open(filepath, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['metric','value'])
+            writer.writerow(['metric', 'value'])
             writer.writerow(['low_mood_days_count', len(low_days)])
             writer.writerow(['corr_sleep_mood', corr_sleep['pearson']])
             writer.writerow(['corr_energy_mood', corr_energy['pearson']])
-            for wd, v in weekday_totals.items(): writer.writerow([wd, v])
+            for wd, v in weekday_totals.items():
+                writer.writerow([wd, v])
     elif ext == 'json':
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2)

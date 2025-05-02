@@ -6,7 +6,8 @@ from enum import Enum
 import typer
 
 app = typer.Typer(help="Generate a report for your goal progress.")
-                  
+
+
 class ReportType(str, Enum):
     RANGE_MEASUREMENT = "range_measurement"
     SUM_ACCUMULATION = "sum_accumulation"
@@ -59,7 +60,7 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
     # Assume first goal for now
     goal = goals[0]
     kind = goal.get("kind")
-    
+
     # Dispatch to appropriate handler
     if kind == "range":
         return _report_range(tracker, goal, df)
@@ -96,17 +97,17 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _report_range(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     df['timestamp'] = pd.to_datetime(df['timestamp'])
 
     avg = df['value'].mean()
     min_val = df['value'].min()
     max_val = df['value'].max()
     latest = df['value'].iloc[-1]
-    
+
     min_target = goal.get('min_amount')
     max_target = goal.get('max_amount')
-    
+
     in_range = min_target <= latest <= max_target
 
     return {
@@ -128,7 +129,7 @@ def _report_range(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFram
 
 
 def _report_sum(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     total = df['value'].sum()
     target = goal.get('amount')
 
@@ -148,11 +149,11 @@ def _report_sum(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame)
             "tertiary": f"{target-total:.1f} left" if total < target else "🎉 Congratulations! You've completed your goal!"
         },
         "status": "✓ Goal reached" if total >= target else "✨ You're making great progress! Keep it up!"
-    } # TODO: Add fun sayings from the json files of motivational quotes. 
+    }  # TODO: Add fun sayings from the json files of motivational quotes.
 
 
 def _report_count(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     count = len(df)
     target = goal.get('amount')
 
@@ -176,7 +177,7 @@ def _report_count(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFram
 
 
 def _report_bool(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     true_count = df['value'].sum()
     total = len(df)
 
@@ -200,7 +201,7 @@ def _report_bool(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame
 
 
 def _report_streak(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['date'] = df['timestamp'].dt.date
 
@@ -234,7 +235,7 @@ def _report_streak(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFra
 
 
 def _report_duration(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     total_minutes = df['value'].sum()
     target_minutes = goal.get('target_amount', goal.get('amount', 0))
     unit = goal.get('unit', 'minutes')
@@ -267,7 +268,7 @@ def _report_duration(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataF
 
 
 def _report_milestone(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     current = df['value'].sum()
     target = goal.get('target_amount', goal.get('target', 0))
     unit = goal.get('unit', '')
@@ -293,7 +294,7 @@ def _report_milestone(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.Data
 
 
 def _report_percentage(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     latest_pct = df['value'].iloc[-1]
     target_pct = goal.get('target_percentage', 100)
 
@@ -316,7 +317,7 @@ def _report_percentage(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.Dat
 
 
 def _report_reduction(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     latest = df['value'].iloc[-1]
     target = goal.get('target_amount', goal.get('amount', 0))
     unit = goal.get('unit', '')
@@ -340,7 +341,7 @@ def _report_reduction(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.Data
 
 
 def _report_replacement(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-    
+
     # Here we assume positive values mean "new habit", negative = "old habit" if you log it this way
     new_behavior_count = df[df['value'] > 0].shape[0]
     old_behavior_count = df[df['value'] < 0].shape[0]
