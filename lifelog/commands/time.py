@@ -35,6 +35,7 @@ def start(
     """
     Start tracking time for an activity. (e.g. working, resting).
     """
+    now = datetime.now()
     try:
         if args != None:
             tags, notes = parse_args(args)
@@ -52,10 +53,10 @@ def start(
         raise typer.Exit(code=1)
     
     if past:
-        start = parse_date_string(past)
+        start = parse_date_string(past, now=now)
     
     else:
-        start = datetime.now()
+        start = now
     
     data["active"] = {
         "title": title,
@@ -82,6 +83,7 @@ def stop(
     """
     Stop the current timer and record the time block.
     """
+    now = datetime.now()
     try:
         if args != None:
             tags, notes = parse_args(args)
@@ -103,9 +105,9 @@ def stop(
     start_time = datetime.fromisoformat(data["active"]["start"])
     if past:
         # If the user wants to set a past time, we need to adjust the start time
-        end_time = parse_date_string(past, future=False)
+        end_time = parse_date_string(past, future=False, now=now)
     else:
-        end_time = datetime.now()
+        end_time = now
     
     final_tags = (active.get("tags") or [])
     if tags:

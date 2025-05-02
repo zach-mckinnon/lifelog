@@ -23,6 +23,7 @@ def summary_metric(since: str = "7d", export: str = None):
     """
     ✏️  Summary of all trackers logged in the period.
     """
+    now = datetime.now()
     cutoff = _parse_since(since)
     console.print(f"[bold]Trackers ({since} since {cutoff.date().isoformat()}):[/bold]")
 
@@ -31,7 +32,7 @@ def summary_metric(since: str = "7d", export: str = None):
     data = {t: sum_entries(t, since) for t in trackers}
 
     # Coverage
-    days = (datetime.now().date() - cutoff.date()).days + 1
+    days = (now.date() - cutoff.date()).days + 1
     nonzero = sum(1 for v in data.values() if v > 0)
     coverage = (nonzero / days * 100) if days else 0
     console.print(f"[dim]Data coverage: {coverage:.0f}%[/dim]")
@@ -76,8 +77,9 @@ def summary_daily(since: str = "7d", export: str = None):
     """
     📅  Daily summary: tasks completed, average mood, total time.
     """
+    now = datetime.now()
     cutoff = _parse_since(since)
-    today = datetime.now().date()
+    today = now.date()
     
     # Load data
     time_data = load_time_data()

@@ -47,6 +47,7 @@ def add(
     '''
     Add a new metric definition to the tracker.
     '''
+    now = datetime.now()
     try:
         if args != None:
             tags, notes = parse_args(args)
@@ -100,7 +101,7 @@ def add(
         "category": category,
         "tags": tags if tags else [],
         "notes": notes if notes else [],
-        "created": datetime.now().isoformat(),
+        "created": now.isoformat(),
         "goals": [goal] if goal else [],
     }
     
@@ -118,6 +119,7 @@ def default_track(
     """
     Record a new value or event for a tracker if no command is given.
     """
+    now = datetime.now()
     if ctx.invoked_subcommand:
         return
 
@@ -209,7 +211,7 @@ def default_track(
     value = validate_value_against_tracker(tracker, value)
     # -------- Record the entry --------
     entry = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now.isoformat(),
         "value": value
     }
     

@@ -22,36 +22,36 @@ def get_option(options: dict, key: str, default=None):
 category_option = typer.Option(
     None,
     "-c", "--cat",
-    help="Category name (e.g. work, rest, personal_projects, socialEvents).",
+    help="Task category (e.g., work, rest, personal_projects, social_events). Organizes tasks into meaningful groups.",
     show_default=False,
 )
 
 project_option = typer.Option(
     None,
-    "-pr", "--proj",
-    help="Project name (e.g. client_followups, buildPythonApp).",
+    "-p", "--pro",
+    help="Associated project name (e.g., client_followups, python_app). Useful for grouping related tasks.",
     show_default=False,
 )
 
 due_option = typer.Option(
     None,
     "-d", "--due",
-    help="New due date/time in ISO or natural language format (e.g. 2023-10-01, tomorrow, next week, 1d, 2w, 1m, 5y)"
-     "also set to today at specific time with 24 hour clock time: e.g. -d 18:00 (today at 6:00pm).",
+    help="Due date/time for the task. Accepts ISO format (YYYY-MM-DD), natural language (tomorrow, next week), "
+          "offsets (1d, 2w, 3m), or specific times today (18:00 for today at 6 PM).",
     show_default=False,
 )
 
 impt_option = typer.Option(
     None,
     "-i", "--impt",
-    help="Importance from 1 (low) to 5 (high)",
+    help="Importance level of task from 1 (lowest priority) to 5 (highest priority). Used in the priority calculation to prioritize tasks.",
     show_default=False,
 )
 
 recur_option = typer.Option(
-    None,
+    False,
     "-r", "--recur",
-    help="Recurrence rule, e.g. daily, weekly, every:7d",
+    help="Task recurrence schedule (e.g., daily, weekly, monthly, every:7d). Automatically regenerates recurring tasks.",
     show_default=False,
 )
 
@@ -59,79 +59,20 @@ recur_option = typer.Option(
 
 tags_option = typer.Option(
     [],
-    help="List of tags (e.g. +food +work). Space-separated, prefixed with +.",
+    help="Tags to quickly filter tasks or entries. Use space-separated format prefixed with '+', e.g., +work +urgent",
     show_default=False,
 )
 
 notes_option = typer.Option(
     None,
-    help="Optional notes about this entry."
-    "Must come before any other arguments that start with a dash (-) or after entire command, preceeded by (--).",
+    help="Optional notes or additional context. Must precede any argument starting with a dash (-), "
+          "or place after '--' to separate from command options.",
     show_default=False,
 )
 
 past_option = typer.Option(
     None,
-    "-p","--past",
-    help="Backdate by offset (e.g. 1h, 2d or 30m).",
-    show_default=False,
-)
-
-# ─── Metric Definition Options ──────────────────────────────────────────────────
-# TODO: Better the goal definition options to be more user friendly and less verbose.
-
-min_option = typer.Option(
-    None,
-    "--min",
-    help="Minimum allowed value.",
-    show_default=False,
-)
-
-max_option = typer.Option(
-    None,
-    "--max",
-    help="Maximum allowed value.",
-    show_default=False,
-)
-
-description_option = typer.Option(
-    "",
-    "-dsc", "--description",
-    help="Description of the metric.",
-    show_default=False,
-)
-
-unit_option = typer.Option(
-    None,
-    "-u", "--unit",
-    help="Unit of measure (e.g., oz, hrs).",
-    show_default=False,
-)
-
-goal_option = typer.Option(
-    None,
-    "-g", "--goal",
-    help="Target (sum) or count (occurrences).",
-    show_default=False,
-)
-
-period_option = typer.Option(
-    "day",
-    "--period",
-    help="Period for goal: day|week|month|hour.",
-    show_default=False,
-)
-
-kind_option = typer.Option(
-    "sum",
-    "-k", "--kind",
-    help="Goal type: sum (volume) or count (occurrences).",
-    show_default=False,
-)
-
-new_name_option = typer.Option(
-    None,
-    "--name",
-    help="Rename the tracker.",
+    "--past",
+    help="Backdate the task or entry by a specific offset (e.g., 1h for one hour ago, 2d for two days ago).",
     show_default=False,
 )

@@ -10,7 +10,11 @@ import json
 from datetime import datetime, date, time, timedelta
 import re
 from typing import List
+from rich.console import Console, Group
+import typer
 import lifelog.config.config_manager as cf
+
+console = Console()
 
 
 # TODO: Add more general functions for aggregating data and mathmatics for metrics, habits, etc. 
@@ -80,10 +84,7 @@ def serialize_task(task):
             task_copy[key] = task_copy[key].isoformat()
     return task_copy
 
-import re
-from datetime import datetime, timedelta
-
-def parse_date_string(time_string: str, future: bool = False) -> datetime:
+def parse_date_string(time_string: str, future: bool = False, now: datetime = datetime.now()) -> datetime:
     """
     Parses a smart or relative time string into a datetime.
     Supports:
@@ -94,73 +95,70 @@ def parse_date_string(time_string: str, future: bool = False) -> datetime:
     - '08:30' (means today at that time)
     - combinations like '2wT15:00'
     """
+    if now is None:
+        now = datetime.now()
 
-    now = datetime.now()
-
-    # 1. Handle known keywords
-    ts = time_string.lower().strip()
-
-    # Separate time part if 'T' exists
-    if "T" in ts:
-        base_part, time_part = ts.split("T")
-    elif re.match(r"^\d{1,2}:\d{2}$", ts):  # Only time like '08:30'
-        base_part, time_part = "", ts
-    else:
-        base_part, time_part = ts, None
-
+    ts = time_string.strip()
+    time_part = None
+    base_part = ts
     target = None
 
-    if base_part in ["today", ""]:
+    # Handle "T" separator (e.g. 1dT18:00 or 4/5T17:00)
+    if 'T' in ts:
+        base_part, time_part = ts.split('T', 1)
+    elif re.match(r'^\d{1,2}:\d{2}$', ts):
+        base_part, time_part = '', ts
+
+    # Handle keyword dates
+    if base_part in ('today', ''):
         target = now
-    elif base_part == "yesterday":
+    elif base_part == 'yesterday':
         target = now - timedelta(days=1)
-    elif base_part == "tomorrow":
+    elif base_part == 'tomorrow':
         target = now + timedelta(days=1)
-    elif base_part == "next week":
-        target = now + timedelta(weeks=1)
-    elif base_part == "next month":
-        target = now + timedelta(days=30)
+
+    # Handle relative durations like 1d, 2w, 3m, 1h, 30min
+    elif re.fullmatch(r'(\d+[dwmyh]|(\d+min))+', base_part):
+        # Find all matching segments
+        units = re.findall(r'(\d+)(y|m(?!in)|w|d|h|min)', base_part)
+        delta = timedelta()
+        for value, unit in units:
+            value = int(value)
+            if unit == 'y': delta += timedelta(days=365 * value)
+            elif unit == 'mn': delta += timedelta(days=30 * value)
+            elif unit == 'w': delta += timedelta(weeks=value)
+            elif unit == 'd': delta += timedelta(days=value)
+            elif unit == 'h': delta += timedelta(hours=value)
+            elif unit == 'm': delta += timedelta(minutes=value)
+        target = now + delta if future else now - delta
+
+    # Handle absolute formats like 4/5, 4/5/25, 4/5/2025
     else:
-        # 2. Handle relative like 1d, 2w, etc
-        regex = re.compile(
-            r"((?P<years>\d+)y)?"
-            r"((?P<months>\d+)mn)?"
-            r"((?P<weeks>\d+)w)?"
-            r"((?P<days>\d+)d)?"
-            r"((?P<hours>\d+)h)?"
-            r"((?P<minutes>\d+)m)?"
-        )
-        match = regex.match(base_part)
+        formats = ["%m/%d", "%m/%d/%y", "%m/%d/%Y"]
+        for fmt in formats:
+            try:
+                parsed = datetime.strptime(base_part, fmt)
+                # Fill in missing year if needed
+                if parsed.year == 1900:
+                    parsed = parsed.replace(year=now.year)
+                target = parsed
+                break
+            except ValueError:
+                continue
 
-        if match:
-            parts = match.groupdict()
-            time_delta_kwargs = {}
-            if parts.get("years"):
-                time_delta_kwargs["days"] = int(parts["years"]) * 365
-            if parts.get("months"):
-                time_delta_kwargs["days"] = time_delta_kwargs.get("days", 0) + int(parts["months"]) * 30
-            if parts.get("weeks"):
-                time_delta_kwargs["weeks"] = int(parts["weeks"])
-            if parts.get("days"):
-                time_delta_kwargs["days"] = time_delta_kwargs.get("days", 0) + int(parts["days"])
-            if parts.get("hours"):
-                time_delta_kwargs["hours"] = int(parts["hours"])
-            if parts.get("minutes"):
-                time_delta_kwargs["minutes"] = int(parts["minutes"])
-
-            delta = timedelta(**time_delta_kwargs)
-            target = now + delta if future else now - delta
-
-    if target and time_part:
+    # Apply time part if present
+    if time_part:
         try:
             hour, minute = map(int, time_part.split(":"))
             target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        except ValueError:
-            return None  # invalid time part like bad format
+        except Exception:
+            raise ValueError(f"Invalid time part '{time_part}' in '{time_string}'")
+
+    if target is None:
+        raise ValueError(f"Could not parse: '{time_string}'")
 
     return target
 
-    
 def parse_args(args: List[str]):
     """
     Parses command-line arguments into structured components:
@@ -196,53 +194,60 @@ def _ensure_tag_exists(tag: str):
             
         cf.save_config(doc)
 
-def parse_recur_string(recur_str: str) -> dict:
+def create_recur_schedule(recur_str: str) -> dict:
     """
-    Parses recurrence input like '1w m/w/f' into structured recurrence.
+    Interactively walks user through recurrence schedule creation.
     Example returns:
     { "interval": 1, "unit": "week", "days_of_week": [0,2,4] }
     """
+    unit_map = {"d": "day", "w": "week", "m": "month", "y": "year"}
+    
+    while True:
+        console.print("[cyan] Enter the interval to recur at. If you need specific weekdays, choose 'week'.")
+        unit_input = typer.prompt("🗓️([d]ay, [w]eek, [m]onth, [y]ear)").lower().strip()
+        if unit_input in unit_map:
+            unit_full = unit_map[unit_input]
+            break
+        console.print("[red]Invalid unit. Enter d, w, m, or y.[/red]")
 
-    parts = recur_str.split()
-    if not parts:
-        return None
+   
+    while True:
+        interval = typer.prompt("🔁 Enter recurrence interval number (e.g., Every # [unit from last response.])")
+        if interval.isdigit() and int(interval) > 0:
+            interval = int(interval)
+            break
+        console.print("[red]Please enter a positive integer for interval.[/red]")
 
-    interval_part = parts[0]
-    days_part = parts[1] if len(parts) > 1 else None
-
-    # Interval part: number + unit
-    interval_match = re.match(r"(\d+)([dwmy])", interval_part)
-    if not interval_match:
-        return None
-
-    number, unit = interval_match.groups()
-    unit_map = {
-        "d": "day",
-        "w": "week",
-        "m": "month",
-        "y": "year",
+   
+    recur_dict = {
+        "interval": interval,
+        "unit": unit_full
     }
-    unit_full = unit_map.get(unit, None)
 
-    if not unit_full:
-        return None
-
-    # Days part: m/w/f
-    days_lookup = {
-        "m": 0, "t": 1, "w": 2, "th": 3, "f": 4, "s": 5, "su": 6
-    }
-    days_of_week = []
-    if days_part:
-        for day_code in days_part.split("/"):
-            day_code = day_code.lower()
-            if day_code in days_lookup:
+    # Step 3 (optional): Days of week for weekly interval
+    if unit_full == "week":
+        days_lookup = {"m": 0, "t": 1, "w": 2, "th": 3, "f": 4, "s": 5, "su": 6}
+        console.print("📅 Specify days of the week for recurrence (e.g., m/t/w/th/f/s/su). Leave empty for the same weekday as today.")
+        
+        while True:
+            days_input = typer.prompt("Days of week (separate with /)").lower().strip()
+            if not days_input:
+                recur_dict["days_of_week"] = [datetime.now().weekday()]  # default to today's weekday
+                break
+            day_parts = days_input.split("/")
+            valid = True
+            days_of_week = []
+            for day_code in day_parts:
+                if day_code not in days_lookup:
+                    valid = False
+                    console.print(f"[red]Invalid weekday '{day_code}'. Try again.[/red]")
+                    break
                 days_of_week.append(days_lookup[day_code])
-
-    return {
-        "interval": int(number),
-        "unit": unit_full,
-        "days_of_week": days_of_week
-    }
+            if valid:
+                recur_dict["days_of_week"] = days_of_week
+                break
+    print(recur_dict)
+    return recur_dict
 
 def safe_format_notes(notes_raw):
     if isinstance(notes_raw, list):
