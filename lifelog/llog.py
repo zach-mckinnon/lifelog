@@ -107,8 +107,10 @@ def help_command():
         "[bold magenta]List[/bold magenta]: Show all your current tasks (try adding [mono]--help[/mono] for sorting and filtering!)\n"
         "[bold yellow]Modify[/bold yellow]: Change details of a task using its [italic]ID[/italic] (e.g., [mono]llog task modify 2 --due tomorrow[/mono])\n"
         "[bold red]Delete[/bold red]: Remove a task using its [italic]ID[/italic] (e.g., [mono]llog task delete 1[/mono])\n"
-        "[bold orange]Stop[/bold orange]: Pause the task you are currently working on\n"
-        "[bold purple]Done[/bold purple]: Mark a task as finished using its [italic]ID[/italic] (e.g., [mono]llog task done 4[/mono])\n"
+        "[bold purple]Stop[/bold purple]: Pause the task you are currently working on\n"
+        "[bold green]Done[/bold green]: Mark a task as finished using its [italic]ID[/italic] (e.g., [mono]llog task done 4[/mono])\n"
+        "[bold cyan]Agenda[/bold cyan]: Show the top three high priority tasks and a calendar view [italic]ID[/italic] (e.g., [mono]llog task agenda[/mono])\n"
+        "[bold yellow]Burndown[/bold yellow]: Show a burndown chart of the past 3 days and projected 2 days. (e.g., [mono]llog task burndown[/mono])\n"
     )
 
     console.print(table)

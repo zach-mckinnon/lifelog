@@ -16,6 +16,7 @@ dependencies = [
     "pandas",
     "toml",
     "plotille",
+    "plotext",
     "pywin32; sys_platform == 'win32'" ,
 ]
 requires-python = ">=3.8"

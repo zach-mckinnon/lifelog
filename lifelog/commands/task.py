@@ -637,7 +637,7 @@ def stop(
         json.dump(data, f, indent=2)
 
     console.print(
-        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task["id"]}][/bold blue]: {task['title']} — Duration: [cyan] {round(duration, 2)} [/cyan] minutes")
+        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task['id']}][/bold blue]: {task['title']} — Duration: [cyan] {round(duration, 2)} [/cyan] minutes")
 
 
 # Set a task to completed.
@@ -732,9 +732,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 
     # ─── User feedback ───────────────────────────────────────────────────────
     console.print(
-        f"[yellow]Task Complete! [/yellow] task [bold blue][{id}][/bold blue]: "
-        f"{task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes"
-    )
+        f"[green]Task Complete! [/green]task[bold blue]{task['title']}[/bold blue]")
     console.print(get_feedback_saying("task_done"))
 
 
