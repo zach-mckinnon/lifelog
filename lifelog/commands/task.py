@@ -637,7 +637,7 @@ def stop(
         json.dump(data, f, indent=2)
 
     console.print(
-        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task["id"]}][/bold blue]: {task['title']} — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
+        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task["id"]}][/bold blue]: {task['title']} — Duration: [cyan] {round(duration, 2)} [/cyan] minutes")
 
 
 # Set a task to completed.

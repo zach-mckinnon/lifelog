@@ -218,7 +218,7 @@ def create_recur_schedule(recur_str: str) -> dict:
 
     while True:
         console.print(
-            "[cyan] Enter the interval to recur at. If you need specific weekdays, choose 'week'.")
+            "[cyan] Enter the interval to recur at. If you need specific weekdays, choose 'week'.[/cyan]")
         unit_input = typer.prompt(
             "🗓️([d]ay, [w]eek, [m]onth, [y]ear)").lower().strip()
         if unit_input in unit_map:
