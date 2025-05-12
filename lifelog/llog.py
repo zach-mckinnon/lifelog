@@ -210,11 +210,13 @@ def init():
         }
         doc["cron"] = cron_section
         cf.save_config(doc)
-        apply_scheduled_jobs()
+
         console.print(
             "[green]✅ Recurrence system initialized. Auto-recur will run nightly.[/green]")
     else:
-        console.print("[yellow]⚡ Auto-recur schedule already exists.[/yellow]")
+        apply_scheduled_jobs()
+        console.print(
+            "[yellow]⚡ Auto-recur schedule already exists... applying jobs.[/yellow]")
 
     get_user_location()
 
