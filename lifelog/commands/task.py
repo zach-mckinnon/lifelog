@@ -1040,6 +1040,7 @@ def create_due_alert(task):
         "schedule": cron_time,
         "command": f"notify-send '⏰ Reminder: Task [{task['id']}] {task['title']} is due soon!'"
     }
+
     doc["cron"] = cron_section
     save_config(doc)
     apply_scheduled_jobs()

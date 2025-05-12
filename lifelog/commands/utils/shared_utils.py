@@ -12,6 +12,7 @@ from dateutil.relativedelta import relativedelta
 
 import re
 from typing import List
+import pandas as pd
 from rich.console import Console, Group
 import typer
 import lifelog.config.config_manager as cf
@@ -276,3 +277,25 @@ def safe_format_notes(notes_raw):
         return notes_raw
     else:
         return "-"
+
+
+def filter_entries_for_current_period(entries, period: str):
+    now = datetime.now()
+    df = pd.DataFrame(entries)
+    if df.empty:
+        return df
+
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    if period == "day":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start = now - timedelta(days=now.weekday())
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        # If unknown period, return all entries
+        return df
+
+    return df[df['timestamp'] >= start]

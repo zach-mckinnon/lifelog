@@ -5,6 +5,8 @@ from typing import Dict, Any
 from rich.console import Console
 from rich.panel import Panel
 from datetime import datetime
+
+from lifelog.commands.utils.shared_utils import filter_entries_for_current_period
 app = typer.Typer()
 console = Console()
 
@@ -169,6 +171,17 @@ def calculate_goal_progress(tracker: Dict[str, Any]) -> Dict[str, Any]:
     # assume first goal if list
     goal = goals if isinstance(goals, dict) else goals[0]
     goal_kind = goal.get("kind")
+    period = goal.get("period", None)
+
+    # ✅ Apply period filter if exists
+    if period:
+        df = filter_entries_for_current_period(entries, period)
+        entries = df.to_dict('records')
+
+    # After filtering, still check if empty
+    if not entries:
+        return {"progress": 0, "status": f"No entries yet for this {period} period."}
+
     progress = {}
 
     now = datetime.now()
