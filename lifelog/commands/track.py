@@ -336,9 +336,9 @@ def list():
         expand=True,
     )
 
-    table.add_column("ID", justify="right", width=2)
+    # table.add_column("ID", justify="right", width=2)
     table.add_column("Title", overflow="ellipsis", min_width=8)
-    table.add_column("Type", overflow="ellipsis", width=6)
+    # table.add_column("Type", overflow="ellipsis", width=6)
     table.add_column("Cat", overflow="ellipsis", width=5)
     table.add_column("Goal", overflow="ellipsis", min_width=10)
     table.add_column("Progress", overflow="ellipsis", min_width=10)
