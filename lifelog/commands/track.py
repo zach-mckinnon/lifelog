@@ -386,11 +386,7 @@ def list():
         table.add_row(
             id,
             title,
-            type_,
             category,
-            tags,
-            notes,
-            created,
             goal_str,
             progress_display
         )
