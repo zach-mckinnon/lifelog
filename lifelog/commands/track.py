@@ -328,22 +328,20 @@ def list():
 
     # Create the table
     table = Table(
-        title="📈 Your Trackers",
-        header_style="bold magenta",
-        box=box.ROUNDED,
-        show_lines=True,
+        show_header=True,
+        box=None,
+        pad_edge=False,
+        collapse_padding=True,
+        padding=(0, 1),
+        expand=True,
     )
 
-    table.add_column("ID", justify="right")
-    table.add_column("Title")
-    table.add_column("Type")
-    table.add_column("Category")
-    table.add_column("Tags", overflow="fold")
-    table.add_column("Notes", overflow="fold")
-    table.add_column("Created")
-    table.add_column("Goal", overflow="fold")
-    table.add_column("Progress", overflow="fold")
-
+    table.add_column("ID", justify="right", width=2)
+    table.add_column("Title", overflow="ellipsis", min_width=8)
+    table.add_column("Type", overflow="ellipsis", width=6)
+    table.add_column("Cat", overflow="ellipsis", width=5)
+    table.add_column("Goal", overflow="ellipsis", min_width=10)
+    table.add_column("Progress", overflow="ellipsis", min_width=10)
     # Sort by ID ascending
     trackers = sorted(trackers, key=lambda t: t.get("id", 0))
 
