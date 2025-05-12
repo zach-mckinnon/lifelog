@@ -346,9 +346,7 @@ def list():
     trackers = sorted(trackers, key=lambda t: t.get("id", 0))
 
     for t in trackers:
-        id = str(t.get("id", "-"))
         title = t.get("title", "-")
-        type_ = t.get("type", "-")
         category = t.get("category", "-")
 
         tags_raw = t.get("tags", [])
@@ -356,15 +354,6 @@ def list():
 
         notes_raw = t.get("notes", [])
         notes = safe_format_notes(notes_raw)
-
-        created_raw = t.get("created")
-        created = "-"
-        if created_raw:
-            try:
-                created_dt = datetime.fromisoformat(created_raw)
-                created = created_dt.strftime("%m/%d/%y")
-            except Exception:
-                created = created_raw  # fallback
 
         # Always prepare goal_str and progress_display
         goals = t.get("goals", [])
@@ -384,7 +373,6 @@ def list():
 
         # Always add a row, even if goal or report failed
         table.add_row(
-            id,
             title,
             category,
             goal_str,
