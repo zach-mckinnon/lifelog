@@ -147,6 +147,9 @@ def init():
     Initialize default data files and starter entries.
     """
     console.print("[bold green]🛠 Initializing Lifelog...[/bold green]")
+    import shutil
+
+    llog_path = shutil.which("llog") or "/usr/local/bin/llog"
 
     global TRACK_FILE, TIME_FILE, TASK_FILE, FC_FILE, FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
     TRACK_FILE = cf.get_track_file()
@@ -202,12 +205,11 @@ def init():
     cron_section = doc.get("cron", table())
     if "recur_auto" not in cron_section:
         cron_section["recur_auto"] = {
-            "schedule": "0 0 * * *",
-            "command": "llog task auto_recur"
+            "schedule": "0 4 * * *",
+            "command": f"{llog_path} task auto_recur"
         }
         doc["cron"] = cron_section
         cf.save_config(doc)
-        doc = cf.load_config()
         apply_scheduled_jobs()
         console.print(
             "[green]✅ Recurrence system initialized. Auto-recur will run nightly.[/green]")

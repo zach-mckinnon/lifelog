@@ -820,6 +820,7 @@ def build_calendar_panel(now: datetime, tasks: list) -> Panel:
     return Panel(cal_text, border_style="#7d00ff", expand=False)
 
 
+@app.command("auto_recur")
 def auto_recur():
     tasks = load_tasks()
     now = datetime.now()
