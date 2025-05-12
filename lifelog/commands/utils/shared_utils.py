@@ -8,6 +8,8 @@ The module uses JSON files for data storage and integrates with a cron job syste
 
 import json
 from datetime import datetime, date, time, timedelta
+from dateutil.relativedelta import relativedelta
+
 import re
 from typing import List
 from rich.console import Console, Group
@@ -121,16 +123,16 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
         target = now + timedelta(days=1)
 
     # Handle relative durations like 1d, 2w, 3m, 1h, 30min
-    elif re.fullmatch(r'(\d+[dwmyh]|(\d+min))+', base_part):
+    elif re.fullmatch(r'(\d+(y|mn|w|d|h|m))+', base_part):
         # Find all matching segments
-        units = re.findall(r'(\d+)(y|m(?!in)|w|d|h|min)', base_part)
+        units = re.findall(r'(\d+)(y|mn|w|d|h|m)', base_part)
         delta = timedelta()
         for value, unit in units:
             value = int(value)
             if unit == 'y':
-                delta += timedelta(days=365 * value)
+                delta += relativedelta(years=value)
             elif unit == 'mn':
-                delta += timedelta(days=30 * value)
+                delta = relativedelta(months=value)
             elif unit == 'w':
                 delta += timedelta(weeks=value)
             elif unit == 'd':
@@ -179,10 +181,6 @@ def parse_args(args: List[str]):
 
     tags = []
     notes = []
-
-    time_pattern = re.compile(
-        r"^(\d+y)?(\d+mn)?(\d+w)?(\d+d)?(\d+h)?(\d+m)?$"
-    )
 
     for arg in args:
         if arg.startswith("+"):
