@@ -108,12 +108,14 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
     time_part = None
     base_part = ts
     target = None
+    is_time_only = False
 
     # Handle "T" separator (e.g. 1dT18:00 or 4/5T17:00)
     if 'T' in ts:
         base_part, time_part = ts.split('T', 1)
     elif re.match(r'^\d{1,2}:\d{2}$', ts):
         base_part, time_part = '', ts
+        is_time_only = True
 
     # Handle keyword dates
     if base_part in ('today', ''):
@@ -168,6 +170,15 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
             raise ValueError(
                 f"Invalid time part '{time_part}' in '{time_string}'")
 
+    if is_time_only:
+        if future:
+            # if they want the next occurrence but we ended up in the past…
+            if target < now:
+                target = target + timedelta(days=1)
+        else:
+            # if they want the most recent but we ended up in the future…
+            if target > now:
+                target = target - timedelta(days=1)
     if target is None:
         raise ValueError(f"Could not parse: '{time_string}'")
 
