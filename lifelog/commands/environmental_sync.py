@@ -1,21 +1,14 @@
-# # lifelog/commands/report.py
-'''
-Lifelog Report Generation Module
-This module provides functionality to generate various reports based on the user's data.
-It includes features for generating daily, weekly, and monthly reports, as well as custom date range reports.
-The module uses JSON files for data storage and integrates with a cron job system for scheduling report generation.
-'''
+# lifelog/commands/environmental_sync.py
 
-
+import json
 from lifelog.commands.utils.environmental import (
     fetch_weather_data,
     fetch_air_quality_data,
     fetch_moon_data,
     fetch_satellite_radiation_data,
 )
+from lifelog.commands.utils.db import environment_repository
 import lifelog.config.config_manager as cf
-from pathlib import Path
-import json
 from rich import print
 import typer
 
@@ -34,23 +27,6 @@ def sync_all():
     print("[green]✅ Synced all environment data.[/green]")
 
 
-def save_env_data(section, data):
-    ENV_DATA_FILE = cf.get_env_data_file()
-    if not ENV_DATA_FILE.exists():
-        ENV_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-        json.dump({}, open(ENV_DATA_FILE, "w"))
-
-    with open(ENV_DATA_FILE, "r") as f:
-        existing = json.load(f)
-
-    existing[section] = data
-
-    with open(ENV_DATA_FILE, "w") as f:
-        json.dump(existing, f, indent=2)
-
-    print(f"[green]✅ Saved {section} data to environment.json[/green]")
-
-
 def weather():
     cfg = cf.load_config()
     location = cfg.get("location", {})
@@ -60,7 +36,8 @@ def weather():
         print("[red]❌ Latitude/Longitude not set in config.[/red]")
         return
     data = fetch_weather_data(lat, lon)
-    save_env_data("weather", data)
+    environment_repository.save_environment_data("weather", data)
+    print(f"[green]✅ Weather data saved.[/green]")
 
 
 def air():
@@ -72,7 +49,8 @@ def air():
         print("[red]❌ Latitude/Longitude not set in config.[/red]")
         return
     data = fetch_air_quality_data(lat, lon)
-    save_env_data("air_quality", data)
+    environment_repository.save_environment_data("air_quality", data)
+    print(f"[green]✅ Air quality data saved.[/green]")
 
 
 def moon():
@@ -85,7 +63,8 @@ def moon():
         print("[red]❌ OpenWeatherMap API key missing in config.[/red]")
         return
     data = fetch_moon_data(lat, lon, key)
-    save_env_data("moon", data)
+    environment_repository.save_environment_data("moon", data)
+    print(f"[green]✅ Moon data saved.[/green]")
 
 
 def satellite():
@@ -97,4 +76,21 @@ def satellite():
         print("[red]❌ Latitude/Longitude not set in config.[/red]")
         return
     data = fetch_satellite_radiation_data(lat, lon)
-    save_env_data("satellite", data)
+    environment_repository.save_environment_data("satellite", data)
+    print(f"[green]✅ Satellite data saved.[/green]")
+
+
+@app.command("latest")
+def latest(section: str = typer.Argument(..., help="Section (weather, air_quality, moon, satellite)")):
+    """
+    Show the latest fetched environment data for a section.
+    """
+    try:
+        data = environment_repository.get_latest_environment_data(section)
+        if data:
+            print(
+                f"[green]Latest {section} data:[/green]\n{json.dumps(data, indent=2)}")
+        else:
+            print(f"[yellow]No data found for {section}.[/yellow]")
+    except Exception as e:
+        print(f"[red]❌ Failed to fetch latest data: {e}[/red]")

@@ -12,6 +12,7 @@ from typer import prompt
 from datetime import datetime
 import json
 
+from lifelog.commands.utils.db import track_repository
 from lifelog.commands.report import generate_goal_report
 from lifelog.commands.utils.shared_utils import parse_args, safe_format_notes
 import lifelog.config.config_manager as cf
@@ -40,23 +41,23 @@ class TrackerType(str, Enum):
 
 
 @app.command(
-    help="Add a new metric definition."
+    help="Add a new tracker definition."
 )
 def add(
     title: str = typer.Argument(...,
-                                help="The title of the activity you're tracking."),
+                                help="The title of the metric you're tracking."),
     category: Optional[str] = category_option,
-    type: TrackerType = typer.Option(..., "-t", "--type",
-                                     help="The data type (int, float, bool, str)."),
+    type: str = typer.Option(..., "-t", "--type",
+                             help="The data type (int, float, bool, str)."),
     args: Optional[List[str]] = typer.Argument(
         None, help="Optional +tags and notes."),
 ):
     '''
-    Add a new metric definition to the tracker.
+    Add a new tracker definition to the database.
     '''
     now = datetime.now()
     try:
-        if args != None:
+        if args:
             tags, notes = parse_args(args)
         else:
             tags, notes = [], []
@@ -64,61 +65,54 @@ def add(
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
 
-    if not title:
-        raise ValueError(
-            "Please ensure you have a title! How else will you know what to do??")
-
-    trackers = load_trackers()
-
-    for tracker in trackers:
+    # Check if tracker already exists by title
+    existing_trackers = track_repository.get_all_trackers()
+    for tracker in existing_trackers:
         if tracker.get("title") == title:
-            typer.echo(
-                f"Looks like a tracker called '{title}' already exists! Would you like to try a different name or update the existing one?")
+            console.print(
+                f"[red]⚠️ Tracker '{title}' already exists.[/red] Use a different name or modify the existing one.")
             raise typer.Exit(code=1)
 
+    # Validate type
     valid_types = ["int", "float", "bool", "str"]
     if type not in valid_types:
-        typer.echo(
-            f"Invalid type: '{type}'. Type must be one of these types: {', '.join(valid_types)}.")
+        console.print(
+            f"[red]Invalid type '{type}'. Must be one of: {', '.join(valid_types)}.[/red]")
         raise typer.Exit(code=1)
 
+    # Category check (optional)
     doc = cf.load_config()
     existing_categories = cf.get_config_section("categories").keys()
-
-    if category not in existing_categories and category != None:
+    if category and category not in existing_categories:
         console.print(f"[yellow]⚠️ Category '{category}' not found.[/yellow]")
         if Confirm.ask(f"[yellow]Would you like to create it now?[/yellow]"):
-            try:
-                doc.setdefault("categories", {})
-                doc["categories"][category] = category
-                cf.save_config(doc)
-                console.print(
-                    f"[green]✅ Category '{category}' added to your config.[/green]")
-            except Exception as e:
-                console.print(
-                    f"[bold red]Failed to create category: {e}[/bold red]")
-                raise typer.Exit(code=1)
+            doc.setdefault("categories", {})
+            doc["categories"][category] = category
+            cf.save_config(doc)
+            console.print(
+                f"[green]✅ Category '{category}' created.[/green]")
 
+    # Goal setup
     if Confirm.ask("Would you like to add a goal to this tracker?"):
         goal = create_goal_interactive(type)
     else:
         goal = None
 
-    # build your definition
-    tracker_def = {
-        "id": next_id(trackers),
-        "title": title,
-        "type": type.value,
-        "category": category,
-        "tags": tags if tags else [],
-        "notes": notes if notes else [],
-        "created": now.isoformat(),
-        "goals": [goal] if goal else [],
-    }
+    # ✅ Directly insert using your new SQL repo method
+    try:
+        track_repository.add_tracker(
+            title=title,
+            type=type,
+            category=category,
+            created=now.isoformat(),
+            goals=[goal] if goal else None
+        )
+    except Exception as e:
+        console.print(f"[bold red]Failed to add tracker: {e}[/bold red]")
+        raise typer.Exit(code=1)
 
-    trackers.append(tracker_def)
-    save_tracker(trackers)
-    typer.echo(f"✅ Added metric '{title}' with type '{type}'")
+    console.print(
+        f"[green]✅ Added tracker '{title}' of type '{type}'.[/green]")
 
 
 @app.callback(invoke_without_command=True)
@@ -130,6 +124,7 @@ def default_track(
     Record a new value or event for a tracker if no command is given.
     """
     now = datetime.now()
+
     if ctx.invoked_subcommand:
         return
 
@@ -137,117 +132,59 @@ def default_track(
         console.print("[bold red]❌ Please provide a tracker title.[/bold red]")
         raise typer.Exit(code=1)
 
-     # SAFETY: check if user accidentally typed a real command like "add"
+    # SAFETY: check if user accidentally typed a real command like "add"
     command_names = ctx.command.list_commands(ctx)
     first = title_and_value[0].lower()
 
     if first in command_names:
         command = ctx.command.get_command(ctx, first)
         remaining_args = title_and_value[1:]
+        ctx.invoke(command, *remaining_args)
+        raise typer.Exit()
 
-        if first == "add":
-            if len(remaining_args) < 2:
-                console.print(
-                    "[bold red]❌ 'add' command needs at least a title and --type.[/bold red]")
-                raise typer.Exit()
-
-            # Parse 'walk' -t float
-            title = remaining_args[0]
-            opts = remaining_args[1:]
-
-            # manual parsing
-            opt_args = {}
-            i = 0
-            while i < len(opts):
-                if opts[i] in ("-t", "--type"):
-                    opt_args["type"] = opts[i+1]
-                    i += 2
-                elif opts[i] in ("-c", "--cat"):
-                    opt_args["category"] = opts[i+1]
-                    i += 2
-                else:
-                    # treat extras as 'args'
-                    opt_args.setdefault("args", []).append(opts[i])
-                    i += 1
-
-            ctx.invoke(command, title=title, **opt_args)
-            raise typer.Exit()
-
-        elif first == "modify":
-            if len(remaining_args) < 2:
-                console.print(
-                    "[bold red]❌ 'modify' command needs at least an id and title.[/bold red]")
-                raise typer.Exit()
-
-            id_ = int(remaining_args[0])
-            title = remaining_args[1]
-            opts = remaining_args[2:]
-
-            opt_args = {}
-            i = 0
-            while i < len(opts):
-                if opts[i] in ("-c", "--cat"):
-                    opt_args["category"] = opts[i+1]
-                    i += 2
-                else:
-                    # treat extras as args (tags/notes)
-                    opt_args.setdefault("args", []).append(opts[i])
-                    i += 1
-
-            ctx.invoke(command, id=id_, title=title, **opt_args)
-            raise typer.Exit()
-
-        else:
-            ctx.invoke(command, *remaining_args)
-            raise typer.Exit()
+    # ------------------------------
+    # 🆕 SQL-Based recording starts here
+    # ------------------------------
 
     title = title_and_value[0]
-    value = None
-    if len(title_and_value) > 1:
-        try:
-            value = float(title_and_value[1])
-        except ValueError:
-            value = title_and_value[1]  # maybe a string for STR type trackers
+    value_input = title_and_value[1] if len(title_and_value) > 1 else None
 
-    trackers = load_trackers()
-
-    tracker = next(
-        (t for t in trackers if t["title"].lower() == title.lower()), None)
-
+    # Try to find the tracker by title
+    tracker = track_repository.get_tracker_by_title(title)
     if not tracker:
         console.print(
-            f"[bold red]🔍 We couldn't find a tracker called '{title}'. Would you like to create it? Use track add to create a new tracker![/bold red]")
+            f"[bold red]🔍 Tracker '{title}' not found.[/bold red]\nUse '[cyan]track add \"{title}\" -t float[/cyan]' to create it.")
         raise typer.Exit(code=1)
 
-    goals = tracker.get("goals", [])
+    # Validate and parse value
+    try:
+        validated_value = validate_value_against_tracker(tracker, value_input)
+    except Exception as e:
+        console.print(f"[bold red]❌ Invalid value: {e}[/bold red]")
+        raise typer.Exit(code=1)
 
-    value = validate_value_against_tracker(tracker, value)
-    # -------- Record the entry --------
-    entry = {
-        "timestamp": now.isoformat(),
-        "value": value
-    }
+    # ✅ Insert entry into SQL
+    try:
+        track_repository.add_entry(
+            tracker_id=tracker["id"], timestamp=now.isoformat(), value=validated_value)
+    except Exception as e:
+        console.print(f"[bold red]Failed to log entry: {e}[/bold red]")
+        raise typer.Exit(code=1)
 
-    tracker.setdefault("entries", []).append(entry)
-
-    save_tracker(trackers)
     console.print(
-        f"[green]✅ Recorded value for '{title}'![/green] ➡️ [cyan]{value}[/cyan] at {entry['timestamp']}")
+        f"[green]✅ Recorded value for '{title}' ➡️ {validated_value} at {now.isoformat()}[/green]")
 
-    # -------- If a goal exists, generate goal report --------
+    # 🟢 Goal reporting (optional)
+    goals = tracker.get("goals", [])
     if goals:
-        goal = goals[0]
-
+        goal = goals[0]  # currently supports one goal only
+        # You will need to ensure this works with SQL data now
         report = generate_goal_report(tracker)
-
         console.print()
         console.rule("[bold blue]🎯 Goal Progress[/bold blue]")
-
         goal_title = goal.get("title", tracker["title"])
-
         for line in format_goal_display(goal_title, report):
             console.print(line)
-
     else:
         console.print("[italic]No active goal progress to show yet.[/italic]")
 
@@ -256,77 +193,80 @@ def default_track(
 def modify(
     id: int = typer.Argument(..., help="Tracker ID to modify"),
     title: str = typer.Argument(...,
-                                help="The title of the activity you're tracking."),
+                                help="The new title of the activity you're tracking."),
     category: Optional[str] = category_option,
     args: Optional[List[str]] = typer.Argument(
         None, help="Optional +tags and notes."),
 ):
     """
-    Modify an existing tracker: only title, category, tags, and notes.
-    This is a safe modification command.
-    Type, goal, and other structure cannot be modified.
+    Modify an existing tracker (title, category, tags, notes only).
+    Type, goal, and structure are immutable.
     """
     try:
-        if args != None:
-            tags, notes = parse_args(args)
-        else:
-            tags, notes = [], []
+        tags, notes = parse_args(args) if args else ([], [])
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
 
-    trackers = load_trackers()
-
-    tracker = next((t for t in trackers if t.get("id") == id), None)
-
+    # Fetch tracker from SQL
+    tracker = track_repository.get_tracker_by_id(id)
     if not tracker:
         console.print(
             f"[bold red]❌ Tracker with ID {id} not found.[/bold red]")
         raise typer.Exit(code=1)
 
-    # ---- Apply safe modifications only ----
-    changes_made = False
-
+    # Prepare changes
+    updates = {}
     if title and title != tracker.get("title"):
-        tracker["title"] = title
-        changes_made = True
-
+        updates["title"] = title
     if category and category != tracker.get("category"):
-        tracker["category"] = category
-        changes_made = True
-
+        updates["category"] = category
     if tags:
-        current_tags = tracker.get("tags", [])
-        tracker["tags"] = current_tags + tags
+        # append to existing tags or start fresh
+        current_tags = tracker.get("tags") or ""
+        merged_tags = ",".join(filter(None, [current_tags, *tags]))
+        updates["tags"] = merged_tags
     if notes:
-        current_notes = tracker.get("notes", [])
-        tracker["notes"] = current_notes.append(notes)
+        current_notes = tracker.get("notes") or ""
+        merged_notes = ",".join(filter(None, [current_notes, *notes]))
+        updates["notes"] = merged_notes
 
-    if not changes_made:
-        console.print(
-            "[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
+    if not updates:
+        console.print("[yellow]⚠️ No changes were made.[/yellow]")
         raise typer.Exit(code=0)
 
-    # Save
-    save_tracker(trackers)
+    # Apply updates
+    try:
+        track_repository.update_tracker(id, updates)
+    except Exception as e:
+        console.print(f"[bold red]❌ Failed to update tracker: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
     console.print(
         f"[green]✅ Tracker [bold]{id}[/bold] updated successfully.[/green]")
 
 
 @app.command("list")
-def list():
+def list_trackers(
+    title_contains: Optional[str] = typer.Option(
+        None, "--title-contains", "-tc", help="Filter by title containing text."),
+    category: Optional[str] = typer.Option(
+        None, "--category", "-c", help="Filter by category."),
+):
     """
-    List all defined trackers with details.
+    List trackers with optional filtering by title or category.
     """
-
-    trackers = load_trackers()
+    # Use SQL query with filters
+    trackers = track_repository.query_trackers(
+        title_contains=title_contains,
+        category=category
+    )
 
     if not trackers:
         console.print(
-            "[italic]No trackers found. Add one with 'llog track add'![/italic]")
+            "[italic]No trackers found. Use 'llog track add' to create one.[/italic]")
         return
 
-    # Create the table
     table = Table(
         show_header=True,
         box=None,
@@ -335,35 +275,38 @@ def list():
         padding=(0, 1),
         expand=True,
     )
-
-    # table.add_column("ID", justify="right", width=2)
+    table.add_column("ID", justify="right", width=4)
     table.add_column("Title", overflow="ellipsis", min_width=8)
-    # table.add_column("Type", overflow="ellipsis", width=6)
-    table.add_column("Cat", overflow="ellipsis", width=5)
+    table.add_column("Cat", overflow="ellipsis", width=8)
     table.add_column("Goal", overflow="ellipsis", min_width=10)
     table.add_column("Progress", overflow="ellipsis", min_width=10)
-    # Sort by ID ascending
-    trackers = sorted(trackers, key=lambda t: t.get("id", 0))
 
     for t in trackers:
+        tracker_id = str(t.get("id", "-"))
         title = t.get("title", "-")
-        category = t.get("category", "-")
+        category_str = t.get("category", "-")
 
-        tags_raw = t.get("tags", [])
-        tags = ", ".join(tags_raw) if tags_raw else "-"
+        goals_raw = t.get("goals")
+        try:
+            goals = json.loads(goals_raw) if goals_raw else []
+        except Exception as e:
+            goals = []
+            console.print(
+                f"[yellow]⚠️ Failed to parse goals for {title}: {e}[/yellow]")
 
-        notes_raw = t.get("notes", [])
-        notes = safe_format_notes(notes_raw)
-
-        # Always prepare goal_str and progress_display
-        goals = t.get("goals", [])
         goal_str = "-"
         progress_display = "-"
 
         if goals:
             goal_title = goals[0].get("title", title)
             try:
-                report = generate_goal_report(t)
+                report = generate_goal_report({
+                    "id": t["id"],
+                    "title": title,
+                    "type": t["type"],
+                    "category": category_str,
+                    "goals": goals
+                })
                 goal_str = goal_title
                 progress_display = "\n".join(
                     format_goal_display(goal_title, report))
@@ -371,19 +314,42 @@ def list():
                 console.print(
                     f"[yellow]⚠️ Could not generate report for {title}: {e}[/yellow]")
 
-        # Always add a row, even if goal or report failed
-        table.add_row(
-            title,
-            category,
-            goal_str,
-            progress_display
-        )
+        table.add_row(tracker_id, title, category_str,
+                      goal_str, progress_display)
 
     console.print(table)
 
 
-def next_id(trackers):
-    return max([t.get("id", 0) for t in trackers] + [0]) + 1
+@app.command("delete")
+def delete(
+    id: int = typer.Argument(..., help="Tracker ID to delete"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Skip confirmation prompt.")
+):
+    """
+    Delete a tracker and all its entries.
+    """
+    tracker = track_repository.get_tracker_by_id(id)
+    if not tracker:
+        console.print(
+            f"[bold red]❌ Tracker with ID {id} not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if not force:
+        console.print(
+            f"[yellow]⚠️ This will permanently delete tracker '{tracker['title']}' and all its entries.[/yellow]")
+        if not Confirm.ask("Are you sure?"):
+            console.print("[cyan]Deletion cancelled.[/cyan]")
+            raise typer.Exit(code=0)
+
+    try:
+        track_repository.delete_tracker(id)
+    except Exception as e:
+        console.print(f"[bold red]❌ Failed to delete tracker: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"[green]🗑️ Tracker '{tracker['title']}' deleted successfully.[/green]")
 
 
 def format_goal_display(goal_title: str, report: dict) -> List[str]:
@@ -409,22 +375,6 @@ def format_goal_display(goal_title: str, report: dict) -> List[str]:
             lines.append(f"[yellow]{status}[/yellow]")
 
     return lines
-
-
-def load_trackers():
-    TRACK_FILE = cf.get_track_file()
-    if TRACK_FILE.exists():
-        with open(TRACK_FILE, "r") as f:
-            data = json.load(f)
-            return data.get("trackers", [])  # safely pull "trackers"
-    return []
-
-
-def save_tracker(tracker_list):
-    TRACK_FILE = cf.get_track_file()
-    TRACK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(TRACK_FILE, "w") as f:
-        json.dump({"trackers": tracker_list}, f, indent=2)
 
 
 def validate_type(title: str, value: str):

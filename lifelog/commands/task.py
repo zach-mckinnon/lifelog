@@ -1,10 +1,11 @@
 # lifelog/commands/task.py
-''' 
+'''
 Lifelog Task Management Module
-This module provides functionality to create, modify, delete, and manage tasks within the Lifelog application. 
-It includes features for tracking time spent on tasks, setting reminders, and managing task recurrence. 
+This module provides functionality to create, modify, delete, and manage tasks within the Lifelog application.
+It includes features for tracking time spent on tasks, setting reminders, and managing task recurrence.
 The module uses JSON files for data storage and integrates with a cron job system for scheduling reminders.
 '''
+from lifelog.commands.utils.db import time_repository, task_repository
 import re
 import typer
 import json
@@ -20,6 +21,8 @@ from rich.panel import Panel
 from rich.text import Text
 import calendar
 
+
+from lifelog.commands.utils.db import task_repository, time_repository
 from lifelog.commands.utils.shared_utils import parse_date_string, create_recur_schedule, safe_format_notes, serialize_task, parse_args
 from lifelog.commands.utils.feedback import get_feedback_saying
 import lifelog.config.config_manager as cf
@@ -66,6 +69,8 @@ def add(
             "[bold red]Your task must have a title! How else will you know what to do??[/bold red]")
         if Confirm.ask(f"[yellow]Add a title (no to exit)?[/yellow]"):
             title = typer.prompt("Enter a title")
+        else:
+            raise typer.Exit(code=1)
 
     doc = cf.load_config()
     existing_categories = cf.get_config_section("categories").keys()
@@ -110,247 +115,188 @@ def add(
                 due_dt = parse_date_string(due, future=True, now=now)
                 break  # valid, exit loop
             except Exception as e:
-                console.print(
-                    f"[bold red]❌ Invalid due date format: {e}[/bold red]")
-                if not Confirm.ask("[cyan]Would you like to enter a new date?[/cyan]"):
+                console.print(f"[bold red]❌ Invalid due date: {e}[/bold red]")
+                if not Confirm.ask("[cyan]Enter a new date?[/cyan]"):
                     raise typer.Exit(code=1)
                 due = typer.prompt(
                     "Enter a valid due date (e.g. 1d, tomorrow, 2025-12-31)")
+        if due_dt < now:
+            console.print("[bold red]⚠️ Due date is in the past![/bold red]")
+            if not Confirm.ask("[red]Add anyway?[/red]"):
+                raise typer.Exit(code=1)
     else:
         due_dt = None
 
-    tasks = load_tasks()
-    for task in tasks:
-        if task["title"] == title:
-            console.print(
-                f"[bold yellow]⚠️ Task with the same title already exists![/bold yellow]")
-            if Confirm.ask("[cyan]Would you like to overwrite it?[/cyan]"):
-                tasks.remove(task)
-                break
-            else:
-                console.print("[yellow]⚠️ Task not added.[/yellow]")
-                raise typer.Exit(code=1)
+    existing_task = task_repository.task_exists_with_title(title)
+    if existing_task:
+        console.print(
+            f"[bold yellow]⚠️ Task with the same title already exists![/bold yellow]")
+        if not Confirm.ask("[cyan]Would you like to overwrite it?[/cyan]"):
+            console.print("[yellow]⚠️ Task not added.[/yellow]")
+            raise typer.Exit(code=1)
+        else:
+            task_repository.delete_task(existing_task["id"])
 
-    task = {
-        "id": next_id(tasks),
-        "title": title,
-        "project": project,
-        "category": category,
-        "impt": impt,
-        "created": now.isoformat(),
-        "due": due_dt.isoformat() if isinstance(due_dt, datetime) else due_dt,
-        "status": "backlog",
-        "start": None,
-        "end": None,
-        "recur": "",
-        "tags": tags if tags else [],
-        "notes": notes if notes else [],
-        "tracking": []
-
-    }
+    # --- Recur handling ---
+    recur_interval = None
+    recur_unit = None
+    recur_days_of_week = None
+    recur_base = None
 
     if recur:
         try:
-            recur_data = create_recur_schedule(recur) if recur else None
-            task["recur_base"] = now.isoformat()
-            task["recur"] = recur_data
-
+            recur_data = create_recur_schedule("interactive")
+            recur_interval = recur_data["interval"]
+            recur_unit = recur_data["unit"]
+            if "days_of_week" in recur_data:
+                import json
+                recur_days_of_week = json.dumps(recur_data["days_of_week"])
+            recur_base = now.isoformat()
         except Exception as e:
             console.print(
-                f"[bold red]❌ Invalid recurrence format: {e}[/bold red]")
+                f"[bold red]❌ Invalid recurrence setup: {e}[/bold red]")
             raise typer.Exit(code=1)
-    else:
-        recur = None
-    if due_dt:
-        if due_dt < now:
-            console.print("[bold red]⚠️- Due date is in the past![/bold red]")
-            if not Confirm.ask("[red]Do you want to add it anyway?[/red]"):
-                raise typer.Exit(code=1)
 
-        console.print("⏰ Task has a due date!")
-        if Confirm.ask("[yellow]Would you like to set a reminder alert before it's due?[/yellow]"):
-            try:
-                create_due_alert(task)
-            except Exception as e:
-                console.print(
-                    f"[bold red]❌ Failed to create due alert: {e}[/bold red]")
-                raise typer.Exit(code=1)
+    task_data = {
+        "title": title,
+        "project": project,
+        "category": category,
+        "impt": impt if impt else 1,
+        "created": now.isoformat(),
+        "due": due_dt.isoformat() if due_dt else None,
+        "status": "backlog",
+        "start": None,
+        "end": None,
+        "priority": 0,
+        "recur_interval": recur_interval,
+        "recur_unit": recur_unit,
+        "recur_days_of_week": recur_days_of_week,
+        "recur_base": recur_base,
+    }
 
-    task["priority"] = calculate_priority(task)
-    tasks.append(task)
+    task_data["priority"] = calculate_priority(task_data)
+
+    # --- Save to DB ---
     try:
-        save_tasks(tasks)
+        task_repository.add_task(task_data)
     except Exception as e:
-        console.print(f"[bold red]❌ Failed to save tasks: {e}[/bold red]")
+        console.print(f"[bold red]❌ Failed to save task: {e}[/bold red]")
         raise typer.Exit(code=1)
 
-    saying = get_feedback_saying("task_added")
+    # --- Optional Reminder ---
+    if due_dt and Confirm.ask("[yellow]Set reminder before due?[/yellow]"):
+        try:
+            create_due_alert(task_data)
+        except Exception as e:
+            console.print(
+                f"[bold red]❌ Failed to create due alert: {e}[/bold red]")
+
+    # --- Done ---
     console.print(
-        f"[green]✅ Task added[/green]: [bold blue][{task['id']}][/bold blue] {task['title']}")
-    console.print(saying)
+        f"[green]✅ Task added[/green]: [bold blue]{title}[/bold blue]")
+    console.print(get_feedback_saying("task_added"))
 
 
 # TODO: Improve the filtering and sorting options to properly work for priority by default.
 @app.command()
 def list(
     title: Optional[str] = typer.Argument(
-        "", help="The title of the activity you're tracking."),
+        "", help="Search by task title contains"),
     category: Optional[str] = category_option,
     project: Optional[str] = project_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
     sort: Optional[str] = typer.Option(
-        "priority", help="Sort by 'priority', 'due', 'created', or 'id'."),
+        "priority", help="Sort by 'priority', 'due', 'created', 'id'."),
     status: Optional[str] = typer.Option(
         None, help="Filter by status (e.g. 'backlog', 'active', 'completed')."),
     show_completed: bool = typer.Option(
         False, help="Include completed tasks."),
     args: Optional[List[str]] = typer.Argument(
-        None, help="Optional search: Title keywords or +tags.")
+        None, help="(Ignored currently, tags filtering not yet in DB)")
 ):
     """
-    List your tasks, sorted and filtered your way! 🌈
-    Add -c to filter by category, -pr for project, etc..
-    Sort the order with priority, due, created date, or id. 
-    Include completed items in the list with --show-completed
+    List tasks using clean SQL filtering & sorting.
     """
-    tasks = load_tasks()
+    tasks = task_repository.query_tasks(
+        title_contains=title,
+        category=category,
+        project=project,
+        importance=impt,
+        due_contains=due,
+        status=status,
+        show_completed=show_completed,
+        sort=sort
+    )
 
-    # Only show active / non-completed by default
-    if not show_completed:
-        tasks = [t for t in tasks if t.get("status") != "done"]
-
-    # Parse search input
-    tags, notes = parse_args(args or [])
-
-    # Smart Sorting
-    sort_options = {
-        "priority": lambda t: t.get("priority", 0),
-        "due": lambda t: datetime.fromisoformat(t["due"]) if t.get("due") else datetime.max,
-        "created": lambda t: datetime.fromisoformat(t["created"]) if t.get("created") else datetime.max,
-        "id": lambda t: t.get("id", 0),
-        "status": lambda t: t.get("status", "backlog"),
-    }
-    if sort not in sort_options:
-        console.print(f"[bold red]❌ Invalid sort option: '{sort}'.[/bold red]")
-        console.print(
-            f"[yellow]Available options:[/yellow] {', '.join(sort_options.keys())}")
-        raise typer.Exit(code=1)
-
-    if title:
-        tasks = [t for t in tasks if title.lower() in t.get("title", "").lower()]
-
-    if tags:
-        tasks = [t for t in tasks if any(
-            tag in t.get("tags", []) for tag in tags)]
-
-    if category:
-        tasks = [t for t in tasks if t.get("category") == category]
-
-    if project:
-        tasks = [t for t in tasks if t.get("project") == project]
-
-    if impt is not None:
-        tasks = [t for t in tasks if t.get("impt") == impt]
-
-    if status:
-        tasks = [t for t in tasks if t.get("status") == status]
-
-    if tags:
-        tags_raw = [t for t in tasks if t.get("tags") == tags]
-        tags = ", ".join(tags_raw) if tags_raw else "-"
-
-    if notes:
-        notes_raw = [t for t in tasks if t.get("notes") == notes]
-        notes = safe_format_notes(notes_raw)
-
-    # 3. Apply due filter ONLY if user asked for it
-    if due:
-        tasks = [t for t in tasks if t.get("due") and due in t["due"]]
-
-    # 4. Finally, if show_completed is False, filter out "done" tasks
-    if not show_completed and not status:
-        tasks = [t for t in tasks if t.get("status") != "done"]
-
-    sort_func = sort_options.get(sort, sort_options["id"])
-
-    reverse_sort = sort == "priority"  # Only reverse if sorting by priority
-
-    tasks.sort(key=sort_func, reverse=reverse_sort)
-
-    if len(tasks) >= MAX_TASKS_DISPLAY:
-        console.print(
-            f"[dim]Showing first {MAX_TASKS_DISPLAY} tasks. Use filters to narrow down.[/dim]")
-    tasks = tasks[:MAX_TASKS_DISPLAY]
-
-    # Nothing Found
     if not tasks:
         console.print(
             "[italic blue]🧹 Nothing to do! Enjoy your day. 🌟[/italic blue]")
         return
 
-    # Build the Table
     table = Table(
-        show_header=True,          # hide header row to save space
-        box=None,                   # remove all borders
-        # no padding around table edges :contentReference[oaicite:0]{index=0}
+        show_header=True,
+        box=None,
         pad_edge=False,
-        # merge adjacent cell padding :contentReference[oaicite:1]{index=1}
         collapse_padding=True,
-        # zero vertical, 1-space horizontal padding :contentReference[oaicite:2]{index=2}
         padding=(0, 1),
-        # auto-fit to terminal width :contentReference[oaicite:3]{index=3}
         expand=True,
     )
     table.add_column("ID", justify="right", width=2)
-    table.add_column("Title", overflow="ellipsis", min_width=8,)
-    table.add_column("Priority", overflow="ellipsis", )
+    table.add_column("Title", overflow="ellipsis", min_width=8)
+    table.add_column("Priority", overflow="ellipsis")
     table.add_column("Due", style="yellow", overflow="ellipsis", width=5)
 
     for task in tasks:
-        id_str = str(task.get("id", "-"))
-        title = task.get("title", "-")
-        due_raw = task.get("due", "")
+        id_str = str(task["id"])
+        title_str = task["title"]
+        due_raw = task["due"]
         due_str = "-"
         if due_raw:
             due_dt = datetime.fromisoformat(due_raw)
             due_str = due_dt.strftime("%m/%d")
 
-        prio = str(task.get("priority", "-"))
+        prio = str(task["priority"])
         color = priority_color(prio)
         prio_text = Text(prio)
         prio_text.stylize(color)
 
-        table.add_row(id_str, title, prio_text, due_str)
+        table.add_row(id_str, title_str, prio_text, due_str)
+
     console.print(table)
 
 
 @app.command()
 def agenda():
     """
-    📅 View your calendar and tasks side-by-side!
+    📅 View your calendar and top priority tasks side-by-side.
     """
     console = Console()
     now = datetime.now()
 
-    tasks = load_tasks()
-    tasks = [t for t in tasks if t.get("status") != "done"]
-    # ─── Build Calendar Text ─────────────────────────────────────────────────
+    # --- Get all non-completed tasks sorted by priority descending ---
+    tasks = task_repository.query_tasks(
+        show_completed=False,
+        sort="priority"
+    )
+
+    if not tasks:
+        console.print(
+            "[italic blue]🧹 No upcoming tasks. Enjoy your day! 🌟[/italic blue]")
+        return
+
+    # --- Build the calendar view ---
     calendar_panel = build_calendar_panel(now, tasks)
 
-    # ─── Pick top 3 by priority desc, then due asc ───────────────────────────
+    # --- Select top 3 by priority DESC and due ASC (already sorted by SQL) ---
     def sort_key(t):
-        prio = t.get("priority", 0)
-        due_dt = (
-            datetime.fromisoformat(t["due"])
-            if t.get("due")
-            else datetime.max
-        )
-        return (-prio, due_dt)
+        due_dt = datetime.fromisoformat(
+            t["due"]) if t.get("due") else datetime.max
+        return (due_dt)
 
     top_three = sorted(tasks, key=sort_key)[:3]
 
- # ─── Build a very compact table ──────────────────────────────────────────
+    # --- Build compact task table ---
     table = Table(
         show_header=True,
         header_style="bold magenta",
@@ -366,21 +312,17 @@ def agenda():
     table.add_column("Task", overflow="ellipsis", min_width=8)
 
     for task in top_three:
-        # ID
         id_str = str(task["id"])
-        # Priority with color
         prio_raw = task.get("priority", 0)
         prio_text = Text(str(prio_raw), style=priority_color(prio_raw))
-        # Due as MM/DD
         due_str = "-"
         if task.get("due"):
             due_str = datetime.fromisoformat(task["due"]).strftime("%m/%d")
-        # Title
         title = task.get("title", "-")
 
         table.add_row(id_str, prio_text, due_str, title)
 
-    # ─── Render vertically ────────────────────────────────────────────────────
+    # --- Render views side by side ---
     console.print(calendar_panel)
     console.print(table)
 
@@ -391,161 +333,151 @@ def info(id: int):
     """
     Show full details for a task.
     """
-    tasks = load_tasks()
-    task = next((t for t in tasks if t["id"] == id), None)
+    task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
+    console.rule(f"📋 Task Details [ID {id}]")
     for key, value in task.items():
+        if value is None or str(value).strip() == "":
+            value = "-"
         console.print(f"[bold blue]{key.capitalize()}:[/bold blue] {value}")
 
-
 # Start tracking a task (Like moving to in-progress)
+
+
 @app.command()
 def start(id: int):
     """
     Start or resume a task. Only one task can be tracked at a time.
     """
     now = datetime.now()
-    tasks = load_tasks()
-    task = next((t for t in tasks if t["id"] == id), None)
-    task_title = ""
-    if task:
-        task_title = task.get("title", "Unknown Task")
+    task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
     if task["status"] not in ["backlog", "active"]:
         console.print(
-            f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (pending or active only).")
+            f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (backlog or active only).")
         raise typer.Exit(code=1)
 
-    task["status"] = "active"
-    if not task.get("start"):
-        task["start"] = now.isoformat()
-    save_tasks(tasks)
-
-    data = {}
-    TIME_FILE = cf.get_time_file()
-    if TIME_FILE.exists():
-        with open(TIME_FILE, "r") as f:
-            data = json.load(f)
-
-    if "active" in data:
+    # Check if another time log is already running
+    active_entry = time_repository.get_active_time_entry()
+    if active_entry:
         console.print(
-            f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {data['active']['title']}")
+            f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {active_entry['title']}")
         raise typer.Exit(code=1)
 
-    data["active"] = {
-        "id": task["id"],
-        "title": f"{task_title}",
-        "start": now.isoformat(),
-        "task": True
-    }
+    # Mark task as active in DB
+    task_repository.update_task(
+        id, {"status": "active", "start": now.isoformat()})
 
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    # Start time tracking linked to the task
+    time_repository.start_time_entry(
+        task["title"], task_id=id, start_time=now.isoformat())
 
     console.print(
         f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task['title']}")
 
-
 # Modify an existing task.
+
+
 @app.command()
 def modify(
     id: int = typer.Argument(..., help="The ID of the task to modify"),
-    title: str = typer.Argument(...,
-                                help="The title of the activity you're tracking."),
+    title: Optional[str] = typer.Option(None, help="New title"),
     args: Optional[List[str]] = typer.Argument(
-        None, help="Optional: New title +tags Notes..."),
+        None, help="Optional: +tags Notes..."),
     project: Optional[str] = project_option,
     category: Optional[str] = category_option,
     impt: Optional[int] = impt_option,
     due: Optional[str] = due_option,
-    recur: Optional[str] = recur_option,
+    recur: Optional[bool] = recur_option,
 ):
     """
     Modify an existing task's fields. Only provide fields you want to update.
     """
     now = datetime.now()
-    tasks = load_tasks()
-    task = next((t for t in tasks if t["id"] == id), None)
+    task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
     try:
-        if args != None:
+        if args is not None:
             tags, notes = parse_args(args)
         else:
             tags, notes = [], []
-
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
 
-    if not task:
-        console.print(f"[bold red]❌ task with ID {id} not found.[/bold red]")
-        raise typer.Exit(code=1)
-
-    # ---- Apply safe modifications only ----
-    changes_made = False
-
+    updates = {}
     if title and title != task.get("title"):
-        task["title"] = title
-        changes_made = True
-
+        updates["title"] = title
     if category and category != task.get("category"):
-        task["category"] = category
-        changes_made = True
+        updates["category"] = category
+    if project and project != task.get("project"):
+        updates["project"] = project
+    if due:
+        try:
+            parse_date_string(due)
+            updates["due"] = due
+        except Exception as e:
+            console.print(f"[bold red]❌ Invalid due date: {e}[/bold red]")
+            raise typer.Exit(code=1)
+    if impt is not None:
+        updates["importance"] = impt
 
-    if tags:
-        current_tags = task.get("tags", [])
-        task["tags"] = current_tags + tags
-    if notes:
-        current_notes = task.get("notes", [])
-        task["notes"] = current_notes.append(notes)
+    # Handle recurrence using your SQL model columns
+    if recur:
+        try:
+            recur_data = create_recur_schedule("interactive")
+            updates["recur_interval"] = recur_data["interval"]
+            updates["recur_unit"] = recur_data["unit"]
+            if "days_of_week" in recur_data:
+                import json
+                updates["recur_days_of_week"] = json.dumps(
+                    recur_data["days_of_week"])
+            updates["recur_base"] = now.isoformat()
+        except Exception as e:
+            console.print(
+                f"[bold red]❌ Recurrence setup failed: {e}[/bold red]")
+            raise typer.Exit(code=1)
 
-    if not changes_made:
+    # Recalculate priority
+    updates["priority"] = calculate_priority({**task, **updates})
+
+    if not updates:
         console.print(
             "[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
         raise typer.Exit(code=0)
 
-    if project is not None:
-        task["project"] = project
-    if category is not None:
-        task["category"] = category
-    if due is not None:
-        task["due"] = due
-    if impt is not None:
-        task["impt"] = impt
-    if recur is not None:
-        task["recur"] = recur
-        task["recur_base"] = task.get(
-            "recur_base", now.isoformat())  # Keep existing or set new
+    task_repository.update_task(id, updates)
 
-    task["priority"] = calculate_priority(task)
-
-    save_tasks(tasks)
     console.print(
         f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
 
 
-# Delete a task.
 @app.command()
 def delete(id: int):
     """
     Delete a task by ID.
     """
-    tasks = load_tasks()
-    tasks = [t for t in tasks if t["id"] != id]
-    save_tasks(tasks)
-    console.print(f"[red]🗑️ Deleted[/red] task [bold blue][{id}][/bold blue].")
+    task = task_repository.get_task_by_id(id)
+    if not task:
+        console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
+        raise typer.Exit(code=1)
 
+    task_repository.delete_task(id)
+    console.print(
+        f"[red]🗑️ Deleted[/red] task [bold blue][{id}][/bold blue]: {task['title']}")
 
 # Pause a task (Like putting back to to-do) but keep logged time and do not set to done.
+
+
 @app.command()
 def stop(
     past: Optional[str] = past_option,
@@ -556,88 +488,46 @@ def stop(
     Pause the currently active task and stop timing, without marking it done.
     """
     now = datetime.now()
-    tasks = load_tasks()
     tags, notes = parse_args(args or [])
 
-    TIME_FILE = cf.get_time_file()
-    if not TIME_FILE.exists():
-        console.print(
-            "[yellow]⚠️ Warning[/yellow]: No time tracking file found.")
-        raise typer.Exit(code=1)
-
-    with open(TIME_FILE, "r") as f:
-        data = json.load(f)
-
-    if "active" not in data:
+    # Check if active time log exists
+    active = time_repository.get_active_time_entry()
+    if not active:
         console.print(
             "[yellow]⚠️ Warning[/yellow]: No active task is being tracked.")
         raise typer.Exit(code=1)
 
-    active = data["active"]
-    if not active["task"] == True:
+    if not active.get("task_id"):
         console.print(
-            "[yellow]⚠️ Warning[/yellow]: Active task is not linked to a task.")
+            "[yellow]⚠️ Warning[/yellow]: Active log is not linked to a task.")
         raise typer.Exit(code=1)
 
-    # ─── Find linked Task ─────────────────────────────────────────────────────
-    task_id = active.get("id")   # already an integer
-    task = next((t for t in tasks if t["id"] == task_id), None)
-
+    task_id = active["task_id"]
+    task = task_repository.get_task_by_id(task_id)
     if not task:
         console.print(
             "[bold red]❌ Error[/bold red]: Task for active tracking not found.")
         raise typer.Exit(code=1)
 
-    # ─── Finalize Timing Info ─────────────────────────────────────────────────
-    start_time = datetime.fromisoformat(active["start"])
-    if past:
-        end_time = parse_date_string(past, now=now)
-    else:
-        end_time = now
-    duration = (end_time - start_time).total_seconds() / 60
+    # Stop the time log
+    end_time = parse_date_string(past, now=now) if past else now
+    time_repository.stop_active_time_entry(
+        end_time=end_time.isoformat(),
+        tags=",".join(tags) if tags else None,
+        notes=notes if notes else None
+    )
 
-    # ─── Merge tags and notes ─────────────────────────────────────────────────
-    final_tags = (active.get("tags") or []) + (tags or [])
-    final_notes = (active.get("notes") or "")
-    if notes:
-        final_notes += " " + notes
-
-    # ─── Clone Active for History Entry ───────────────────────────────────────
-    history_entry = active.copy()
-    history_entry.update({
-        "end": end_time.isoformat(),
-        "duration_minutes": round(duration, 2),
-        "tags": final_tags,
-        "notes": final_notes,
-    })
-
-    # ─── Append to Global Time History ────────────────────────────────────────
-    history = data.get("history", [])
-    history.append(history_entry)
-    data["history"] = history
-
-    data.pop("active")
-
-    # ─── Update Task Tracking Array ───────────────────────────────────────────
-    task.setdefault("tracking", [])
-    task_tracking_entry = {
-        "start": history_entry["start"],
-        "end": history_entry["end"],
-        "duration_minutes": history_entry["duration_minutes"],
-        "tags": history_entry["tags"],
-        "notes": history_entry["notes"],
+    # Update the task back to 'backlog' and optionally handle custom tracking array if still needed
+    updates = {
+        "status": "backlog"
     }
-    task["tracking"].append(task_tracking_entry)
+    task_repository.update_task(task_id, updates)
 
-    # ─── Set Task Back to Backlog ─────────────────────────────────────────────
-    task["status"] = "backlog"
-
-    save_tasks(tasks)
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    duration_minutes = (
+        end_time - datetime.fromisoformat(active["start"])).total_seconds() / 60
 
     console.print(
-        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task['id']}][/bold blue]: {task['title']} — Duration: [cyan] {round(duration, 2)} [/cyan] minutes")
+        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task['id']}][/bold blue]: {task['title']} — Duration: [cyan] {round(duration_minutes, 2)} [/cyan] minutes")
 
 
 # Set a task to completed.
@@ -646,93 +536,48 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     """
     Mark a task as completed.
     """
-    # ─── Load tasks and parse any extra tags/notes ────────────────────────────
-    tasks = load_tasks()
-    tags, notes = parse_args(args or [])
     now = datetime.now()
-    # ─── Load or initialize time‐tracking file ───────────────────────────────
-    TIME_FILE = cf.get_time_file()
-    try:
-        with open(TIME_FILE, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {"history": []}
+    tags, notes = parse_args(args or [])
 
-    # ─── If no active timer, warn & mark done, then exit early ────────────────
-    if "active" not in data:
-        console.print("[yellow]⚠️ No active timer. No new log saved.[/yellow]")
-        task = next((t for t in tasks if t["id"] == id), None)
-        if task:
-            total = sum(e["duration_minutes"]
-                        for e in task.get("tracking", []))
-            console.print(f"[cyan]Total tracked so far:[/cyan] {total:.2f}m")
-
-            # mark task done
-            task["status"] = "done"
-
-            # write time file first to clear any leftover active entry
-            with open(TIME_FILE, "w") as f:
-                json.dump(data, f, indent=2)
-
-            save_tasks(tasks)
-            console.print(f"[green]✔️ Done[/green] [{id}]: {task['title']}")
-        return
-
-    # ─── We know there is an active entry ────────────────────────────────────
-    active = data["active"]
-
-    # ─── Lookup by the stored ID, not by title ───────────────────────────────
-    task_id = active.get("id")
-    task = next((t for t in tasks if t["id"] == task_id), None)
+    # Lookup task directly from SQL
+    task = task_repository.get_task_by_id(id)
     if not task:
-        console.print(
-            "[bold red]❌ Error[/bold red]: Task for active tracking not found.")
+        console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
-    # ─── Compute duration ─────────────────────────────────────────────────────
+    # Check if there's an active time entry
+    active = time_repository.get_active_time_entry()
+    if not active:
+        console.print("[yellow]⚠️ No active timer. No new log saved.[/yellow]")
+
+        # Just mark task done directly
+        task_repository.update_task(id, {"status": "done"})
+        console.print(f"[green]✔️ Done[/green] [{id}]: {task['title']}")
+        return
+
+    # Validate active log matches the task being marked done
+    if active.get("task_id") != id:
+        console.print(
+            f"[bold red]❌ Error[/bold red]: Active log is not for task ID {id}.")
+        raise typer.Exit(code=1)
+
+    # Calculate duration
     start_time = datetime.fromisoformat(active["start"])
     end_time = parse_date_string(past, now=now) if past else now
     duration = (end_time - start_time).total_seconds() / 60
 
-    # ─── Merge any tags/notes provided at stop time ──────────────────────────
-    final_tags = (active.get("tags") or []) + (tags or [])
-    final_notes = active.get("notes", "") or ""
-    if notes:
-        final_notes += " " + notes
+    # Stop the active time log and update with final tags/notes
+    time_repository.stop_active_time_entry(
+        end_time=end_time.isoformat(),
+        tags=",".join(tags) if tags else None,
+        notes=notes if notes else None
+    )
 
-    # ─── Build and append the history entry ──────────────────────────────────
-    history_entry = active.copy()
-    history_entry.update({
-        "end": end_time.isoformat(),
-        "duration_minutes": round(duration, 2),
-        "tags": final_tags,
-        "notes": final_notes,
-    })
-    data.setdefault("history", []).append(history_entry)
+    # Update task to done status
+    task_repository.update_task(id, {"status": "done"})
 
-    # remove the active marker
-    data.pop("active", None)
-
-    # ─── Also append to the task’s own tracking array ────────────────────────
-    task.setdefault("tracking", []).append({
-        "start": history_entry["start"],
-        "end": history_entry["end"],
-        "duration_minutes": history_entry["duration_minutes"],
-        "tags": history_entry["tags"],
-        "notes": history_entry["notes"],
-    })
-
-    # ─── Finally set the task status to done ────────────────────────────────
-    task["status"] = "done"
-
-    # ─── Persist both files (time file first, then tasks) ────────────────────
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-    save_tasks(tasks)
-
-    # ─── User feedback ───────────────────────────────────────────────────────
     console.print(
-        f"[green]Task Complete! [/green]task[bold blue]{task['title']}[/bold blue]")
+        f"[green]✔️ Task Complete! [/green] task [bold blue]{task['title']}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_feedback_saying("task_done"))
 
 
@@ -742,7 +587,7 @@ def burndown(
     """
     📉 Remaining priority burndown over the next N days_of_week.
     """
-    tasks = load_tasks()
+    tasks = task_repository.get_all_tasks()
 
     now = datetime.now()
     plt.date_form(input_form='Y-m-d H:M:S', output_form='d/m/Y')
@@ -822,104 +667,105 @@ def build_calendar_panel(now: datetime, tasks: list) -> Panel:
 
 @app.command("auto_recur")
 def auto_recur():
-    tasks = load_tasks()
+    """
+    Check all recurring tasks and create new instances if due.
+    """
+    tasks = task_repository.get_all_tasks()
     now = datetime.now()
     today_weekday = now.weekday()
-    new_tasks = []
+    new_tasks_count = 0
 
     for task in tasks:
-        recur = task.get("recur") or {}
-        if not bool(recur):
-            continue
+        # Check for recurrence info
+        recur_interval = task.get("recur_interval")
+        recur_unit = task.get("recur_unit")
+        recur_base = task.get("recur_base")
+        recur_days_of_week = task.get("recur_days_of_week")
 
-        recur_base = task.get("last_created") or task.get("created")
+        if not (recur_interval and recur_unit and recur_base):
+            continue  # skip non-recurring
+
         base_dt = datetime.fromisoformat(recur_base)
+        interval = recur_interval
+        unit = recur_unit
+        days_of_week = json.loads(
+            recur_days_of_week) if recur_days_of_week else []
 
-        interval = recur.get("interval", 1)  # default 1
-        unit = recur.get("unit", "day")
-        days_of_week = recur.get("days_of_week", [])
+        should_recur = False
 
         if unit == "day":
-            days_of_week_since = (now.date() - base_dt.date()).days_of_week
-            if days_of_week_since > 0 and days_of_week_since % interval == 0:
-                new_tasks.append(clone_task(task, now))
+            days_since = (now.date() - base_dt.date()).days
+            if days_since > 0 and days_since % interval == 0:
+                should_recur = True
         elif unit == "week":
-            days_of_week_since = (now.date() - base_dt.date()).days_of_week
-            # only consider future weeks
-            if days_of_week_since > 0:
+            days_since = (now.date() - base_dt.date()).days
+            if days_since > 0:
+                weeks_since = days_since // 7
                 if days_of_week:
-                    # user specified weekdays_of_week → fire on those weeks & days_of_week
-                    weeks_since = days_of_week_since // 7
                     if weeks_since % interval == 0 and today_weekday in days_of_week:
-                        new_tasks.append(clone_task(task, now))
+                        should_recur = True
                 else:
-                    # no weekdays_of_week specified → fire every `interval` weeks
-                    # on the same weekday as the base date
-                    if days_of_week_since % (interval * 7) == 0:
-                        new_tasks.append(clone_task(task, now))
+                    if days_since % (interval * 7) == 0:
+                        should_recur = True
         elif unit == "month":
             months_since = (now.year - base_dt.year) * \
                 12 + (now.month - base_dt.month)
             if months_since % interval == 0 and now.day == base_dt.day:
-                new_tasks.append(clone_task(task, now))
-
+                should_recur = True
         elif unit == "year":
             years_since = now.year - base_dt.year
-            if (years_since > 0 and now.month == base_dt.month and now.day == base_dt.day):
-                new_tasks.append(clone_task(task, now))
+            if years_since > 0 and now.month == base_dt.month and now.day == base_dt.day:
+                should_recur = True
 
-    save_tasks(tasks + new_tasks)
-    if new_tasks:
+        if should_recur:
+            # Clone the task as a new DB row
+            new_task_data = clone_task_for_db(task, now)
+            task_repository.add_task(new_task_data)
+
+            # Update the old task's last recur date (important for tracking!)
+            task_repository.update_task(
+                task["id"], {"recur_base": now.isoformat()})
+            new_tasks_count += 1
+
+    if new_tasks_count:
         console.print(
-            f"[green]🔁 Recreated {len(new_tasks)} recurring task(s).[/green]")
+            f"[green]🔁 Recreated {new_tasks_count} recurring task(s).[/green]")
+    else:
+        console.print("[cyan]ℹ️ No recurring tasks needed today.[/cyan]")
 
 
-def clone_task(task, now):
-    new_task = task.copy()
-    new_task["id"] = next_id(load_tasks())
-    new_task["created"] = now.replace(
-        hour=0, minute=0, second=0, microsecond=0).isoformat()
-    if task.get("due"):
+def clone_task_for_db(task, now):
+    """
+    Clone task for SQL-based insertion.
+    """
+    new_due = None
+    if task.get("due") and task.get("created"):
         try:
             due_dt = datetime.fromisoformat(task["due"])
-            offset = due_dt - datetime.fromisoformat(task["created"])
-            new_due = now + offset
-            new_task["due"] = new_due.replace(microsecond=0).isoformat()
+            created_dt = datetime.fromisoformat(task["created"])
+            offset = due_dt - created_dt
+            new_due = (now + offset).replace(microsecond=0).isoformat()
         except Exception:
-            new_task["due"] = None
-    else:
-        new_task["due"] = None
+            new_due = None
 
-    new_task["status"] = "backlog"
-    new_task["start"] = None
-    new_task["end"] = None
-    new_task["last_created"] = now.isoformat()
-    new_task["priority"] = calculate_priority(new_task)
-    return new_task
+    return {
+        "title": task["title"],
+        "project": task.get("project"),
+        "category": task.get("category"),
+        "impt": task.get("impt", 1),
+        "created": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
+        "due": new_due,
+        "status": "backlog",
+        "start": None,
+        "end": None,
+        "priority": 0,
+        "recur_interval": task.get("recur_interval"),
+        "recur_unit": task.get("recur_unit"),
+        "recur_days_of_week": task.get("recur_days_of_week"),
+        "recur_base": now.isoformat(),
+    }
 
 # Load the task from the json file storing them.
-
-
-def load_tasks():
-    TASK_FILE = cf.get_task_file()
-    if TASK_FILE.exists():
-        with open(TASK_FILE, "r") as f:
-            return json.load(f)
-    return []
-
-# Save tasks to JSON
-
-
-def save_tasks(tasks):
-    TASK_FILE = cf.get_task_file()
-    TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(TASK_FILE, "w") as f:
-        json.dump(tasks, f, indent=2)
-
-
-# Get the next ID in tasks.
-def next_id(tasks):
-    return max([t.get("id", 0) for t in tasks] + [0]) + 1
 
 
 def get_due_color(due_str: str, now: datetime) -> str:
@@ -981,8 +827,8 @@ def calculate_priority(task):
     if due:
         try:
             due_date = datetime.fromisoformat(due)
-            days_of_week_left = (due_date - now).days_of_week
-            score += coeff["urgency_due"] * max(0, 1 - days_of_week_left / 10)
+            days_left = (due_date - now).days
+            score += coeff["urgency_due"] * max(0, 1 - days_left / 10)
         except:
             pass
 

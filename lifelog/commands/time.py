@@ -13,6 +13,7 @@ import json
 from rich.console import Console
 from rich.table import Table
 
+from lifelog.commands.utils.db import time_repository
 from lifelog.config.config_manager import get_time_file
 from lifelog.commands.utils.shared_options import category_option, project_option, past_option
 
@@ -47,13 +48,11 @@ def start(
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
 
-    data = load_tracking()
+    active = time_repository.get_active_time_entry()
 
-    if "active" in data:
+    if active:
         console.print(
-            f"[yellow]⏳ You're already making progress on '{data['active']['title']}' since {datetime.fromisoformat(data['active']['start'])}.[/yellow]")
-        console.print(
-            "[dim]🌱 You can stop it first if you want to switch tasks![/dim]")
+            f"[yellow]⏳ You're already making progress on '{active['title']}' since {active['start']}.[/yellow]")
         raise typer.Exit(code=1)
 
     if past:
@@ -62,18 +61,12 @@ def start(
     else:
         start = now
 
-    data["active"] = {
-        "title": title,
-        "category": category if category else "",
-        "project": project if project else "",
-        "start": start.isoformat(),
-        "end": None,
-        "duration_minutes": 0,
-        "tags": tags,
-        "notes": notes if notes else [],
-    }
-
-    save_tracking(data)
+    time_repository.start_time_entry(
+        title=title,
+        category=category,
+        project=project,
+        start_time=start.isoformat()
+    )
     console.print(
         f"[success]▶️ Great choice! You're now tracking: [bold]{title}[/bold][/success]")
     if any([category, project, tags, notes]):
@@ -92,60 +85,35 @@ def stop(
     """
     now = datetime.now()
     try:
-        if args != None:
-            tags, notes = parse_args(args)
-        else:
-            tags, notes = [], []
+        tags, notes = parse_args(args or [])
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
 
-    data = load_tracking()
+    active = time_repository.get_active_time_entry()
 
-    if "active" not in data:
+    if not active:
         console.print(
             "[yellow]⏸️ Looks like you're not actively tracking right now. Hope you got some time to rest![/yellow]")
         console.print(
             "[dim]🌟 Ready to start something new whenever you are![/dim]")
         raise typer.Exit(code=1)
 
-    active = data["active"]
+    # Calculate the end time and duration
+    end_time = parse_date_string(past, now=now) if past else now
 
-    start_time = datetime.fromisoformat(data["active"]["start"])
-    if past:
-        # If the user wants to set a past time, we need to adjust the start time
-        end_time = parse_date_string(past, future=False, now=now)
-    else:
-        end_time = now
+    # Stop the entry via repository (which calculates duration automatically)
+    time_repository.stop_active_time_entry(
+        end_time=end_time.isoformat(),
+        tags=",".join(tags) if tags else None,
+        notes=notes if notes else None
+    )
 
-    final_tags = (active.get("tags") or [])
-    if tags:
-        final_tags.append(tags)
-
-    final_notes = (active.get("notes") or [])
-    if notes:
-        final_notes.append(notes)
-
-    duration = (end_time - start_time).total_seconds() / 60  # minutes
-    title = active["title"]
-    record = active.copy()
-    record.update({
-        "end": end_time.isoformat(),
-        "duration_minutes": round(duration, 2),
-        "tags": final_tags,
-        "notes": final_notes,
-    })
-
-    history = data.get("history", [])
-    history.append(record)
-    data["history"] = history
+    duration = (
+        end_time - datetime.fromisoformat(active["start"])).total_seconds() / 60
 
     console.print(
-        f"[success]⏹️ Well done! You spent [bold]{round(duration, 2)}[/bold] minutes on [bold]{title}[/bold].[/success]")
-
-    data.pop("active")
-
-    save_tracking(data)
+        f"[success]⏹️ Well done! You spent [bold]{round(duration, 2)}[/bold] minutes on [bold]{active['title']}[/bold].[/success]")
     console.print("[dim]🌱 Every minute you invest matters. Nice work![/dim]")
 
 
@@ -154,17 +122,27 @@ def status():
     """
     Show the current active tracking session.
     """
-    data = load_tracking()
-    if "active" in data:
-        start_str = data['active']['start']
-        # ✅ parse the string into a real datetime
+    active = time_repository.get_active_time_entry()
+
+    if active:
+        start_str = active['start']
         start_dt = datetime.fromisoformat(start_str)
+
+        # Optional: show if attached to a task
+        task_info = f" [task #{active['task_id']}]" if active.get(
+            'task_id') else ""
+
+        # Duration live
+        elapsed = datetime.now() - start_dt
+        hours = elapsed.total_seconds() // 3600
+        days = hours / 24
+
+        time_str = f"{round(hours, 2)} hours ({round(days, 2)} days)" if hours > 24 else f"{round(hours, 2)} hours"
+
         console.print(
-            f"[info]Currently tracking '{data['active']['title']}' since {start_dt.strftime('%m/%d/%y %H:%M')}[/info]")
+            f"[info]Currently tracking '{active['title']}'{task_info} since {start_dt.strftime('%m/%d/%y %H:%M')} — Elapsed: {time_str}[/info]")
     else:
         console.print("[info]No active session.[/info]")
-
-# TODO: Convert time to hours/minutes/seconds if more than 24 hours, put translation of days next to it 562hrs(23.42days)
 
 
 @app.command("summary")
@@ -177,12 +155,7 @@ def time_summary(
     """
     📊 Summarize time tracked by title, category, or project.
     """
-    data = load_tracking()
-    history = data.get("history", [])
-
-    if not history:
-        console.print("[italic]No time tracking history found yet![/italic]")
-        return
+    since = None
 
     now = datetime.now()
     if period:
@@ -196,26 +169,26 @@ def time_summary(
             console.print(
                 "[bold red]Invalid period.[/bold red] Must be 'day', 'week', or 'month'.")
             raise typer.Exit(code=1)
+    else:
+        since = now - timedelta(days=365)
 
-        # Filter only records in the selected period
-        history = [h for h in history if datetime.fromisoformat(
-            h["start"]) >= since]
+    history = time_repository.get_all_time_logs(since=since)
 
+    if not history:
+        console.print("[italic]No time tracking history found yet![/italic]")
+        return
+
+    # Group by field
     totals = {}
-
-    # Group by the selected field
     for record in history:
-        key = record.get(by, "(none)")
-        if isinstance(key, list):  # Just in case, for notes/tags mistakes
+        key = record.get(by) or "(none)"
+        if isinstance(key, list):
             key = ", ".join(key)
-        if not key:
-            key = "(none)"
-        totals[key] = totals.get(key, 0) + record.get("duration_minutes", 0)
+        totals[key] = totals.get(
+            key, 0) + (record.get("duration_minutes") or 0)
 
-    # Sort by largest time spent
     sorted_totals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
 
-    # Display
     console.print(
         f"\n[bold green]🕒 Time Spent by {by.capitalize()}[/bold green]\n")
     table = Table(show_header=True, header_style="bold magenta")
@@ -223,20 +196,16 @@ def time_summary(
     table.add_column("Total Minutes", justify="right")
 
     for key, minutes in sorted_totals:
-        table.add_row(key, f"[cyan]{round(minutes, 2)}[/cyan]")
+        formatted = _format_duration(minutes)
+        table.add_row(key, f"[cyan]{formatted}[/cyan]")
 
     console.print(table)
 
 
-def load_tracking():
-    TIME_TRACK_FILE = get_time_file()
-    if TIME_TRACK_FILE.exists():
-        with open(TIME_TRACK_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def save_tracking(data):
-    TIME_TRACK_FILE = get_time_file()
-    with open(TIME_TRACK_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+def _format_duration(minutes: float) -> str:
+    if minutes >= 60:
+        hours = int(minutes // 60)
+        mins = int(minutes % 60)
+        return f"{hours} hrs {mins} min"
+    else:
+        return f"{int(minutes)} min"

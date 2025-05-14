@@ -1,9 +1,19 @@
 # lifelog/commands/report.py
+import json
 from typing import Dict, Any
 from datetime import datetime, timedelta
 import pandas as pd
 from enum import Enum
 import typer
+
+from rich.table import Table
+from rich.console import Console
+
+from lifelog.commands.utils.db import report_repository
+from lifelog.commands.utils.db import track_repository, time_repository
+from lifelog.commands.utils.reporting.insight_engine import generate_insights
+
+from lifelog.commands.utils.db import track_repository
 
 app = typer.Typer(help="Generate a report for your goal progress.")
 
@@ -25,9 +35,18 @@ class ReportType(str, Enum):
 def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
     """
     Generate a structured goal progress report for a tracker.
+    Now pulls entries from SQL, not from embedded tracker object.
     """
-    entries = tracker.get("entries", [])
-    goals = tracker.get("goals", [])
+    # 🆕 Safely parse goals from JSON string if needed
+    goals_raw = tracker.get("goals")
+    try:
+        goals = json.loads(goals_raw) if isinstance(
+            goals_raw, str) else goals_raw or []
+    except Exception:
+        goals = []
+
+    # 🆕 Load entries directly from SQL
+    entries = track_repository.get_entries_for_tracker(tracker["id"])
 
     df = pd.DataFrame(entries)
 
@@ -57,11 +76,11 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
             "metrics": {}
         }
 
-    # Assume first goal for now
+    # ✅ Use first goal for now
     goal = goals[0]
     kind = goal.get("kind")
 
-    # Dispatch to appropriate handler
+    # Dispatch handlers (these functions stay the same)
     if kind == "range":
         return _report_range(tracker, goal, df)
     if kind == "sum":
@@ -78,9 +97,9 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
         return _report_milestone(tracker, goal, df)
     if kind == "reduction":
         return _report_reduction(tracker, goal, df)
-    if kind in ("percentage", "percentage"):
+    if kind == "percentage":
         return _report_percentage(tracker, goal, df)
-    if kind in ("replacement", "replacement"):
+    if kind == "replacement":
         return _report_replacement(tracker, goal, df)
 
     return {
@@ -94,6 +113,44 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
         },
         "metrics": {}
     }
+
+
+@app.command("summary-trackers")
+def summary_trackers(since_days: int = 7):
+    df = report_repository.get_tracker_summary(since_days)
+    print_dataframe(df)
+
+
+@app.command("summary-time")
+def summary_time(since_days: int = 7):
+    df = report_repository.get_time_summary(since_days)
+    print_dataframe(df)
+
+
+@app.command("daily-tracker")
+def daily_tracker(metric_name: str, since_days: int = 7):
+    df = report_repository.get_daily_tracker_averages(metric_name, since_days)
+    print_dataframe(df)
+
+
+@app.command("insights")
+def show_insights():
+    insights = report_repository.get_correlation_insights()
+    for i, ins in enumerate(insights, 1):
+        print(f"{i}. {ins['note']} (Pearson: {ins['correlation']['pearson']})")
+
+
+def print_dataframe(df):
+    if df.empty:
+        print("[yellow]⚠️ No data found.[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold magenta")
+    for col in df.columns:
+        table.add_column(col)
+    for _, row in df.iterrows():
+        table.add_row(*[str(val) for val in row])
+    console = Console()
+    console.print(table)
 
 
 def _report_range(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:

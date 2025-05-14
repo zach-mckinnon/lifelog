@@ -12,6 +12,7 @@ from tomlkit import table
 import typer
 import requests  # type: ignore
 
+from lifelog.commands.utils.db import database_manager
 from lifelog.commands.utils import get_quotes
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs
@@ -68,7 +69,9 @@ def _ensure(ctx: typer.Context):
     """
     This runs before *any* command.
     """
+    database_manager.initialize_schema()
     ensure_initialized()
+
     # if they typed nothing at all, show help
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
@@ -147,7 +150,9 @@ def init():
     Initialize default data files and starter entries.
     """
     console.print("[bold green]🛠 Initializing Lifelog...[/bold green]")
+
     import shutil
+    database_manager.initialize_schema()
 
     llog_path = shutil.which("llog") or "/usr/local/bin/llog"
 

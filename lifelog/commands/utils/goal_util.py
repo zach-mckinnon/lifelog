@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from datetime import datetime
 
+from lifelog.commands.utils.db import track_repository
 from lifelog.commands.utils.shared_utils import filter_entries_for_current_period
 app = typer.Typer()
 console = Console()
@@ -160,7 +161,7 @@ def calculate_goal_progress(tracker: Dict[str, Any]) -> Dict[str, Any]:
     Given a tracker object, calculate its goal progress and return a summary
     including a formatted string for display.
     """
-    entries = tracker.get("entries", [])
+    entries = track_repository.get_entries_for_tracker(tracker["id"])
     if not entries:
         return {"progress": 0, "status": "This tracker is ready for your first entry! 📝"}
 

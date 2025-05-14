@@ -13,22 +13,37 @@ from datetime import datetime
 from typing import List, Dict, Any
 from scipy.stats import pearsonr, spearmanr
 import lifelog.config.config_manager as cf
+from lifelog.commands.utils.db import track_repository, time_repository
+
+MIN_OVERLAP_DAYS = 7
 
 
-def load_metric_data() -> List[Dict[str, Any]]:
-    TRACK_FILE = cf.get_track_file()
-    if TRACK_FILE.exists():
-        with open(TRACK_FILE, "r") as f:
-            return json.load(f).get("trackers", [])
-    return []
+def load_tracker_data():
+    """Fetch all tracker data from SQL."""
+    trackers = track_repository.get_all_trackers_with_entries()
+    combined = []
+    for t in trackers:
+        for e in t.get("entries", []):
+            combined.append({
+                "tracker": t["title"],
+                "timestamp": e["timestamp"],
+                "value": e["value"]
+            })
+    return combined
 
 
-def load_time_data() -> List[Dict[str, Any]]:
-    TIME_FILE = cf.get_time_file()
-    if TIME_FILE.exists():
-        with open(TIME_FILE, "r") as f:
-            return json.load(f).get("history", [])
-    return []
+def load_time_data_as_metric():
+    """Fetch all time logs as synthetic tracker data."""
+    logs = time_repository.get_all_time_logs()
+    combined = []
+    for l in logs:
+        if l["duration_minutes"]:
+            combined.append({
+                "tracker": f"Time: {l['title']}",
+                "timestamp": l["start"],
+                "value": l["duration_minutes"]
+            })
+    return combined
 
 
 def daily_averages(entries: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
@@ -37,7 +52,7 @@ def daily_averages(entries: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]
         try:
             ts = datetime.fromisoformat(e["timestamp"])
             day = ts.date().isoformat()
-            daily[day][e["metric"]].append(float(e["value"]))
+            daily[day][e["tracker"]].append(float(e["value"]))
         except Exception:
             continue
 
@@ -61,7 +76,8 @@ def compute_correlation(x: List[float], y: List[float]) -> Dict[str, float]:
 
 
 def generate_insights():
-    metrics_data = daily_averages(load_metric_data())
+    entries = load_tracker_data() + load_time_data_as_metric()
+    metrics_data = daily_averages(entries)
     metric_names = list(metrics_data.keys())
     insights = []
 
@@ -71,7 +87,7 @@ def generate_insights():
             m2 = metric_names[j]
 
             days = set(metrics_data[m1].keys()) & set(metrics_data[m2].keys())
-            if len(days) < 7:
+            if len(days) < MIN_OVERLAP_DAYS:
                 continue
 
             x = [metrics_data[m1][d] for d in sorted(days)]
