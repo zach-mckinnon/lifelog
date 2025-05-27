@@ -52,7 +52,7 @@ app.add_typer(sync_app, name="sync", help="Fetch external environmental data")
 
 # Register all modules
 app.add_typer(track.app, name="track",
-              help="Track recurring self-measurements like mood, energy, pain, as well as habits and goals.", invoke_without_command=True,)
+              help="Track recurring self-measurements like mood, energy, pain, as well as habits and goals.")
 app.add_typer(time.app, name="time",
               help="Track time in categories like resting, working, socializing.")
 app.add_typer(task.app, name="task",
@@ -61,7 +61,6 @@ app.add_typer(report.app, name="report",
               help="View detailed reports and insights.")
 app.add_typer(environmental_sync.app, name="env",
               help="Sync and view environmental data.")
-app.add_typer(debug.app, name="debug", help="Debugging and development tools.")
 
 
 @app.callback(invoke_without_command=True)
@@ -127,10 +126,7 @@ def help_command():
 
 
 def ensure_initialized():
-    global TRACK_FILE, TIME_FILE, TASK_FILE, FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
-    TRACK_FILE = cf.get_track_file()
-    TIME_FILE = cf.get_time_file()
-    TASK_FILE = cf.get_task_file()
+    global FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
     FC_FILE = cf.get_fc_file()
     FEEDBACK_FILE = cf.get_feedback_file()
     DAILY_QUOTE_FILE = cf.get_motivational_quote_file()
@@ -156,23 +152,13 @@ def init():
 
     llog_path = shutil.which("llog") or "/usr/local/bin/llog"
 
-    global TRACK_FILE, TIME_FILE, TASK_FILE, FC_FILE, FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
-    TRACK_FILE = cf.get_track_file()
-    TIME_FILE = cf.get_time_file()
-    TASK_FILE = cf.get_task_file()
+    global FC_FILE, FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
     FC_FILE = cf.get_fc_file()
     FEEDBACK_FILE = cf.get_feedback_file()
     DAILY_QUOTE_FILE = cf.get_motivational_quote_file()
     ENV_DATA_FILE = cf.get_env_data_file()
 
     files_to_create = {
-        TRACK_FILE: {
-            "trackers": [],
-        },
-        TIME_FILE: {
-            "history": []
-        },
-        TASK_FILE: [],
         FC_FILE: {
             "last_executed": None
         },

@@ -5,9 +5,13 @@ DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
 
 
 def get_connection():
+    # 1) ensure ~/.lifelog exists
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # 2) open (or create) the DB file
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # 3) turn on FOREIGN KEY support so ON DELETE CASCADE works
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
