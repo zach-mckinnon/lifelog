@@ -37,14 +37,7 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
     Generate a structured goal progress report for a tracker.
     Now pulls entries from SQL, not from embedded tracker object.
     """
-    # 🆕 Safely parse goals from JSON string if needed
-    goals_raw = tracker.get("goals")
-    try:
-        goals = json.loads(goals_raw) if isinstance(
-            goals_raw, str) else goals_raw or []
-    except Exception:
-        goals = []
-
+    goals = track_repository.get_goals_for_tracker(tracker["id"])
     # 🆕 Load entries directly from SQL
     entries = track_repository.get_entries_for_tracker(tracker["id"])
 
@@ -78,33 +71,47 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
 
     # ✅ Use first goal for now
     goal = goals[0]
-    kind = goal.get("kind")
+    goal_id = goal["id"]
+    kind = goal["kind"]
 
     # Dispatch handlers (these functions stay the same)
     if kind == "range":
-        return _report_range(tracker, goal, df)
+        details = track_repository.get_goal_range(goal_id)
+        return _report_range(tracker, goal, details, df)
     if kind == "sum":
-        return _report_sum(tracker, goal, df)
+        details = track_repository.get_goal_sum(goal_id)
+        return _report_sum(tracker, goal, details, df)
     if kind == "count":
-        return _report_count(tracker, goal, df)
+        details = track_repository.get_goal_count(goal_id)
+        return _report_count(tracker, goal, details, df)
     if kind == "bool":
         return _report_bool(tracker, goal, df)
     if kind == "streak":
-        return _report_streak(tracker, goal, df)
+        details = track_repository.get_goal_streak(goal_id)
+        return _report_streak(tracker, goal, details, df)
     if kind == "duration":
-        return _report_duration(tracker, goal, df)
+        details = track_repository.get_goal_duration(goal_id)
+        return _report_duration(tracker, goal, details, df)
     if kind == "milestone":
-        return _report_milestone(tracker, goal, df)
+        details = track_repository.get_goal_milestone(goal_id)
+        return _report_milestone(tracker, goal, details, df)
     if kind == "reduction":
-        return _report_reduction(tracker, goal, df)
+        details = track_repository.get_goal_reduction(goal_id)
+        return _report_reduction(tracker, goal, details, df)
     if kind == "percentage":
-        return _report_percentage(tracker, goal, df)
+        details = track_repository.get_goal_percentage(goal_id)
+        return _report_percentage(tracker, goal, details, df)
     if kind == "replacement":
-        return _report_replacement(tracker, goal, df)
+        details = track_repository.get_goal_replacement(goal_id)
+        return _report_replacement(tracker, goal, details, df)
 
+    return _empty_report(f"Unknown goal kind: {kind}")
+
+
+def _empty_report(status):
     return {
-        "report_type": "unknown",
-        "status": f"Unknown goal kind: {kind}",
+        "report_type": "empty",
+        "status": status,
         "completed": False,
         "display_format": {
             "primary": "-",
@@ -153,42 +160,40 @@ def print_dataframe(df):
     console.print(table)
 
 
-def _report_range(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_range(tracker, goal, details, df):
     df['timestamp'] = pd.to_datetime(df['timestamp'])
+    latest_value = df['value'].iloc[-1]
+    min_val = details["min_amount"]
+    max_val = details["max_amount"]
+    mode = details.get("mode", "goal")
 
-    avg = df['value'].mean()
-    min_val = df['value'].min()
-    max_val = df['value'].max()
-    latest = df['value'].iloc[-1]
-
-    min_target = goal.get('min_amount')
-    max_target = goal.get('max_amount')
-
-    in_range = min_target <= latest <= max_target
+    if mode == "goal":
+        completed = min_val <= latest_value <= max_val
+        status = "✓ In range" if completed else "✗ Out of range"
+    else:
+        completed = None
+        status = f"Scale entry logged: {latest_value} (range {min_val}-{max_val})"
 
     return {
         "report_type": ReportType.RANGE_MEASUREMENT.value,
-        "completed": in_range,
+        "completed": completed,
         "metrics": {
-            "avg": avg,
+            "latest": latest_value,
             "min": min_val,
-            "max": max_val,
-            "latest": latest
+            "max": max_val
         },
         "display_format": {
-            "primary": f"{latest} ({min_target}-{max_target})",
-            "secondary": f"Avg: {avg:.1f}",
-            "tertiary": f"Range {min_val}-{max_val}"
+            "primary": f"{latest_value} ({min_val}-{max_val})",
+            "secondary": "",
+            "tertiary": ""
         },
-        "status": "✓ In range" if in_range else "✗ Out of range"
+        "status": status
     }
 
 
-def _report_sum(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_sum(tracker, goal, details, df):
     total = df['value'].sum()
-    target = goal.get('amount')
+    target = details['amount']
 
     pct = (total / target) * 100 if target else 0
 
@@ -203,16 +208,15 @@ def _report_sum(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame)
         "display_format": {
             "primary": f"{total:.1f}/{target:.1f}",
             "secondary": f"{pct:.1f}%",
-            "tertiary": f"{target-total:.1f} left" if total < target else "🎉 Congratulations! You've completed your goal!"
+            "tertiary": f"{target-total:.1f} left" if total < target else "🎉 Goal completed!"
         },
-        "status": "✓ Goal reached" if total >= target else "✨ You're making great progress! Keep it up!"
-    }  # TODO: Add fun sayings from the json files of motivational quotes.
+        "status": "✓ Goal reached" if total >= target else "⏳ Keep going"
+    }
 
 
-def _report_count(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_count(tracker, goal, details, df):
     count = len(df)
-    target = goal.get('amount')
+    target = details['amount']
 
     pct = (count / target) * 100 if target else 0
 
@@ -227,14 +231,13 @@ def _report_count(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFram
         "display_format": {
             "primary": f"{count}/{target}",
             "secondary": f"{pct:.1f}%",
-            "tertiary": f"{target-count} left" if count < target else "🎉 Congratulations! You've completed your goal!"
+            "tertiary": f"{target-count} left" if count < target else "🎉 Completed"
         },
         "status": "✓ Goal reached" if count >= target else "⏳ Progressing"
     }
 
 
-def _report_bool(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_bool(tracker, goal, df):
     true_count = df['value'].sum()
     total = len(df)
 
@@ -253,19 +256,17 @@ def _report_bool(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame
             "secondary": f"{pct:.1f}% complete",
             "tertiary": ""
         },
-        "status": "✓ All completed" if pct == 100 else "Partial completion"
+        "status": "✓ All completed" if pct == 100 else "⏳ Partial completion"
     }
 
 
-def _report_streak(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_streak(tracker, goal, details, df):
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['date'] = df['timestamp'].dt.date
 
     dates = sorted(df['date'])
     today = datetime.today().date()
 
-    # Calculate streak
     streak = 0
     for d in reversed(dates):
         if (today - d).days == streak:
@@ -273,7 +274,7 @@ def _report_streak(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFra
         else:
             break
 
-    target = goal.get('target_amount', goal.get('target_streak', 0))
+    target = details['target_streak']
 
     return {
         "report_type": ReportType.STREAK_CURRENT.value,
@@ -291,11 +292,10 @@ def _report_streak(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFra
     }
 
 
-def _report_duration(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_duration(tracker, goal, details, df):
     total_minutes = df['value'].sum()
-    target_minutes = goal.get('target_amount', goal.get('amount', 0))
-    unit = goal.get('unit', 'minutes')
+    target_minutes = details['amount']
+    unit = details.get('unit', 'minutes')
 
     pct = (total_minutes / target_minutes) * 100 if target_minutes else 0
 
@@ -318,17 +318,16 @@ def _report_duration(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataF
         "display_format": {
             "primary": f"{format_time(total_minutes)} / {format_time(target_minutes)}",
             "secondary": f"{pct:.1f}% complete",
-            "tertiary": f"{target_minutes-total_minutes:.0f} minutes remaining" if total_minutes < target_minutes else "🎉 Congratulations! You've completed your goal!"
+            "tertiary": f"{target_minutes-total_minutes:.0f} minutes remaining" if total_minutes < target_minutes else "🎉 Goal done!"
         },
-        "status": "✓ Time goal reached!" if total_minutes >= target_minutes else "⏳ Keep accumulating"
+        "status": "✓ Goal reached!" if total_minutes >= target_minutes else "⏳ Keep going"
     }
 
 
-def _report_milestone(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_milestone(tracker, goal, details, df):
     current = df['value'].sum()
-    target = goal.get('target_amount', goal.get('target', 0))
-    unit = goal.get('unit', '')
+    target = details['target']
+    unit = details.get('unit', '')
 
     pct = (current / target) * 100 if target else 0
     remaining = max(0, target - current)
@@ -350,10 +349,9 @@ def _report_milestone(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.Data
     }
 
 
-def _report_percentage(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_percentage(tracker, goal, details, df):
     latest_pct = df['value'].iloc[-1]
-    target_pct = goal.get('target_percentage', 100)
+    target_pct = details['target_percentage']
 
     completed = latest_pct >= target_pct
 
@@ -373,11 +371,10 @@ def _report_percentage(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.Dat
     }
 
 
-def _report_reduction(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
+def _report_reduction(tracker, goal, details, df):
     latest = df['value'].iloc[-1]
-    target = goal.get('target_amount', goal.get('amount', 0))
-    unit = goal.get('unit', '')
+    target = details['amount']
+    unit = details.get('unit', '')
 
     improvement = "✓ Below target" if latest <= target else f"✗ Above target ({latest-target:+.1f})"
 
@@ -397,24 +394,19 @@ def _report_reduction(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.Data
     }
 
 
-def _report_replacement(tracker: Dict[str, Any], goal: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
-
-    # Here we assume positive values mean "new habit", negative = "old habit" if you log it this way
+def _report_replacement(tracker, goal, details, df):
     new_behavior_count = df[df['value'] > 0].shape[0]
     old_behavior_count = df[df['value'] < 0].shape[0]
     total = new_behavior_count + old_behavior_count
 
-    if total == 0:
-        ratio = 0
-    else:
-        ratio = (new_behavior_count / total) * 100
+    ratio = (new_behavior_count / total) * 100 if total else 0
 
-    original = goal.get('original_habit', 'old habit')
-    new = goal.get('new_habit', 'new habit')
+    original = details.get('old_behavior', 'old habit')
+    new = details.get('new_behavior', 'new habit')
 
     return {
         "report_type": ReportType.REPLACEMENT_RATIO.value,
-        "completed": ratio >= 75,  # Assume 75% new behavior means "good replacement"
+        "completed": ratio >= 75,
         "metrics": {
             "new_behavior": new_behavior_count,
             "old_behavior": old_behavior_count,

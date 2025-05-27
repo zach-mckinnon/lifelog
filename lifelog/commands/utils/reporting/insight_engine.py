@@ -32,7 +32,7 @@ def load_tracker_data():
     return combined
 
 
-def load_time_data_as_metric():
+def load_time_data():
     """Fetch all time logs as synthetic tracker data."""
     logs = time_repository.get_all_time_logs()
     combined = []
@@ -76,7 +76,7 @@ def compute_correlation(x: List[float], y: List[float]) -> Dict[str, float]:
 
 
 def generate_insights():
-    entries = load_tracker_data() + load_time_data_as_metric()
+    entries = load_tracker_data() + load_time_data()
     metrics_data = daily_averages(entries)
     metric_names = list(metrics_data.keys())
     insights = []

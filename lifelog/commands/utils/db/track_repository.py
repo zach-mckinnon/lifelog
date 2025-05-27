@@ -1,4 +1,5 @@
 # lifelog/commands/utils/db/track_repository.py
+from typing import Any, Dict, List
 from lifelog.commands.utils.db.database_manager import get_connection
 import sqlite3
 import json
@@ -90,40 +91,49 @@ def query_trackers(title_contains=None, category=None):
     return [dict(row) for row in rows]
 
 
-def get_tracker_by_title(title):
+def add_goal(tracker_id: int, goal_data: Dict[str, Any]) -> None:
+    """Add a goal to the database, associated with a tracker."""
     conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM trackers WHERE title = ?", (title,))
-    row = cur.fetchone()
+    cursor = conn.cursor()
+    # Construct the SQL query and parameters dynamically, handling optional fields
+    fields = ["tracker_id", "title", "kind", "period"]
+    values = [tracker_id, goal_data["title"],
+              goal_data["kind"], goal_data["period"]]
+    placeholders = ["?", "?", "?", "?"]
+
+    for key, value in goal_data.items():
+        if key not in ["title", "kind", "period"]:  # These are already handled
+            fields.append(key)
+            values.append(value)
+            placeholders.append("?")
+
+    query = f"INSERT INTO goals ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
+    cursor.execute(query, values)
+    conn.commit()
     conn.close()
-    return dict(row) if row else None
 
 
-def get_all_trackers_with_entries():
-    """
-    Fetch all trackers and their associated entries.
-    Returns a list of trackers, each with an 'entries' key containing the list of entries.
-    """
+def get_goals_for_tracker(tracker_id: int) -> List[Dict[str, Any]]:
+    """Retrieve all goals associated with a specific tracker."""
     conn = get_connection()
-    cur = conn.cursor()
-
-    # Step 1: Fetch all trackers
-    cur.execute("SELECT * FROM trackers ORDER BY created DESC")
-    trackers = cur.fetchall()
-
-    # Step 2: For each tracker, fetch its entries efficiently (using a join or a separate query per tracker)
-    tracker_list = []
-    for t in trackers:
-        t_dict = dict(t)
-        cur.execute("""
-            SELECT id, timestamp, value
-            FROM tracker_entries
-            WHERE tracker_id = ?
-            ORDER BY timestamp ASC
-        """, (t["id"],))
-        entries = cur.fetchall()
-        t_dict["entries"] = [dict(e) for e in entries]
-        tracker_list.append(t_dict)
-
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM goals WHERE tracker_id = ?", (tracker_id,)
+    )
+    rows = cursor.fetchall()
     conn.close()
-    return tracker_list
+    return [dict(row) for row in rows]
+
+
+def get_all_trackers_with_goals() -> List[Dict[str, Any]]:
+    trackers = get_all_trackers()
+    for tracker in trackers:
+        tracker["goals"] = get_goals_for_tracker(tracker["id"])
+    return trackers
+
+
+def get_all_trackers_with_entries() -> List[Dict[str, Any]]:
+    trackers = get_all_trackers()
+    for tracker in trackers:
+        tracker["entries"] = get_entries_for_tracker(tracker["id"])
+    return trackers

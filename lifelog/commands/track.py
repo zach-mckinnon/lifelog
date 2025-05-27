@@ -100,13 +100,16 @@ def add(
 
     # ✅ Directly insert using your new SQL repo method
     try:
-        track_repository.add_tracker(
+        tracker_id = track_repository.add_tracker(
             title=title,
             type=type,
             category=category,
             created=now.isoformat(),
             goals=[goal] if goal else None
         )
+        if goal:
+            # 2. Insert into goals table, using the tracker_id
+            track_repository.add_goal(tracker_id=tracker_id, goal_data=goal)
     except Exception as e:
         console.print(f"[bold red]Failed to add tracker: {e}[/bold red]")
         raise typer.Exit(code=1)
@@ -286,26 +289,20 @@ def list_trackers(
         title = t.get("title", "-")
         category_str = t.get("category", "-")
 
-        goals_raw = t.get("goals")
-        try:
-            goals = json.loads(goals_raw) if goals_raw else []
-        except Exception as e:
-            goals = []
-            console.print(
-                f"[yellow]⚠️ Failed to parse goals for {title}: {e}[/yellow]")
-
+        goals = track_repository.get_goals_for_tracker(t["id"])
         goal_str = "-"
         progress_display = "-"
 
         if goals:
-            goal_title = goals[0].get("title", title)
+            goal = goals[0]
+            goal_title = goal.get("title", title)
             try:
                 report = generate_goal_report({
                     "id": t["id"],
                     "title": title,
                     "type": t["type"],
                     "category": category_str,
-                    "goals": goals
+                    "goals": [goal]  # Pass the single goal explicitly
                 })
                 goal_str = goal_title
                 progress_display = "\n".join(
@@ -350,6 +347,87 @@ def delete(
 
     console.print(
         f"[green]🗑️ Tracker '{tracker['title']}' deleted successfully.[/green]")
+
+
+@app.command("goals-help")
+def goals_help():
+    """
+    Show descriptions and usage examples of all supported goal types.
+    """
+    table = Table(
+        title="[bold blue]🎯 Lifelog Goal Types[/bold blue]",
+        show_header=True,
+        header_style="bold magenta",
+        box=box.ROUNDED,
+        padding=(0, 1)
+    )
+
+    table.add_column("Goal Kind", style="bold")
+    table.add_column("Description", style="cyan")
+    table.add_column("Key Fields", style="green")
+
+    table.add_row(
+        "sum",
+        "Track accumulated values over time (e.g., water intake).",
+        "amount, unit"
+    )
+    table.add_row(
+        "count",
+        "Track the number of times an event occurs.",
+        "amount, unit"
+    )
+    table.add_row(
+        "bool",
+        "Track if something was done (yes/no) at least once per period.",
+        "None (implicitly True once any entry exists)"
+    )
+    table.add_row(
+        "streak",
+        "Track consecutive days of completion (e.g., meditation streak).",
+        "target_streak"
+    )
+    table.add_row(
+        "duration",
+        "Track total time spent on an activity (e.g., study hours).",
+        "amount, unit (minutes/hours)"
+    )
+    table.add_row(
+        "milestone",
+        "Track progress toward a specific goal (e.g., read 100 books).",
+        "target, unit"
+    )
+    table.add_row(
+        "reduction",
+        "Track decreasing a behavior (e.g., reduce smoking).",
+        "amount, unit (lower is better)"
+    )
+    table.add_row(
+        "range (goal mode)",
+        "Stay within a healthy range (e.g., weight between 120-150 lbs).",
+        "min_amount, max_amount, mode='goal'"
+    )
+    table.add_row(
+        "range (tracker mode)",
+        "Just log entries on a defined scale (e.g., mood 1-10), no goal.",
+        "min_amount, max_amount, mode='tracker'"
+    )
+    table.add_row(
+        "percentage",
+        "Track percentage progress toward a target (e.g., body fat % goal).",
+        "target_percentage"
+    )
+    table.add_row(
+        "replacement",
+        "Track replacing an old behavior with a new one (e.g., soda ➡ water).",
+        "old_behavior, new_behavior"
+    )
+
+    console.print(table)
+
+    console.print(
+        "\n[bold yellow]📘 Tip:[/bold yellow] You can add goals interactively when creating a tracker using [green]'llog track add'[/green].\n")
+    console.print(
+        "[bold green]Use [cyan]'llog track goals-help'[/cyan] anytime to review this list.[/bold green]")
 
 
 def format_goal_display(goal_title: str, report: dict) -> List[str]:

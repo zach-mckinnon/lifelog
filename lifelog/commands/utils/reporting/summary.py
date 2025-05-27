@@ -10,10 +10,11 @@ from datetime import datetime, timedelta
 import csv
 import json
 from rich.console import Console
-from lifelog.commands.utils.reporting.insight_engine import daily_averages, load_metric_data, load_time_data
+from lifelog.commands.utils.db import track_repository
+from lifelog.commands.utils.reporting.insight_engine import daily_averages, load_tracker_data, load_time_data
 import lifelog.config.config_manager as cf
 from lifelog.commands.utils.shared_utils import sum_entries
-from lifelog.commands.utils.reporting.analytics.report_utils import render_line_chart, render_pie_chart
+from lifelog.commands.utils.reporting.analytics.report_utils import render_pie_chart
 from rich.table import Table
 
 console = Console()
@@ -26,29 +27,26 @@ def summary_metric(since: str = "7d", export: str = None):
     """
     ✏️  Summary of all trackers logged in the period.
     """
-    now = datetime.now()
     cutoff = _parse_since(since)
     console.print(
         f"[bold]Trackers ({since} since {cutoff.date().isoformat()}):[/bold]")
 
-    # Aggregate
-    trackers = _load_trackers()
-    data = {t: sum_entries(t, since) for t in trackers}
+    # Load all trackers and their entries via SQL
+    trackers = track_repository.get_all_trackers_with_entries()
 
-    # Coverage
-    days = (now.date() - cutoff.date()).days + 1
-    nonzero = sum(1 for v in data.values() if v > 0)
-    coverage = (nonzero / days * 100) if days else 0
-    console.print(f"[dim]Data coverage: {coverage:.0f}%[/dim]")
+    data = {}
+    for t in trackers:
+        entries = [e for e in t.get("entries", []) if datetime.fromisoformat(
+            e["timestamp"]) >= cutoff]
+        total = sum(e["value"] for e in entries)
+        data[t["title"]] = total
 
-    # Chart
-    series = _daily_series(data)
-    if not series:
+    if not data:
         console.print("[yellow]⚠️ No tracker data to summarize yet.[/yellow]")
         return
-    else:
-        dates, vals = zip(*sorted(series.items()))
-        render_line_chart(dates, vals, label="Total per tracker")
+
+    # Chart
+    render_pie_chart(data)
 
     if export:
         _export(data, since, export)
@@ -91,7 +89,7 @@ def summary_daily(since: str = "7d", export: str = None):
 
     # Load data
     time_data = load_time_data()
-    metric_data = load_metric_data()
+    metric_data = load_tracker_data()
     daily_moods = daily_averages(metric_data).get(
         "mood", {})  # {day: mood avg}
 

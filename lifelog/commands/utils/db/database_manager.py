@@ -34,6 +34,86 @@ def initialize_schema():
         recur_base DATETIME
     );
     
+    CREATE TABLE IF NOT EXISTS goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tracker_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        kind TEXT NOT NULL, -- redundant but useful for quick joins or debugging
+        period TEXT DEFAULT 'day',
+        FOREIGN KEY (tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_sum (
+        goal_id INTEGER PRIMARY KEY,
+        amount REAL NOT NULL,
+        unit TEXT,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_count (
+        goal_id INTEGER PRIMARY KEY,
+        amount INTEGER NOT NULL,
+        unit TEXT,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_bool (
+        goal_id INTEGER PRIMARY KEY,
+        -- No special fields, treated as True once any value is logged per period
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_streak (
+        goal_id INTEGER PRIMARY KEY,
+        target_streak INTEGER NOT NULL,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_duration (
+        goal_id INTEGER PRIMARY KEY,
+        amount REAL NOT NULL,
+        unit TEXT DEFAULT 'minutes',
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_milestone (
+        goal_id INTEGER PRIMARY KEY,
+        target REAL NOT NULL,
+        unit TEXT,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_reduction (
+        goal_id INTEGER PRIMARY KEY,
+        amount REAL NOT NULL,
+        unit TEXT,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_range (
+        goal_id INTEGER PRIMARY KEY,
+        min_amount REAL NOT NULL,
+        max_amount REAL NOT NULL,
+        unit TEXT,
+        mode TEXT CHECK (mode IN ('goal', 'tracker')) DEFAULT 'goal', -- ✅ Supports both range types
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_percentage (
+        goal_id INTEGER PRIMARY KEY,
+        target_percentage REAL NOT NULL,
+        current_percentage REAL DEFAULT 0,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_replacement (
+        goal_id INTEGER PRIMARY KEY,
+        old_behavior TEXT NOT NULL,
+        new_behavior TEXT NOT NULL,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+    );
+
+        
     CREATE TABLE IF NOT EXISTS task_tracking (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id INTEGER,
