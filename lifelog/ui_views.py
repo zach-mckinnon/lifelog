@@ -8,9 +8,7 @@ from datetime import datetime
 import curses
 import calendar
 from datetime import datetime, timedelta
-from rich.console import Console
 from lifelog.commands.utils.db import (
-    environment_repository,
     time_repository,
     track_repository,
     task_repository,

@@ -2,7 +2,7 @@
 
 import curses
 
-from commands.utils.db import task_repository, time_repository, track_repository
+from lifelog.commands.utils.db import task_repository, time_repository, track_repository
 from lifelog.ui_views import (
     draw_agenda,
     draw_trackers,
