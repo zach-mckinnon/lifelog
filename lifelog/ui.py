@@ -40,9 +40,22 @@ def main(stdscr, show_status: bool = True):
     time_sel = 0   # selected row in Time
 
     h, w = stdscr.getmaxyx()
+
     stdscr.erase()
     draw_menu(stdscr, SCREENS, current, w, color_pair=1)
-    draw_agenda(stdscr, h, w, agenda_sel)           # first tab
+
+    # Draw the correct initial pane based on current tab (usually 0 = Agenda)
+    if SCREENS[current] == "Agenda":
+        agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
+    elif SCREENS[current] == "Trackers":
+        tracker_sel = draw_trackers(stdscr, h, w, tracker_sel, color_pair=2)
+    elif SCREENS[current] == "Time":
+        time_sel = draw_time(stdscr, h, w, time_sel)
+    elif SCREENS[current] == "Report":
+        draw_report(stdscr, h, w)
+    else:  # Environment
+        draw_env(stdscr, h, w)
+
     if show_status:
         draw_status(stdscr, h, w, current)
     stdscr.refresh()
