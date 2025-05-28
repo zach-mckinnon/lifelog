@@ -5,7 +5,7 @@
 
 import curses
 from datetime import datetime
-from commands.utils.goal_util import get_description_for_goal_kind
+from lifelog.commands.utils.goal_util import get_description_for_goal_kind
 from lifelog.commands.report import generate_goal_report
 from lifelog.commands.utils.db import track_repository
 from lifelog.commands.utils.shared_utils import parse_date_string
