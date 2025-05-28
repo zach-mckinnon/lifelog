@@ -146,17 +146,17 @@ def initialize_schema():
     );
 
     CREATE TABLE IF NOT EXISTS time_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,               
-    start DATETIME NOT NULL,
-    end DATETIME,                     
-    duration_minutes FLOAT,           
-    task_id INTEGER,                   
-    category TEXT,
-    project TEXT,
-    tags TEXT,
-    notes TEXT,
-    FOREIGN KEY(task_id) REFERENCES tasks(id)
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,               
+        start DATETIME NOT NULL,
+        end DATETIME,                     
+        duration_minutes FLOAT,           
+        task_id INTEGER,                   
+        category TEXT,
+        project TEXT,
+        tags TEXT,
+        notes TEXT,
+        FOREIGN KEY(task_id) REFERENCES tasks(id)
     );
 
     CREATE TABLE IF NOT EXISTS environment_data (
