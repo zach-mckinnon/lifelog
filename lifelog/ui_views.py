@@ -140,10 +140,13 @@ def draw_agenda(stdscr, h, w, selected_idx):
         # empty‐state UX (Fix 10)
         pane = curses.newwin(body_h, list_w, menu_h, cal_w)
         pane.border()
-        pane.addstr(1, 2, "(no tasks)", curses.A_DIM)
+        pane.addstr(
+            body_h // 2,
+            (list_w - len("No tasks yet")) // 2,
+            "No tasks yet",
+            curses.A_DIM | curses.A_BOLD
+        )
         pane.refresh()
-        return 0
-
     # clamp selection
     selected_idx = max(0, min(selected_idx, n-1))
 

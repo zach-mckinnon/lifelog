@@ -32,13 +32,20 @@ def main(stdscr, show_status: bool = True):
     curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_CYAN)    # selection
     curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)   # status bar
     curses.curs_set(0)
-
+    stdscr.keypad(True)
     # ─── State ──────────────────────────────────────────────────────────────
     current = 0   # which tab
     agenda_sel = 0   # selected row in Agenda
     tracker_sel = 0   # selected row in Trackers
     time_sel = 0   # selected row in Time
 
+    h, w = stdscr.getmaxyx()
+    stdscr.erase()
+    draw_menu(stdscr, SCREENS, current, w, color_pair=1)
+    draw_agenda(stdscr, h, w, agenda_sel)           # first tab
+    if show_status:
+        draw_status(stdscr, h, w, current)
+    stdscr.refresh()
     # ─── Main Loop ──────────────────────────────────────────────────────────
     while True:
         h, w = stdscr.getmaxyx()
