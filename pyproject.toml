@@ -17,6 +17,8 @@ dependencies = [
     "toml",
     "plotille",
     "plotext",
+    'curses; sys_platform != "win32"',
+    'windows-curses; sys_platform == "win32"',
     "pywin32; sys_platform == 'win32'" ,
 ]
 requires-python = ">=3.8"

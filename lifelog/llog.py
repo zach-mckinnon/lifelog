@@ -5,6 +5,7 @@ Lifelog CLI
 A command-line interface for tracking habits, time, tasks, and environmental data.
 This CLI allows users to log their daily activities, manage tasks, and sync environmental data.
 '''
+import curses
 from datetime import datetime
 import json
 from pathlib import Path
@@ -18,6 +19,7 @@ import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs
 from lifelog.commands import time, task, track, report, environmental_sync, debug
 from lifelog.commands.utils import feedback
+from lifelog.ui import main as ui_main
 
 from rich.console import Console
 from rich.panel import Panel
@@ -61,6 +63,16 @@ app.add_typer(report.app, name="report",
               help="View detailed reports and insights.")
 app.add_typer(environmental_sync.app, name="env",
               help="Sync and view environmental data.")
+
+
+@app.command("ui")
+def ui():
+    """
+    Launch the full-screen Lifelog TUI (like Calcurse).
+    """
+    # curses.wrapper() sets up/tears down the terminal for you,
+    # then calls your ui_main(stdscr) function.
+    curses.wrapper(ui_main)
 
 
 @app.callback(invoke_without_command=True)
