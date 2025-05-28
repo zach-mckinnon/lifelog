@@ -2,6 +2,7 @@
 
 import curses
 
+from commands.utils.db import task_repository, time_repository, track_repository
 from lifelog.ui_views import (
     draw_agenda,
     draw_trackers,
@@ -10,6 +11,7 @@ from lifelog.ui_views import (
     draw_env,
     draw_menu,
     draw_status,
+    popup_confirm,
 )
 
 SCREENS = ["Agenda", "Trackers", "Time", "Report", "Environment"]
@@ -25,9 +27,10 @@ def main(stdscr, show_status: bool = True):
     curses.curs_set(0)
 
     # ─── State ──────────────────────────────────────────────────────────────
-    current = 0    # which tab
-    agenda_sel = 0    # highlighted task in Agenda
-    time_sel = 0    # highlighted entry in Time
+    current = 0   # which tab
+    agenda_sel = 0   # selected row in Agenda
+    tracker_sel = 0   # selected row in Trackers
+    time_sel = 0   # selected row in Time
 
     # ─── Main Loop ──────────────────────────────────────────────────────────
     while True:
@@ -37,16 +40,16 @@ def main(stdscr, show_status: bool = True):
         # 1) Top menu
         draw_menu(stdscr, SCREENS, current, w, color_pair=1)
 
-        # 2) Active view
         if SCREENS[current] == "Agenda":
             agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
         elif SCREENS[current] == "Trackers":
-            draw_trackers(stdscr, h, w)
+            tracker_sel = draw_trackers(
+                stdscr, h, w, tracker_sel, color_pair=2)
         elif SCREENS[current] == "Time":
             time_sel = draw_time(stdscr, h, w, time_sel)
         elif SCREENS[current] == "Report":
             draw_report(stdscr, h, w)
-        elif SCREENS[current] == "Environment":
+        else:  # Environment
             draw_env(stdscr, h, w)
 
         # 3) Bottom status/help bar
@@ -56,20 +59,55 @@ def main(stdscr, show_status: bool = True):
         stdscr.refresh()
         key = stdscr.getch()
 
-        # ─── Global Quit & Tab Nav ───────────────────────────────────────────
-        if key in (ord("q"), 27):
-            break
-        elif key == curses.KEY_RIGHT:
+        # ─── Handle resize ───────────────────────────────────────────────
+        if key == curses.KEY_RESIZE:
+            continue  # simply redraw everything
+
+        # ─── Full-exit vs Back ──────────────────────────────────────────
+        if key == ord("Q"):             # Shift+Q = quit
+            if popup_confirm(stdscr, "❓ Exit the app? (Y/n)"):
+                break
+            else:
+                continue
+        elif key == 27:                 # ESC = back to Agenda
+            current = 0
+            continue
+
+         # ─── Environment “o” (Fix 5 for draw_env) ───────────────────────
+        if SCREENS[current] == "Environment" and key == ord("o"):
+            curses.endwin()
+            from rich.console import Console
+            from lifelog.commands.utils.db import environment_repository
+            console = Console()
+            for sec in ("weather", "air_quality", "moon", "satellite"):
+                try:
+                    data = environment_repository.get_latest_environment_data(
+                        sec)
+                    console.rule(f"{sec}")
+                    console.print(data)
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/]")
+            input("Press Enter to return to TUI…")
+            continue
+
+         # ─── Tab navigation ──────────────────────────────────────────────
+        if key == curses.KEY_RIGHT:
             current = (current + 1) % len(SCREENS)
+            continue
         elif key == curses.KEY_LEFT:
             current = (current - 1) % len(SCREENS)
+            continue
 
         # ─── Agenda-Specific Nav & Commands ─────────────────────────────────
         elif SCREENS[current] == "Agenda":
+            max_idx = len(task_repository.query_tasks(
+                status=None, show_completed=False, sort="priority")) - 1
             if key == curses.KEY_DOWN:
-                agenda_sel += 1
-            elif key == curses.KEY_UP:
-                agenda_sel -= 1
+                agenda_sel = min(agenda_sel + 1, max_idx)
+                continue
+            if key == curses.KEY_UP:
+                agenda_sel = max(agenda_sel - 1, 0)
+                continue
             elif key == ord("a"):
                 from lifelog.ui_views import add_task_tui
                 add_task_tui(stdscr)
@@ -103,10 +141,13 @@ def main(stdscr, show_status: bool = True):
 
         # ─── Time-Specific Nav & Commands ────────────────────────────────────
         elif SCREENS[current] == "Time":
+            max_idx = len(time_repository.get_all_time_logs(since=None)) - 1
             if key == curses.KEY_DOWN:
-                time_sel += 1
-            elif key == curses.KEY_UP:
-                time_sel -= 1
+                time_sel = min(time_sel + 1, max_idx)
+                continue
+            if key == curses.KEY_UP:
+                time_sel = max(time_sel - 1, 0)
+                continue
             elif key == ord("s"):
                 from lifelog.ui_views import start_time_tui
                 start_time_tui(stdscr)
@@ -126,6 +167,56 @@ def main(stdscr, show_status: bool = True):
                 from lifelog.ui_views import delete_time_entry_tui
                 delete_time_entry_tui(stdscr, time_sel)
 
-        # (Other screens’ commands go here)
+        elif SCREENS[current] == "Trackers":
+            max_idx = len(track_repository.get_all_trackers()) - 1
+            if key == curses.KEY_DOWN:
+                tracker_sel = min(tracker_sel + 1, max_idx)
+                continue
+            if key == curses.KEY_UP:
+                tracker_sel = max(tracker_sel - 1, 0)
+                continue
+            elif key == ord("a"):                  # Add new tracker
+                from lifelog.ui_views import add_tracker_tui
+                add_tracker_tui(stdscr)
+            elif key == ord("d"):                  # Delete selected tracker
+                from lifelog.ui_views import delete_tracker_tui
+                delete_tracker_tui(stdscr, tracker_sel)
+            elif key in (10, 13):                   # Enter → Edit tracker
+                from lifelog.ui_views import edit_tracker_tui
+                edit_tracker_tui(stdscr, tracker_sel)
+            elif key == ord("l"):                  # l → Log a new entry
+                from lifelog.ui_views import log_entry_tui
+                log_entry_tui(stdscr, tracker_sel)
+            elif key == ord("v"):                  # v → View details
+                from lifelog.ui_views import view_tracker_tui
+                view_tracker_tui(stdscr, tracker_sel)
+            elif key == ord("g"):
+                # g = add a new goal
+                from lifelog.ui_views import add_goal_tui
+                add_goal_tui(stdscr, tracker_sel)
+            elif key == ord("e"):
+                # e = edit goal
+                from lifelog.ui_views import edit_goal_tui
+                edit_goal_tui(stdscr, tracker_sel)
+            elif key == ord("x"):
+                # x = delete goal
+                from lifelog.ui_views import delete_goal_tui
+                delete_goal_tui(stdscr, tracker_sel)
 
+        elif SCREENS[current] == "Report":
+            if key == ord("1"):
+                from lifelog.ui_views import run_summary_trackers
+                run_summary_trackers(stdscr)
+            elif key == ord("2"):
+                from lifelog.ui_views import run_summary_time
+                run_summary_time(stdscr)
+            elif key == ord("3"):
+                from lifelog.ui_views import run_daily_tracker
+                run_daily_tracker(stdscr)
+            elif key == ord("4"):   # ← new bindings for insights
+                from lifelog.ui_views import run_insights
+                run_insights(stdscr)
+
+            elif key in (ord("q"), 27):
+                current = 0
     # end while
