@@ -3,23 +3,17 @@
 import curses
 
 from lifelog.commands.utils.db import task_repository, time_repository, track_repository
-from lifelog.ui_views import (
-    delete_time_entry_tui,
-    draw_agenda,
-    draw_trackers,
-    draw_time,
-    draw_report,
+from lifelog.ui_views.ui_helpers import (
     draw_env,
     draw_menu,
     draw_status,
-    edit_time_entry_tui,
-    popup_confirm,
-    start_time_tui,
-    status_time_tui,
-    stop_time_tui,
-    stopwatch_tui,
-    summary_time_tui,
 )
+from lifelog.ui_views.popups import popup_confirm, show_help_popup
+from lifelog.ui_views.reports_ui import draw_report
+from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_filter, delete_task_tui, done_task_tui, draw_agenda, edit_notes_tui, edit_recurrence_tui, edit_task_tui, focus_mode_tui, quick_add_task_tui, set_task_reminder_tui, start_task_tui, stop_task_tui, view_task_tui
+from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entry_tui, draw_time, edit_time_entry_tui, set_time_period, start_time_tui, status_time_tui, stop_time_tui, stopwatch_tui, summary_time_tui, view_time_entry_tui
+from lifelog.ui_views.trackers_ui import add_goal_tui, add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_goal_tui, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
+
 
 SCREENS = ["Agenda", "Trackers", "Time", "Report", "Environment"]
 
@@ -33,41 +27,33 @@ def main(stdscr, show_status: bool = True):
     curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)   # status bar
     curses.curs_set(0)
     stdscr.keypad(True)
+
     # ─── State ──────────────────────────────────────────────────────────────
     current = 0   # which tab
     agenda_sel = 0   # selected row in Agenda
     tracker_sel = 0   # selected row in Trackers
     time_sel = 0   # selected row in Time
 
-    h, w = stdscr.getmaxyx()
-
-    stdscr.erase()
-    draw_menu(stdscr, SCREENS, current, w, color_pair=1)
-
-    # Draw the correct initial pane based on current tab (usually 0 = Agenda)
-    if SCREENS[current] == "Agenda":
-        agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
-    elif SCREENS[current] == "Trackers":
-        tracker_sel = draw_trackers(stdscr, h, w, tracker_sel, color_pair=2)
-    elif SCREENS[current] == "Time":
-        time_sel = draw_time(stdscr, h, w, time_sel)
-    elif SCREENS[current] == "Report":
-        draw_report(stdscr, h, w)
-    else:  # Environment
-        draw_env(stdscr, h, w)
-
-    if show_status:
-        draw_status(stdscr, h, w, current)
-    stdscr.refresh()
+    MIN_HEIGHT = 12
+    MIN_WIDTH = 40
     # ─── Main Loop ──────────────────────────────────────────────────────────
     while True:
         h, w = stdscr.getmaxyx()
+        if h < MIN_HEIGHT or w < MIN_WIDTH:
+            stdscr.erase()
+            stdscr.addstr(0, 0, f"Terminal too small ({w}x{h}). Enlarge window to use Lifelog.",
+                          curses.A_BOLD)
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key in (ord('q'), 27):
+                break  # or return, as needed
+            continue
         stdscr.erase()
 
-        # 1) Always draw the top menu
+        # Always draw the top menu
         draw_menu(stdscr, SCREENS, current, w, color_pair=1)
 
-        # 2) Always draw the active pane
+        # Always draw the active pane
         if SCREENS[current] == "Agenda":
             agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
         elif SCREENS[current] == "Trackers":
@@ -80,20 +66,16 @@ def main(stdscr, show_status: bool = True):
         else:  # Environment
             draw_env(stdscr, h, w)
 
-        # 3) Always draw the status/help bar
+        # Always draw the status/help bar
         if show_status:
             draw_status(stdscr, h, w, current)
 
         stdscr.refresh()
 
-        # 4) THEN read a key
+        # THEN read a key
         key = stdscr.getch()
 
-        # 5) Handle resize → just redraw
-        if key == curses.KEY_RESIZE:
-            continue
-
-        # 6) Quit or “back to Agenda”
+        # Quit or “back to Agenda”
         if key == ord("Q"):            # Shift+Q to quit
             if popup_confirm(stdscr, "❓ Exit the app? (Y/n)"):
                 break
@@ -103,7 +85,7 @@ def main(stdscr, show_status: bool = True):
             current = 0
             continue
 
-        # 7) Environment “o” → dump to console
+        # Environment “o” → dump to console
         if SCREENS[current] == "Environment" and key == ord("o"):
             curses.endwin()
             from rich.console import Console
@@ -120,7 +102,7 @@ def main(stdscr, show_status: bool = True):
             input("Press Enter to return…")
             continue
 
-        # 8) ←/→ to switch tabs
+        #  ←/→ to switch tabs
         if key == curses.KEY_RIGHT:
             current = (current + 1) % len(SCREENS)
             continue
@@ -138,35 +120,36 @@ def main(stdscr, show_status: bool = True):
             if key == curses.KEY_UP:
                 agenda_sel = max(agenda_sel - 1, 0)
                 continue
+            if key == ord("?"):
+                show_help_popup(stdscr, current)
+                continue
             elif key == ord("a"):
-                from lifelog.ui_views import add_task_tui
                 add_task_tui(stdscr)
+            elif key == ord("q"):
+                quick_add_task_tui(stdscr)
+            elif key == ord("c"):
+                clone_task_tui(stdscr, agenda_sel)
+            elif key == ord("F"):
+                focus_mode_tui(stdscr, agenda_sel)
+            elif key == ord("m"):
+                set_task_reminder_tui(stdscr, agenda_sel)
             elif key == ord("d"):
-                from lifelog.ui_views import delete_task_tui
                 delete_task_tui(stdscr, agenda_sel)
             elif key in (10, 13):
-                from lifelog.ui_views import edit_task_tui
                 edit_task_tui(stdscr, agenda_sel)
             elif key == ord("v"):
-                from lifelog.ui_views import view_task_tui
                 view_task_tui(stdscr, agenda_sel)
             elif key == ord("s"):
-                from lifelog.ui_views import start_task_tui
                 start_task_tui(stdscr, agenda_sel)
             elif key == ord("p"):
-                from lifelog.ui_views import stop_task_tui
-                stop_task_tui(stdscr, agenda_sel)
+                stop_task_tui(stdscr)
             elif key == ord("o"):
-                from lifelog.ui_views import done_task_tui
                 done_task_tui(stdscr, agenda_sel)
             elif key == ord("f"):
-                from lifelog.ui_views import cycle_task_filter
-                cycle_task_filter(stdscr)  # toggles backlog/active/done
+                cycle_task_filter(stdscr)
             elif key == ord("r"):
-                from lifelog.ui_views import edit_recurrence_tui
                 edit_recurrence_tui(stdscr, agenda_sel)
             elif key == ord("n"):
-                from lifelog.ui_views import edit_notes_tui
                 edit_notes_tui(stdscr, agenda_sel)
 
         # ─── Time-Specific Nav & Commands ────────────────────────────────────
@@ -178,12 +161,19 @@ def main(stdscr, show_status: bool = True):
             if key == curses.KEY_UP:
                 time_sel = max(time_sel - 1, 0)
                 continue
+            if key == ord("?"):
+                show_help_popup(stdscr, current)
+                continue
             elif key == ord("s"):
                 start_time_tui(stdscr)
+            elif key == ord("a"):
+                add_manual_time_entry_tui(stdscr)
             elif key == ord("p"):
                 stop_time_tui(stdscr)
             elif key == ord("v"):
                 status_time_tui(stdscr)
+            elif key == ord("t") or key in (10, 13):
+                view_time_entry_tui(stdscr, time_sel)
             elif key == ord("y"):
                 summary_time_tui(stdscr)
             elif key == ord("e"):
@@ -192,6 +182,15 @@ def main(stdscr, show_status: bool = True):
                 delete_time_entry_tui(stdscr, time_sel)
             elif key == ord("w"):
                 stopwatch_tui(stdscr)
+            elif key == ord("W"):
+                set_time_period('week')
+            elif key == ord("D"):
+                set_time_period('day')
+            elif key == ord("M"):
+                set_time_period('month')
+            elif key == ord("A"):
+                set_time_period('all')
+
         elif SCREENS[current] == "Trackers":
             max_idx = len(track_repository.get_all_trackers()) - 1
             if key == curses.KEY_DOWN:
@@ -200,46 +199,45 @@ def main(stdscr, show_status: bool = True):
             if key == curses.KEY_UP:
                 tracker_sel = max(tracker_sel - 1, 0)
                 continue
-            elif key == ord("a"):                  # Add new tracker
-                from lifelog.ui_views import add_tracker_tui
+            if key == ord("?"):
+                show_help_popup(stdscr, current)
+                continue
+            elif key == ord("a"):
                 add_tracker_tui(stdscr)
-            elif key == ord("d"):                  # Delete selected tracker
-                from lifelog.ui_views import delete_tracker_tui
+            elif key == ord("d"):
                 delete_tracker_tui(stdscr, tracker_sel)
-            elif key in (10, 13):                   # Enter → Edit tracker
-                from lifelog.ui_views import edit_tracker_tui
+            elif key in (10, 13):
                 edit_tracker_tui(stdscr, tracker_sel)
-            elif key == ord("l"):                  # l → Log a new entry
-                from lifelog.ui_views import log_entry_tui
+            elif key == ord("l"):
                 log_entry_tui(stdscr, tracker_sel)
-            elif key == ord("v"):                  # v → View details
-                from lifelog.ui_views import view_tracker_tui
+            elif key == ord("v"):
                 view_tracker_tui(stdscr, tracker_sel)
             elif key == ord("g"):
-                # g = add a new goal
-                from lifelog.ui_views import add_goal_tui
                 add_goal_tui(stdscr, tracker_sel)
             elif key == ord("e"):
-                # e = edit goal
-                from lifelog.ui_views import edit_goal_tui
                 edit_goal_tui(stdscr, tracker_sel)
             elif key == ord("x"):
-                # x = delete goal
-                from lifelog.ui_views import delete_goal_tui
                 delete_goal_tui(stdscr, tracker_sel)
+            elif key == ord("V"):  # View goals list for tracker
+                view_goals_list_tui(stdscr, tracker_sel)
+            elif key == ord("h"):  # Show goal types help
+                show_goals_help_tui(stdscr)
 
         elif SCREENS[current] == "Report":
+            if key == ord("?"):
+                show_help_popup(stdscr, current)
+                continue
             if key == ord("1"):
-                from lifelog.ui_views import run_summary_trackers
+                from ui_views.ui_helpers import run_summary_trackers
                 run_summary_trackers(stdscr)
             elif key == ord("2"):
-                from lifelog.ui_views import run_summary_time
+                from ui_views.ui_helpers import run_summary_time
                 run_summary_time(stdscr)
             elif key == ord("3"):
-                from lifelog.ui_views import run_daily_tracker
+                from ui_views.ui_helpers import run_daily_tracker
                 run_daily_tracker(stdscr)
             elif key == ord("4"):   # ← new bindings for insights
-                from lifelog.ui_views import run_insights
+                from ui_views.ui_helpers import run_insights
                 run_insights(stdscr)
 
             elif key in (ord("q"), 27):

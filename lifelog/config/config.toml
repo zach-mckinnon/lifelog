@@ -5,15 +5,19 @@ home = "Home related tasks"
 personal = "Personal tasks"
 health = "Health and fitness tasks"
 
+[category_importance]
+work = 1.2
+school = 1.0
+home = 0.9
+personal = 1.0
+health = 1.1
+
 [tracker]
 [mood]
 [water]
 
 [paths]
 CONFIG_FILE = "~/.lifelog/config.toml"
-TRACK_FILE = "~/.lifelog/lifelog_track.json"
-TIME_FILE = "~/.lifelog/lifelog_time.json"
-TASK_FILE = "~/.lifelog/lifelog_tasks.json"
 DAILY_QUOTE_FILE = "~/.lifelog/daily_quote.json"
 ENV_DATA_FILE = "~/.lifelog/environment.json"
 FEEDBACK_FILE = "~/.lifelog/feedback.json"

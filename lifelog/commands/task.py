@@ -829,12 +829,17 @@ def calculate_priority(task):
     now = datetime.now()
     score = 0
     importance = task.get("impt", 1)
+
+    # Category importance multiplier
+    cat = task.get("category", None)
+    cat_impt = cf.get_category_importance(cat) if cat else 1.0
+    importance = importance * cat_impt
+
     score += importance * coeff["importance"]
 
     if task.get("status") == "active":
         score += coeff["active"]
 
-    # Urgency due based on days_of_week remaining
     due = task.get("due")
     if due:
         try:

@@ -235,6 +235,106 @@ def init():
     cf.save_config(doc)
 
 
+@app.command("config-edit")
+def config_edit():
+    """
+    Interactive config editor. Change aliases, categories, category importance, etc.
+    """
+    import lifelog.config.config_manager as cf
+
+    def select_section():
+        print("\nWhat config section would you like to edit?")
+        print("1) Aliases")
+        print("2) Category Importance")
+        print("3) Categories")
+        print("q) Quit")
+        return input("> ").strip()
+
+    def edit_aliases():
+        while True:
+            aliases = cf.list_config_section("aliases")
+            print("\nCurrent Aliases:")
+            for k, v in aliases.items():
+                print(f"  {k}: {v}")
+            print("a) Add/Edit alias")
+            print("d) Delete alias")
+            print("q) Back")
+            choice = input("> ").strip()
+            if choice == "a":
+                alias = input("Alias key: ").strip()
+                val = input("Alias value: ").strip()
+                cf.set_config_value("aliases", alias, val)
+                print(f"Set alias '{alias}' = '{val}'")
+            elif choice == "d":
+                alias = input("Alias key to delete: ").strip()
+                cf.delete_config_value("aliases", alias)
+                print(f"Deleted alias '{alias}'")
+            elif choice == "q":
+                break
+
+    def edit_category_importance():
+        while True:
+            catimps = cf.list_config_section("category_importance")
+            print("\nCurrent Category Importance:")
+            for k, v in catimps.items():
+                print(f"  {k}: {v}")
+            print("a) Add/Edit importance")
+            print("d) Delete importance")
+            print("q) Back")
+            choice = input("> ").strip()
+            if choice == "a":
+                cat = input("Category: ").strip()
+                val = input("Importance value (e.g. 1.2): ").strip()
+                try:
+                    valf = float(val)
+                    cf.set_config_value("category_importance", cat, valf)
+                    print(f"Set category importance '{cat}' = {valf}")
+                except ValueError:
+                    print("Not a valid number!")
+            elif choice == "d":
+                cat = input("Category to remove: ").strip()
+                cf.delete_config_value("category_importance", cat)
+                print(f"Deleted importance for '{cat}'")
+            elif choice == "q":
+                break
+
+    def edit_categories():
+        while True:
+            cats = cf.list_config_section("categories")
+            print("\nCurrent Categories:")
+            for k, v in cats.items():
+                print(f"  {k}: {v}")
+            print("a) Add/Edit category")
+            print("d) Delete category")
+            print("q) Back")
+            choice = input("> ").strip()
+            if choice == "a":
+                cat = input("Category key: ").strip()
+                desc = input("Description: ").strip()
+                cf.set_category_description(cat, desc)
+                print(f"Set category '{cat}' = '{desc}'")
+            elif choice == "d":
+                cat = input("Category key to delete: ").strip()
+                cf.delete_category(cat)
+                print(f"Deleted category '{cat}'")
+            elif choice == "q":
+                break
+
+    while True:
+        section = select_section()
+        if section == "1":
+            edit_aliases()
+        elif section == "2":
+            edit_category_importance()
+        elif section == "3":
+            edit_categories()
+        elif section == "q":
+            print("Config edit complete.")
+            break
+        else:
+            print("Invalid selection.")
+
+
 def check_first_command_of_day():
     today = datetime.now().date()
     flag_data = {}
