@@ -124,7 +124,7 @@ def draw_status(stdscr, h, w, msg=""):
 # -------------------------------------------------------------------
 
 
-def draw_agenda(stdscr, h, w):
+def draw_agenda(stdscr, h, w, selected_idx):
     menu_h = 3
     body_h = h - menu_h - 1   # leave bottom line for status
     cal_w = int(w * 0.6)
