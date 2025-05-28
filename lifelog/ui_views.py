@@ -1,19 +1,19 @@
 # lifelog/ui_views.py
 
-from lifelog.commands.report import show_insights, summary_trackers, summary_time, daily_tracker
-from lifelog.commands.utils.db import time_repository
-from lifelog.commands.utils.db import task_repository, time_repository
-from lifelog.commands.utils.shared_utils import parse_date_string
-from datetime import datetime
-import curses
-import calendar
-from datetime import datetime, timedelta
+import time
+from lifelog.commands.report import generate_goal_report
 from lifelog.commands.utils.db import (
     time_repository,
     track_repository,
     task_repository,
 )
-from lifelog.commands.report import generate_goal_report
+from datetime import datetime, timedelta
+import calendar
+import curses
+from datetime import datetime
+from lifelog.commands.utils.shared_utils import parse_date_string
+from lifelog.commands.report import show_insights, summary_trackers, summary_time, daily_tracker
+from lifelog.commands.task import calculate_priority, create_recur_schedule
 
 # ─── Shared state for task‐filter  ──────────────────────────────
 TASK_FILTERS = ["backlog", "active", "done"]
@@ -171,34 +171,79 @@ def draw_agenda(stdscr, h, w, selected_idx):
 
 
 def add_task_tui(stdscr):
-    # 1) Prompt for title
-    title = popup_input(stdscr, "New Task Title:")
+    """
+    Prompt for all task fields, compute priority, and save.
+    """
+    # 1) Title
+    title = popup_input(stdscr, "Title:")
     if not title:
         return
 
-    # 2) Prompt for optional due date
-    due_str = popup_input(stdscr, "Due (e.g. tomorrow) [optional]:")
+    # 2) Category & Project
+    category = popup_input(stdscr, "Category [optional]:") or None
+    project = popup_input(stdscr, "Project  [optional]:") or None
+
+    # 3) Importance
+    impt_str = popup_input(stdscr, "Importance (1–5) [default 1]:")
+    impt = int(impt_str) if impt_str.isdigit() else 1
+
+    # 4) Due date
+    due_str = popup_input(
+        stdscr, "Due (e.g. 'tomorrow' or '2025-12-31') [optional]:")
     due_iso = None
     if due_str:
         try:
             due_iso = parse_date_string(due_str).isoformat()
         except Exception as e:
-            popup_confirm(stdscr, f"❌ Invalid date: {e}")
+            popup_show(stdscr, [f"❌ Invalid due date: {e}"])
             return
 
-    # 3) Build and save
+    # 5) Recurrence
+    recur_interval = recur_unit = recur_days = recur_base = None
+    if popup_confirm(stdscr, "🔁 Add recurrence rule?"):
+        try:
+            recur_data = create_recur_schedule("interactive")
+            recur_interval = recur_data["interval"]
+            recur_unit = recur_data["unit"]
+            recur_days = recur_data.get("days_of_week") or None
+            recur_base = datetime.now().isoformat()
+        except Exception as e:
+            popup_show(stdscr, [f"❌ Recurrence setup failed: {e}"])
+            return
+
+    # 6) Tags & Notes
+    tags = popup_input(stdscr, "Tags (comma-separated) [opt]:") or None
+    notes = popup_input(stdscr, "Notes [optional]:") or None
+
+    # 7) Build task_data and compute priority
     now = datetime.now().isoformat()
     task_data = {
-        "title": title,
-        "created": now,
-        "due": due_iso,
-        "status": "backlog",
-        "priority": 0
+        "title":            title,
+        "category":         category,
+        "project":          project,
+        "impt":             impt,
+        "created":          now,
+        "due":              due_iso,
+        "status":           "backlog",
+        "start":            None,
+        "end":              None,
+        "priority":         0,  # will be overwritten
+        "recur_interval":   recur_interval,
+        "recur_unit":       recur_unit,
+        "recur_days_of_week": recur_days,
+        "recur_base":       recur_base,
+        "tags":             tags,
+        "notes":            notes,
     }
-    task_repository.add_task(task_data)
+    # compute final priority
+    task_data["priority"] = calculate_priority(task_data)
 
-    # 4) Confirm
-    popup_confirm(stdscr, f"✅ Added task '{title}'")
+    # 8) Save
+    try:
+        task_repository.add_task(task_data)
+        popup_show(stdscr, [f"✅ Task '{title}' added"])
+    except Exception as e:
+        popup_show(stdscr, [f"❌ Error saving task: {e}"])
 
 
 def delete_task_tui(stdscr, sel):
@@ -232,10 +277,7 @@ def edit_task_tui(stdscr, sel):
     if new_title:
         updates["title"] = new_title
     if new_due:
-        try:
-            updates["due"] = parse_date_string(new_due).isoformat()
-        except Exception as e:
-            return popup_show(stdscr, [f"❌ Bad date: {e}"])
+        updates["due"] = parse_date_string(new_due).isoformat()
     if new_cat:
         updates["category"] = new_cat
     if new_prj:
@@ -243,11 +285,8 @@ def edit_task_tui(stdscr, sel):
     if new_prio and new_prio.isdigit():
         updates["priority"] = int(new_prio)
     if updates:
-        try:
-            task_repository.update_task(t["id"], updates)
-            popup_show(stdscr, [f"✏️ Updated #{t['id']}"])
-        except Exception as e:
-            popup_show(stdscr, [f"❌ Error: {e}"])
+        task_repository.update_task(t["id"], updates)
+        popup_show(stdscr, [f"✏️ Updated #{t['id']}"])
 
 
 def edit_recurrence_tui(stdscr, sel):
@@ -742,6 +781,44 @@ def start_time_tui(stdscr):
     )
     popup_confirm(stdscr, f"▶️ Started '{title}'")
 
+
+def stopwatch_tui(stdscr):
+    """
+    Full-screen stopwatch showing elapsed time since active timer started.
+    Quit on any keypress.
+    """
+    curses.curs_set(0)         # hide cursor
+    stdscr.nodelay(True)       # non-blocking getch()
+    h, w = stdscr.getmaxyx()
+
+    # 1) Fetch active timer
+    active = time_repository.get_active_time_entry()
+    if not active or not active.get("start"):
+        stdscr.addstr(h//2, (w-20)//2, "⚠️ No active timer ⚠️", curses.A_BOLD)
+        stdscr.refresh()
+        stdscr.getch()         # wait for any key
+        return
+
+    start = datetime.fromisoformat(active["start"])
+
+    # 2) Main loop: redraw every second
+    while True:
+        stdscr.erase()
+        elapsed = datetime.now() - start
+        # Format as HH:MM:SS
+        hms = str(elapsed).split(".")[0]
+
+        # Center the text
+        stdscr.addstr(h//2, (w - len(hms))//2, hms, curses.A_BOLD)
+        stdscr.addstr(
+            h - 2, 2, "Press any key to exit stopwatch", curses.A_DIM)
+        stdscr.refresh()
+
+        # Quit if any key pressed
+        if stdscr.getch() != -1:
+            break
+
+        time.sleep(1)
 # ——— Stop Timer ———
 
 

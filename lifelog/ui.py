@@ -4,6 +4,7 @@ import curses
 
 from lifelog.commands.utils.db import task_repository, time_repository, track_repository
 from lifelog.ui_views import (
+    delete_time_entry_tui,
     draw_agenda,
     draw_trackers,
     draw_time,
@@ -11,7 +12,13 @@ from lifelog.ui_views import (
     draw_env,
     draw_menu,
     draw_status,
+    edit_time_entry_tui,
     popup_confirm,
+    start_time_tui,
+    status_time_tui,
+    stop_time_tui,
+    stopwatch_tui,
+    summary_time_tui,
 )
 
 SCREENS = ["Agenda", "Trackers", "Time", "Report", "Environment"]
@@ -152,24 +159,19 @@ def main(stdscr, show_status: bool = True):
                 time_sel = max(time_sel - 1, 0)
                 continue
             elif key == ord("s"):
-                from lifelog.ui_views import start_time_tui
                 start_time_tui(stdscr)
             elif key == ord("p"):
-                from lifelog.ui_views import stop_time_tui
                 stop_time_tui(stdscr)
             elif key == ord("v"):
-                from lifelog.ui_views import status_time_tui
                 status_time_tui(stdscr)
             elif key == ord("y"):
-                from lifelog.ui_views import summary_time_tui
                 summary_time_tui(stdscr)
             elif key == ord("e"):
-                from lifelog.ui_views import edit_time_entry_tui
                 edit_time_entry_tui(stdscr, time_sel)
             elif key == ord("x"):
-                from lifelog.ui_views import delete_time_entry_tui
                 delete_time_entry_tui(stdscr, time_sel)
-
+            elif key == ord("w"):
+                stopwatch_tui(stdscr)
         elif SCREENS[current] == "Trackers":
             max_idx = len(track_repository.get_all_trackers()) - 1
             if key == curses.KEY_DOWN:
