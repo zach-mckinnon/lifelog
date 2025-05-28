@@ -37,9 +37,10 @@ def main(stdscr, show_status: bool = True):
         h, w = stdscr.getmaxyx()
         stdscr.erase()
 
-        # 1) Top menu
+        # 1) Always draw the top menu
         draw_menu(stdscr, SCREENS, current, w, color_pair=1)
 
+        # 2) Always draw the active pane
         if SCREENS[current] == "Agenda":
             agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
         elif SCREENS[current] == "Trackers":
@@ -52,28 +53,30 @@ def main(stdscr, show_status: bool = True):
         else:  # Environment
             draw_env(stdscr, h, w)
 
-        # 3) Bottom status/help bar
+        # 3) Always draw the status/help bar
         if show_status:
             draw_status(stdscr, h, w, current)
 
         stdscr.refresh()
+
+        # 4) THEN read a key
         key = stdscr.getch()
 
-        # ─── Handle resize ───────────────────────────────────────────────
+        # 5) Handle resize → just redraw
         if key == curses.KEY_RESIZE:
-            continue  # simply redraw everything
+            continue
 
-        # ─── Full-exit vs Back ──────────────────────────────────────────
-        if key == ord("Q"):             # Shift+Q = quit
+        # 6) Quit or “back to Agenda”
+        if key == ord("Q"):            # Shift+Q to quit
             if popup_confirm(stdscr, "❓ Exit the app? (Y/n)"):
                 break
             else:
                 continue
-        elif key == 27:                 # ESC = back to Agenda
+        if key == 27:                  # ESC = back to Agenda
             current = 0
             continue
 
-         # ─── Environment “o” (Fix 5 for draw_env) ───────────────────────
+        # 7) Environment “o” → dump to console
         if SCREENS[current] == "Environment" and key == ord("o"):
             curses.endwin()
             from rich.console import Console
@@ -87,14 +90,14 @@ def main(stdscr, show_status: bool = True):
                     console.print(data)
                 except Exception as e:
                     console.print(f"[red]Error: {e}[/]")
-            input("Press Enter to return to TUI…")
+            input("Press Enter to return…")
             continue
 
-         # ─── Tab navigation ──────────────────────────────────────────────
+        # 8) ←/→ to switch tabs
         if key == curses.KEY_RIGHT:
             current = (current + 1) % len(SCREENS)
             continue
-        elif key == curses.KEY_LEFT:
+        if key == curses.KEY_LEFT:
             current = (current - 1) % len(SCREENS)
             continue
 

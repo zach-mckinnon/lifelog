@@ -78,19 +78,20 @@ def popup_confirm(stdscr, message) -> bool:
 # -------------------------------------------------------------------
 
 
+# ─── Single, contextual status‐bar ───────────────────────────────────
 def draw_status(stdscr, h, w, current_tab):
-    status_y = h-1
+    status_y = h - 1
     stdscr.attron(curses.color_pair(3))
-    stdscr.hline(status_y, 0, ' ', w)
+    stdscr.hline(status_y, 0, " ", w)
     if current_tab == 0:
-        hint = "←/→:Switch  ↑/↓:Move  a:Add  d:Del  Enter:Edit  Q:Quit  Esc:Back"
+        hint = "←/→:Switch  ↑/↓:Move  a:Add  d:Del  Enter:Edit  v:View  s:Start  p:Pause  o:Done  f:Filter  r:Recur  n:Notes  Q:Quit"
     elif current_tab == 1:
-        hint = "←/→:Switch  ↑/↓:Move  a:Add  d:Del  g:Goal  Q:Quit  Esc:Back"
+        hint = "←/→:Switch  ↑/↓:Move  a:Add  d:Del  g:Goal  Q:Quit"
     elif current_tab == 2:
-        hint = "←/→:Switch  ↑/↓:Move  s:Start  p:Stop  v:Status  y:Sum  Q:Quit  Esc:Back"
+        hint = "←/→:Switch  ↑/↓:Move  s:Start  p:Stop  v:Status  y:Sum  e:Edit  x:Delete  Q:Quit"
     else:
-        hint = "←/→:Switch  Q:Quit  Esc:Back"
-    stdscr.addstr(status_y, 1, hint[:w-2])
+        hint = "←/→:Switch  Q:Quit"
+    stdscr.addstr(status_y, 1, hint[: w - 2])
     stdscr.attroff(curses.color_pair(3))
 
 
@@ -103,21 +104,6 @@ def draw_menu(stdscr, tabs, current, w, color_pair=0):
         attr = curses.A_REVERSE if idx == current else curses.A_NORMAL
         stdscr.addstr(1, x, f" {name} ", attr)
         x += len(name)+4
-
-
-# -------------------------------------------------------------------
-# Helper: draw the bottom status/help line
-# -------------------------------------------------------------------
-
-def draw_status(stdscr, h, w, msg=""):
-    status_y = h - 1
-    stdscr.hline(status_y, 0, ' ', w, curses.A_REVERSE)
-    hint = "←/→:Switch  q:Quit  a:Add  d:Del  Enter:Edit"
-    stdscr.addstr(status_y, 2, hint[: w - 4], curses.A_REVERSE)
-    if msg:
-        stdscr.addstr(status_y, len(hint) + 4,
-                      msg[: w - len(hint) - 6], curses.A_REVERSE)
-    stdscr.refresh()
 
 # -------------------------------------------------------------------
 # Agenda view: calendar + top‐priority tasks
@@ -217,11 +203,18 @@ def add_task_tui(stdscr):
 
 def delete_task_tui(stdscr, sel):
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
+    # ── Guard: no tasks to delete
+    if not tasks:
+        return popup_show(stdscr, ["⚠️ No tasks to delete"])
+    # ── Guard: sel out of range
+    if sel < 0 or sel >= len(tasks):
+        return popup_show(stdscr, ["⚠️ No task selected"])
+
     tid = tasks[sel]["id"]
     if popup_confirm(stdscr, f"Delete task #{tid}?"):
         try:
             task_repository.delete_task(tid)
-            popup_show(stdscr, [f"🗑️ Deleted #{tid}"])
+            popup_show(stdscr, [f"🗑️ Deleted task #{tid}"])
         except Exception as e:
             popup_show(stdscr, [f"❌ Error: {e}"])
 
