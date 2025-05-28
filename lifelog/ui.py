@@ -3,19 +3,20 @@ import curses
 
 # 1) import your per-module drawers:
 from lifelog.ui_views import (
-    draw_agenda, draw_trackers, draw_time, draw_report, draw_env, draw_menu
+    draw_agenda, draw_trackers, draw_time, draw_report, draw_env, draw_menu, draw_status
 )
 
 SCREENS = ["Agenda", "Trackers", "Time", "Report", "Environment"]
 
 
-def main(stdscr):
+def main(stdscr, show_status: bool = True):
     curses.curs_set(0)
     stdscr.clear()
     h, w = stdscr.getmaxyx()
 
     current = 0  # index into SCREENS
     while True:
+        h, w = stdscr.getmaxyx()
         stdscr.erase()
         # a) draw the top menu bar
         draw_menu(stdscr, SCREENS, current, w)
@@ -30,7 +31,8 @@ def main(stdscr):
             draw_report(stdscr, h, w)
         elif SCREENS[current] == "Environment":
             draw_env(stdscr, h, w)
-
+        if show_status:
+            draw_status(stdscr, h, w)
         stdscr.refresh()
         key = stdscr.getch()
         # ←/→ to change screen

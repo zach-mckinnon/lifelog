@@ -66,13 +66,18 @@ app.add_typer(environmental_sync.app, name="env",
 
 
 @app.command("ui")
-def ui():
+def ui(
+    status_bar: bool = typer.Option(
+        True,
+        "--status-bar/--no-status-bar",
+        help="Include or exclude the controls bar at the bottom",
+    )
+):
     """
     Launch the full-screen Lifelog TUI (like Calcurse).
     """
-    # curses.wrapper() sets up/tears down the terminal for you,
-    # then calls your ui_main(stdscr) function.
-    curses.wrapper(ui_main)
+    # Pass the flag into your UI entrypoint
+    curses.wrapper(ui_main, status_bar)
 
 
 @app.callback(invoke_without_command=True)

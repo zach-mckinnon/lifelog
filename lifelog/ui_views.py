@@ -17,6 +17,33 @@ from lifelog.commands.report import generate_goal_report
 # -------------------------------------------------------------------
 
 
+def draw_status(stdscr, h, w, msg=""):
+    """
+    Draws a controls/status bar on the bottom row of the screen.
+      - stdscr: the main curses window
+      - h, w : height and width of stdscr
+      - msg  : optional dynamic message (e.g. “Saved!”)
+    """
+    status_y = h - 1                       # bottom line index
+
+    # 1) Reverse-video background for the entire line
+    stdscr.attron(curses.A_REVERSE)
+    stdscr.hline(status_y, 0, ' ', w)      # fill line with spaces
+
+    # 2) Core control hints
+    hint = "←/→:Switch  ↑/↓:Move  a:Add  d:Del  Enter:Edit  q:Quit"
+    # start at col 1 to give a 1-col margin
+    stdscr.addstr(status_y, 1, hint[: w - 2])
+
+    # 3) Optional message to the right of hints (bold)
+    if msg:
+        x = len(hint) + 3                  # 2 spaces + 1 margin
+        stdscr.addstr(status_y, x, msg[: w - x - 1], curses.A_BOLD)
+
+    # 4) Turn off reverse attribute so other text isn’t reversed
+    stdscr.attroff(curses.A_REVERSE)
+
+
 def draw_menu(stdscr, tabs, current, w):
     menu_h = 3
     stdscr.attron(curses.A_REVERSE)
