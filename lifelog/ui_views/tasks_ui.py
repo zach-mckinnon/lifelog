@@ -197,6 +197,58 @@ def draw_burndown(pane, h, w):
         pane.noutrefresh()
 
 
+def popup_recurrence(stdscr):
+    # Define prompts
+    prompt = "Add recurrence rule?"
+    options = "[y] Yes    [n] No"
+    info_line = "Enter the interval to recur at. If you need specific weekdays, choose 'week'."
+    input_prompt = "[(d)ay, (w)eek, (m)onth, (y)ear]: "
+
+    # Calculate window size
+    content_lines = [prompt, options, info_line, input_prompt]
+    max_line = max(len(l) for l in content_lines)
+    win_w = max(60, max_line + 4)
+    win_h = 7
+    h, w = stdscr.getmaxyx()
+    starty = max((h - win_h) // 2, 0)
+    startx = max((w - win_w) // 2, 0)
+
+    win = curses.newwin(win_h, win_w, starty, startx)
+    win.keypad(True)
+    win.border()
+    win.addstr(1, 2, prompt[:win_w-4], curses.A_BOLD)
+    win.addstr(2, 2, options[:win_w-4])
+    win.addstr(3, 2, info_line[:win_w-4])
+    win.addstr(4, 2, input_prompt[:win_w-4])
+    win.refresh()
+
+    curses.echo()
+    inp = ""
+    while True:
+        c = win.getch(4, 2 + len(input_prompt) + len(inp))
+        if c in (10, 13):  # Enter
+            break
+        if c in (27,):  # ESC
+            inp = ""
+            break
+        if c in (curses.KEY_BACKSPACE, 127, 8):
+            if inp:
+                inp = inp[:-1]
+                win.addstr(4, 2 + len(input_prompt) + len(inp), ' ')
+                win.move(4, 2 + len(input_prompt) + len(inp))
+        elif 32 <= c <= 126 and len(inp) < win_w - len(input_prompt) - 4:
+            inp += chr(c)
+            win.addstr(4, 2 + len(input_prompt) + len(inp) - 1, chr(c))
+        # Prevent typing past the window edge!
+        win.refresh()
+
+    curses.noecho()
+    win.clear()
+    stdscr.touchwin()
+    stdscr.refresh()
+    return inp.strip() if inp else None
+
+
 def add_task_tui(stdscr):
     """
     Prompt for all task fields, compute priority, and save.
@@ -226,14 +278,17 @@ def add_task_tui(stdscr):
             return
 
     # 5) Recurrence
-    recur_interval = recur_unit = recur_days = recur_base = None
+    recurrence = None
     if popup_confirm(stdscr, "Add recurrence rule?"):
+        recur_input = popup_recurrence(stdscr)
         try:
-            recur_data = create_recur_schedule("interactive")
-            recur_interval = recur_data["interval"]
-            recur_unit = recur_data["unit"]
-            recur_days = recur_data.get("days_of_week") or None
-            recur_base = datetime.now().isoformat()
+            recur_data = create_recur_schedule("interactive", recur_input)
+            recurrence = {
+                "everyX": recur_data.get("interval"),
+                "unit": recur_data.get("unit"),
+                "daysOfWeek": recur_data.get("days_of_week"),
+                "onFirstOfMonth": recur_data.get("on_first_of_month", False)
+            }
         except Exception as e:
             popup_show(stdscr, [f"Recurrence setup failed: {e}"])
             return
@@ -255,10 +310,7 @@ def add_task_tui(stdscr):
         "start":            None,
         "end":              None,
         "priority":         0,  # will be overwritten
-        "recur_interval":   recur_interval,
-        "recur_unit":       recur_unit,
-        "recur_days_of_week": recur_days,
-        "recur_base":       recur_base,
+        "recurrence": recurrence,
         "tags":             tags,
         "notes":            notes,
     }
@@ -294,10 +346,7 @@ def quick_add_task_tui(stdscr):
         "impt": 1,
         "project": None,
         "due": None,
-        "recur_interval": None,
-        "recur_unit": None,
-        "recur_days_of_week": None,
-        "recur_base": None,
+        "recurrence": None,
         "tags": None,
         "notes": None,
         "start": None,
@@ -453,23 +502,21 @@ def edit_task_tui(stdscr, sel):
         stdscr, f"Tags [{t.get('tags') or ''}]:") or t.get("tags")
     new_notes = popup_input(
         stdscr, f"Notes [{t.get('notes') or ''}]:") or t.get("notes")
-
+    recurrence = None
     # Optional: Edit recurrence interactively
     if popup_confirm(stdscr, "Edit recurrence?"):
+        recur_input = popup_recurrence(stdscr)
         try:
-            recur_data = create_recur_schedule("interactive")
-            recur_interval = recur_data["interval"]
-            recur_unit = recur_data["unit"]
-            recur_days = recur_data.get("days_of_week") or None
-            recur_base = datetime.now().isoformat()
+            recur_data = create_recur_schedule("interactive", recur_input)
+            recurrence = {
+                "everyX": recur_data.get("interval"),
+                "unit": recur_data.get("unit"),
+                "daysOfWeek": recur_data.get("days_of_week"),
+                "onFirstOfMonth": recur_data.get("on_first_of_month", False)
+            }
         except Exception as e:
             popup_show(stdscr, [f"Recurrence setup failed: {e}"])
             return
-    else:
-        recur_interval = t.get("recur_interval")
-        recur_unit = t.get("recur_unit")
-        recur_days = t.get("recur_days_of_week")
-        recur_base = t.get("recur_base")
 
     updates = {
         "title": new_title,
@@ -479,10 +526,7 @@ def edit_task_tui(stdscr, sel):
         "impt": int(new_impt) if new_impt and new_impt.isdigit() else t.get("impt", 1),
         "tags": new_tags,
         "notes": new_notes,
-        "recur_interval": recur_interval,
-        "recur_unit": recur_unit,
-        "recur_days_of_week": recur_days,
-        "recur_base": recur_base,
+        "recurrence": recurrence,
     }
     # Priority recalculation
     updates["priority"] = calculate_priority({**t, **updates})
@@ -497,6 +541,7 @@ def edit_recurrence_tui(stdscr, sel):
     """
     Prompts the user to view and edit recurrence settings for the selected task.
     Allows creating, updating, or clearing the recurrence rule.
+    User can press ESC at any prompt to cancel editing (no changes saved).
     """
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
     t = tasks[sel]
@@ -518,13 +563,28 @@ def edit_recurrence_tui(stdscr, sel):
     ]
     popup_show(stdscr, lines, title=" Edit Recurrence ")
 
-    # Prompt new values
+    # Prompt new values, ESC = abort
     new_everyX = popup_input(stdscr, f"Every X [{everyX or ''}]:")
+    if new_everyX is None:
+        popup_show(stdscr, ["Edit cancelled."])
+        return
+
     new_unit = popup_input(stdscr, f"Unit (days/weeks/months) [{unit or ''}]:")
+    if new_unit is None:
+        popup_show(stdscr, ["Edit cancelled."])
+        return
+
     new_days = popup_input(
         stdscr, f"DaysOfWeek (0-6, comma list) [{','.join(map(str, daysOfWeek)) or ''}]:")
+    if new_days is None:
+        popup_show(stdscr, ["Edit cancelled."])
+        return
+
     new_first = popup_input(
         stdscr, f"First of Month? (y/n) [{'y' if onFirstOfMonth else 'n'}]:")
+    if new_first is None:
+        popup_show(stdscr, ["Edit cancelled."])
+        return
 
     # Build new recurrence dict
     updates = {}
@@ -553,7 +613,7 @@ def edit_recurrence_tui(stdscr, sel):
             updates["onFirstOfMonth"] = onFirstOfMonth
 
         # If user leaves all fields blank, clear recurrence
-        if not any(updates.values()):
+        if not any(str(v).strip() for v in updates.values()):
             confirm = popup_confirm(stdscr, "Clear recurrence?")
             if confirm:
                 updates = None
