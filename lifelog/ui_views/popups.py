@@ -10,7 +10,7 @@ LOG_FILE = "/tmp/lifelog_tui.log"
 
 def show_help_popup(stdscr, current_tab):
     lines = []
-    if current_tab == 0:
+    if current_tab == 1:
         lines = [
             "Agenda/Tasks Tab:",
             "a: Add Task      q: Quick Add      c: Clone      F: Focus Mode",
@@ -20,7 +20,7 @@ def show_help_popup(stdscr, current_tab):
             "",
             "←/→: Switch Tab   Q: Quit   ?: Close Help"
         ]
-    elif current_tab == 1:
+    elif current_tab == 2:
         lines = [
             "Trackers Tab:",
             "a: Add Tracker    d: Delete Tracker   Enter: Edit Tracker",
@@ -30,7 +30,7 @@ def show_help_popup(stdscr, current_tab):
             "",
             "↑/↓: Move   ←/→: Switch Tab   Q: Quit   ?: Close Help"
         ]
-    elif current_tab == 2:
+    elif current_tab == 3:
         lines = [
             "Time Tab:",
             "s: Start Timer   a: Add Manual Entry   p: Stop Timer",
@@ -40,7 +40,7 @@ def show_help_popup(stdscr, current_tab):
             "",
             "↑/↓: Move   ←/→: Switch Tab   Q: Quit   ?: Close Help"
         ]
-    elif current_tab == 3:
+    elif current_tab == 4:
         lines = [
             "Reports Tab:",
             "1: Trackers Summary    2: Time Summary",

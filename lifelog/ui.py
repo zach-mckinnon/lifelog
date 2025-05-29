@@ -179,6 +179,8 @@ def main(stdscr, show_status: bool = True):
                     start_time_tui(stdscr)
                 elif key == ord("a"):
                     add_manual_time_entry_tui(stdscr)
+                elif key == ord("l"):
+                    add_manual_time_entry_tui(stdscr)
                 elif key == ord("p"):
                     stop_time_tui(stdscr)
                 elif key == ord("v"):
@@ -244,7 +246,7 @@ def main(stdscr, show_status: bool = True):
                     run_clinical_insights(stdscr)
                 elif key in (ord("q"), 27):
                     current = 0
-    except Exception:
+    except Exception as e:
         with open('/tmp/llog-error.log', 'w') as f:
             f.write(traceback.format_exc())
         # You may also want to re-raise to exit, or show a final error popup if you can
