@@ -55,7 +55,7 @@ def draw_report(stdscr, h, w):
     body_h = h - menu_h - 1
     pane = curses.newwin(body_h, w, menu_h, 0)
     pane.border()
-    pane.addstr(1, 2, "📊 Reports", curses.A_BOLD)
+    pane.addstr(1, 2, "Reports", curses.A_BOLD)
 
     # ← added "4) insights" here
     opts = [

@@ -15,7 +15,7 @@ from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entr
 from lifelog.ui_views.trackers_ui import add_goal_tui, add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_goal_tui, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
 
 
-SCREENS = ["Home", "Task", "Time", "Track", "Report"]
+SCREENS = ["H", "TSK", "TM", "TRK", "R"]
 
 
 def main(stdscr, show_status: bool = True):
@@ -238,7 +238,7 @@ def main(stdscr, show_status: bool = True):
 
 def draw_home(stdscr, h, w):
     try:
-        stdscr.addstr(1, 2, "🏠 Lifelog Home", curses.A_BOLD)
+        stdscr.addstr(1, 2, "Home", curses.A_BOLD)
         stdscr.addstr(3, 2, "Top Tasks:", curses.A_UNDERLINE)
         tasks = task_repository.query_tasks(sort="priority")[:3]
         for i, t in enumerate(tasks):

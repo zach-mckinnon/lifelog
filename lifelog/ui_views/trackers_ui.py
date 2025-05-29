@@ -88,7 +88,7 @@ def add_tracker_tui(stdscr):
     category = popup_input(stdscr, "Category [optional]:")
     ttype = popup_input(stdscr, "Type (int/float/bool/str):")
     if ttype not in ("int", "float", "bool", "str"):
-        return popup_show(stdscr, [f"❌ Invalid type '{ttype}'"])
+        return popup_show(stdscr, [f"Invalid type '{ttype}'"])
 
     # 2) Tags & Notes
     tags = popup_input(stdscr, "Tags (comma-separated) [opt]:")
@@ -111,9 +111,9 @@ def add_tracker_tui(stdscr):
         )
         if goal:
             track_repository.add_goal(tracker_id, goal)
-        popup_show(stdscr, [f"✅ Tracker '{title}' added"])
+        popup_show(stdscr, [f"Tracker '{title}' added"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def delete_tracker_tui(stdscr, sel):
@@ -124,19 +124,19 @@ def delete_tracker_tui(stdscr, sel):
     msg = f"Delete '{t['title']}' (ID {t['id']})?"
     if goals or entries:
         msg = (
-            f"⚠️ '{t['title']}' has {len(goals)} goals and {len(entries)} entries!\n"
+            f"'{t['title']}' has {len(goals)} goals and {len(entries)} entries!\n"
             "This cannot be undone.\n"
             "Are you sure you want to delete?"
         )
     if popup_confirm(stdscr, msg):
         if (goals or entries) and not popup_confirm(stdscr, "Really delete? This will permanently remove all related data."):
-            popup_show(stdscr, ["❎ Cancelled"])
+            popup_show(stdscr, ["Cancelled"])
             return
         try:
             track_repository.delete_tracker(t["id"])
-            popup_show(stdscr, [f"🗑️ Deleted '{t['title']}'"])
+            popup_show(stdscr, [f"Deleted '{t['title']}'"])
         except Exception as e:
-            popup_show(stdscr, [f"❌ Error: {e}"])
+            popup_show(stdscr, [f"Error: {e}"])
 
 
 def edit_tracker_tui(stdscr, sel):
@@ -159,12 +159,12 @@ def edit_tracker_tui(stdscr, sel):
         updates["notes"] = new_notes
 
     if not updates:
-        return popup_show(stdscr, ["⚠️ No changes"])
+        return popup_show(stdscr, ["No changes"])
     try:
         track_repository.update_tracker(t["id"], updates)
-        popup_show(stdscr, [f"✏️ Updated '{t['title']}'"])
+        popup_show(stdscr, [f"Updated '{t['title']}'"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def log_entry_tui(stdscr, sel):
@@ -182,7 +182,7 @@ def log_entry_tui(stdscr, sel):
             "str":   str,
         }[t["type"]](val_str)
     except Exception as e:
-        return popup_show(stdscr, [f"❌ Bad value: {e}"])
+        return popup_show(stdscr, [f"Bad value: {e}"])
     # Optional timestamp
     when = popup_input(stdscr, "Timestamp (ISO or 'now') [opt]:")
     ts = parse_date_string(when).isoformat(
@@ -190,9 +190,9 @@ def log_entry_tui(stdscr, sel):
 
     try:
         track_repository.add_tracker_entry(t["id"], ts, val)
-        popup_show(stdscr, [f"✅ Logged {val} at {ts}"])
+        popup_show(stdscr, [f"Logged {val} at {ts}"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def view_tracker_tui(stdscr, sel):
@@ -218,7 +218,7 @@ def view_goal_tui(stdscr, tracker_sel, goal_idx=0):
     t = trackers[tracker_sel]
     goals = track_repository.get_goals_for_tracker(t["id"])
     if not goals:
-        return popup_show(stdscr, ["⚠️ No goals found"])
+        return popup_show(stdscr, ["No goals found"])
     g = goals[goal_idx]
     kind = g.get('kind')
     lines = [
@@ -285,7 +285,7 @@ def view_goals_list_tui(stdscr, tracker_sel):
     t = trackers[tracker_sel]
     goals = track_repository.get_goals_for_tracker(t["id"])
     if not goals:
-        return popup_show(stdscr, ["⚠️ No goals found"])
+        return popup_show(stdscr, ["No goals found"])
     # List all goals and allow selection
     idx = 0
     while True:
@@ -373,9 +373,9 @@ def add_goal_tui(stdscr, tracker_sel):
     # 2) Save
     try:
         track_repository.add_goal(t["id"], goal)
-        popup_show(stdscr, [f"🎯 Goal added to '{t['title']}'"])
+        popup_show(stdscr, [f"Goal added to '{t['title']}'"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error adding goal: {e}"])
+        popup_show(stdscr, [f"Error adding goal: {e}"])
 
 
 def edit_goal_tui(stdscr, tracker_sel, goal_idx=0):
@@ -383,7 +383,7 @@ def edit_goal_tui(stdscr, tracker_sel, goal_idx=0):
     t = trackers[tracker_sel]
     goals = track_repository.get_goals_for_tracker(t["id"])
     if not goals:
-        return popup_show(stdscr, ["⚠️ No goal to edit"])
+        return popup_show(stdscr, ["No goal to edit"])
     g = goals[goal_idx]
     kind = g.get('kind')
 
@@ -473,9 +473,9 @@ def edit_goal_tui(stdscr, tracker_sel, goal_idx=0):
     try:
         track_repository.delete_goal(g["id"])
         track_repository.add_goal(t["id"], {**g, **updates})
-        popup_show(stdscr, ["✅ Goal updated"])
+        popup_show(stdscr, ["Goal updated"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error updating goal: {e}"])
+        popup_show(stdscr, [f"Error updating goal: {e}"])
 
 
 def delete_goal_tui(stdscr, tracker_sel):
@@ -483,16 +483,16 @@ def delete_goal_tui(stdscr, tracker_sel):
     t = trackers[tracker_sel]
     goals = track_repository.get_goals_for_tracker(t["id"])
     if not goals:
-        return popup_show(stdscr, ["⚠️ No goal to delete"])
+        return popup_show(stdscr, ["No goal to delete"])
     g = goals[0]
     # Optionally, check if this goal has any linked tracker entries, and warn.
     msg = f"Delete goal '{g['title']}'?"
     if popup_confirm(stdscr, msg):
         if not popup_confirm(stdscr, "Really delete this goal? This cannot be undone."):
-            popup_show(stdscr, ["❎ Cancelled"])
+            popup_show(stdscr, ["Cancelled"])
             return
         try:
             track_repository.delete_goal(g["id"])
-            popup_show(stdscr, ["🗑️ Goal deleted"])
+            popup_show(stdscr, ["Goal deleted"])
         except Exception as e:
-            popup_show(stdscr, [f"❌ Error deleting goal: {e}"])
+            popup_show(stdscr, [f"Error deleting goal: {e}"])

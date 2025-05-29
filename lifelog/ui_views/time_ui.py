@@ -51,7 +51,7 @@ def draw_time(stdscr, h, w, selected_idx):
         'all': ' (all time)'
     }[period]
 
-    pane.addstr(1, 2, f"🕒 Time Spent{period_title}", curses.A_BOLD)
+    pane.addstr(1, 2, f"Time Spent{period_title}", curses.A_BOLD)
     # show active session if exists
     active = time_repository.get_active_time_entry()
     y = 3
@@ -59,7 +59,7 @@ def draw_time(stdscr, h, w, selected_idx):
         start_dt = datetime.fromisoformat(active["start"])
         elapsed = (datetime.now() - start_dt).total_seconds()//60
         pane.addstr(
-            y, 2, f"▶️ Running: {active['title']} ({int(elapsed)} min)", curses.A_BOLD)
+            y, 2, f"Running: {active['title']} ({int(elapsed)} min)", curses.A_BOLD)
         y += 2
 
     # history pad
@@ -106,7 +106,7 @@ def start_time_tui(stdscr):
     try:
         start_dt = parse_date_string(past) if past else datetime.now()
     except Exception as e:
-        popup_confirm(stdscr, f"❌ Invalid time: {e}")
+        popup_confirm(stdscr, f"Invalid time: {e}")
         return
 
     time_repository.start_time_entry(
@@ -119,7 +119,7 @@ def start_time_tui(stdscr):
         task_id=task_id or None
     )
 
-    popup_confirm(stdscr, f"▶️ Started '{title}'")
+    popup_confirm(stdscr, f"Started '{title}'")
 
 
 def add_manual_time_entry_tui(stdscr):
@@ -142,10 +142,10 @@ def add_manual_time_entry_tui(stdscr):
         start_dt = parse_date_string(start_str)
         end_dt = parse_date_string(end_str)
         if end_dt <= start_dt:
-            popup_show(stdscr, ["❌ End time must be after start time!"])
+            popup_show(stdscr, ["End time must be after start time!"])
             return
     except Exception as e:
-        popup_show(stdscr, [f"❌ Invalid time: {e}"])
+        popup_show(stdscr, [f"Invalid time: {e}"])
         return
 
     try:
@@ -159,9 +159,9 @@ def add_manual_time_entry_tui(stdscr):
             notes=notes or None,
             task_id=task_id or None
         )
-        popup_show(stdscr, [f"✅ Time entry '{title}' added"])
+        popup_show(stdscr, [f"Time entry '{title}' added"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def stopwatch_tui(stdscr):
@@ -207,7 +207,7 @@ def stopwatch_tui(stdscr):
 def stop_time_tui(stdscr):
     active = time_repository.get_active_time_entry()
     if not active:
-        popup_confirm(stdscr, "⚠️ No active timer.")
+        popup_confirm(stdscr, "No active timer.")
         return
 
     tags = popup_input(
@@ -218,7 +218,7 @@ def stop_time_tui(stdscr):
     try:
         end_dt = parse_date_string(past) if past else datetime.now()
     except Exception as e:
-        popup_confirm(stdscr, f"❌ Invalid time: {e}")
+        popup_confirm(stdscr, f"Invalid time: {e}")
         return
 
     time_repository.stop_active_time_entry(
@@ -322,9 +322,9 @@ def edit_time_entry_tui(stdscr, sel):
     try:
         time_repository.update_time_entry(
             entry["id"], tags=new_tags or None, notes=new_notes or None)
-        popup_show(stdscr, [f"✏️ Updated entry #{entry['id']}"])
+        popup_show(stdscr, [f"Updated entry #{entry['id']}"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def delete_time_entry_tui(stdscr, sel):
@@ -334,6 +334,6 @@ def delete_time_entry_tui(stdscr, sel):
     if popup_confirm(stdscr, f"Delete entry #{entry['id']}?"):
         try:
             time_repository.delete_time_entry(entry["id"])
-            popup_show(stdscr, [f"🗑️ Deleted #{entry['id']}"])
+            popup_show(stdscr, [f"Deleted #{entry['id']}"])
         except Exception as e:
-            popup_show(stdscr, [f"❌ Error: {e}"])
+            popup_show(stdscr, [f"Error: {e}"])

@@ -14,13 +14,15 @@ def draw_status(stdscr, h, w, current_tab):
     stdscr.attron(curses.color_pair(3))
     stdscr.hline(status_y, 0, " ", w)
     # Minimal hints, 1 line, with '?' for more help
-    if current_tab == 0:  # Agenda
+    if current_tab == 0:  # Home
+        hint = "←/→: Switch  ↑/↓: Move"
+    elif current_tab == 1:  # Tasks
         hint = "a:Add  Enter:Edit  v:View  s:Start  p:Stop  o:Done  f:Filter  ?:Help  Q:Quit"
-    elif current_tab == 1:  # Trackers
+    elif current_tab == 2:  # Trackers
         hint = "a:Add  l:Log  g:Goal  v:View  x:DelGoal  ?:Help  Q:Quit"
-    elif current_tab == 2:  # Time
+    elif current_tab == 3:  # Time
         hint = "s:Start  a:Manual  p:Stop  y:Sum  w:Watch  ?:Help  Q:Quit"
-    elif current_tab == 3:  # Reports
+    elif current_tab == 4:  # Reports
         hint = "1-4:Run Report  ?:Help  Q:Quit"
     else:
         hint = "Q:Quit  ?:Help"
@@ -37,13 +39,6 @@ def draw_menu(stdscr, tabs, current, w, color_pair=0):
         attr = curses.A_REVERSE if idx == current else curses.A_NORMAL
         stdscr.addstr(1, x, f" {name} ", attr)
         x += len(name)+4
-
-
-def draw_env(stdscr, h, w):
-    # For environment data display
-    pane = create_pane(stdscr, 3, h, w, " Env Data ")
-    pane.addstr(2, 2, "Press 'o' to open in console…", curses.A_DIM)
-    pane.refresh()
 
 
 def create_pane(stdscr, menu_h, h, w, title, x=0, color_pair=0):

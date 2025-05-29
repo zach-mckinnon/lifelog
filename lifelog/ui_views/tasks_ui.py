@@ -100,12 +100,12 @@ def add_task_tui(stdscr):
         try:
             due_iso = parse_date_string(due_str).isoformat()
         except Exception as e:
-            popup_show(stdscr, [f"❌ Invalid due date: {e}"])
+            popup_show(stdscr, [f"Invalid due date: {e}"])
             return
 
     # 5) Recurrence
     recur_interval = recur_unit = recur_days = recur_base = None
-    if popup_confirm(stdscr, "🔁 Add recurrence rule?"):
+    if popup_confirm(stdscr, "Add recurrence rule?"):
         try:
             recur_data = create_recur_schedule("interactive")
             recur_interval = recur_data["interval"]
@@ -113,7 +113,7 @@ def add_task_tui(stdscr):
             recur_days = recur_data.get("days_of_week") or None
             recur_base = datetime.now().isoformat()
         except Exception as e:
-            popup_show(stdscr, [f"❌ Recurrence setup failed: {e}"])
+            popup_show(stdscr, [f"Recurrence setup failed: {e}"])
             return
 
     # 6) Tags & Notes
@@ -146,9 +146,9 @@ def add_task_tui(stdscr):
     # 8) Save
     try:
         task_repository.add_task(task_data)
-        popup_show(stdscr, [f"✅ Task '{title}' added"])
+        popup_show(stdscr, [f"Task '{title}' added"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error saving task: {e}"])
+        popup_show(stdscr, [f"Error saving task: {e}"])
 
 
 def quick_add_task_tui(stdscr):
@@ -157,7 +157,7 @@ def quick_add_task_tui(stdscr):
     """
     title = popup_input(stdscr, "Quick Task Title:")
     if not title:
-        popup_show(stdscr, ["❌ Title required."])
+        popup_show(stdscr, ["Title required."])
         return
 
     category = popup_input(stdscr, "Category [optional]:") or None
@@ -184,9 +184,9 @@ def quick_add_task_tui(stdscr):
     task_data["priority"] = calculate_priority(task_data)
     try:
         task_repository.add_task(task_data)
-        popup_show(stdscr, [f"✅ Quick Task '{title}' added"])
+        popup_show(stdscr, [f"Quick Task '{title}' added"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def clone_task_tui(stdscr, sel):
@@ -195,7 +195,7 @@ def clone_task_tui(stdscr, sel):
     """
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
     if sel < 0 or sel >= len(tasks):
-        popup_show(stdscr, ["❌ No task selected to clone"])
+        popup_show(stdscr, ["No task selected to clone"])
         return
     t = tasks[sel]
     new_title = popup_input(
@@ -219,9 +219,9 @@ def clone_task_tui(stdscr, sel):
 
     try:
         task_repository.add_task(task_data)
-        popup_show(stdscr, [f"✅ Task cloned as '{new_title}'"])
+        popup_show(stdscr, [f"Task cloned as '{new_title}'"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def focus_mode_tui(stdscr, sel):
@@ -289,27 +289,27 @@ def set_task_reminder_tui(stdscr, sel):
     try:
         from lifelog.commands.task import create_due_alert
         create_due_alert(t)
-        popup_show(stdscr, ["✅ Reminder set!"])
+        popup_show(stdscr, ["Reminder set!"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def delete_task_tui(stdscr, sel):
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
     # ── Guard: no tasks to delete
     if not tasks:
-        return popup_show(stdscr, ["⚠️ No tasks to delete"])
+        return popup_show(stdscr, ["No tasks to delete"])
     # ── Guard: sel out of range
     if sel < 0 or sel >= len(tasks):
-        return popup_show(stdscr, ["⚠️ No task selected"])
+        return popup_show(stdscr, ["No task selected"])
 
     tid = tasks[sel]["id"]
     if popup_confirm(stdscr, f"Delete task #{tid}?"):
         try:
             task_repository.delete_task(tid)
-            popup_show(stdscr, [f"🗑️ Deleted task #{tid}"])
+            popup_show(stdscr, [f"Deleted task #{tid}"])
         except Exception as e:
-            popup_show(stdscr, [f"❌ Error: {e}"])
+            popup_show(stdscr, [f"Error: {e}"])
 
 
 def edit_task_tui(stdscr, sel):
@@ -341,7 +341,7 @@ def edit_task_tui(stdscr, sel):
             recur_days = recur_data.get("days_of_week") or None
             recur_base = datetime.now().isoformat()
         except Exception as e:
-            popup_show(stdscr, [f"❌ Recurrence setup failed: {e}"])
+            popup_show(stdscr, [f"Recurrence setup failed: {e}"])
             return
     else:
         recur_interval = t.get("recur_interval")
@@ -366,9 +366,9 @@ def edit_task_tui(stdscr, sel):
     updates["priority"] = calculate_priority({**t, **updates})
     try:
         task_repository.update_task(t["id"], updates)
-        popup_show(stdscr, [f"✏️ Updated #{t['id']}"])
+        popup_show(stdscr, [f"Updated #{t['id']}"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def edit_recurrence_tui(stdscr, sel):
@@ -436,19 +436,19 @@ def edit_recurrence_tui(stdscr, sel):
             if confirm:
                 updates = None
     except Exception as e:
-        popup_show(stdscr, [f"❌ Invalid recurrence: {e}"])
+        popup_show(stdscr, [f"Invalid recurrence: {e}"])
         return
 
     # Save update
     try:
         if updates is not None:
             task_repository.update_task(t["id"], {"recurrence": updates})
-            popup_show(stdscr, ["🔁 Recurrence updated"])
+            popup_show(stdscr, ["Recurrence updated"])
         else:
             task_repository.update_task(t["id"], {"recurrence": None})
-            popup_show(stdscr, ["🔁 Recurrence cleared"])
+            popup_show(stdscr, ["Recurrence cleared"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def edit_notes_tui(stdscr, sel):
@@ -462,9 +462,9 @@ def edit_notes_tui(stdscr, sel):
     note = popup_input(stdscr, f"Notes [{current}]:")
     try:
         task_repository.update_task(t["id"], {"notes": note or None})
-        popup_show(stdscr, ["📝 Notes updated"])
+        popup_show(stdscr, ["Notes updated"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 # Module‐level state for task filter:
@@ -542,9 +542,9 @@ def start_task_tui(stdscr, sel):
             tags=new_tags,
             notes=new_notes,
         )
-        popup_show(stdscr, [f"▶️ Started '{t['title']}'"])
+        popup_show(stdscr, [f"Started '{t['title']}'"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def stop_task_tui(stdscr):
@@ -553,13 +553,13 @@ def stop_task_tui(stdscr):
     """
     active = time_repository.get_active_time_entry()
     if not active or not active.get("task_id"):
-        popup_show(stdscr, ["⚠️ No active task"])
+        popup_show(stdscr, ["No active task"])
         return
 
     tid = active["task_id"]
     task = task_repository.get_task_by_id(tid)
     if not task:
-        popup_show(stdscr, ["⚠️ Active task not found"])
+        popup_show(stdscr, ["Active task not found"])
         return
 
     # Prompt user to update tags/notes on stop
@@ -582,9 +582,9 @@ def stop_task_tui(stdscr):
         time_repository.stop_active_time_entry(end_time=now_iso)
         # Update the task fields
         task_repository.update_task(tid, updates)
-        popup_show(stdscr, [f"⏸️ Paused '{task['title']}'"])
+        popup_show(stdscr, [f"Paused '{task['title']}'"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
 
 
 def done_task_tui(stdscr, sel):
@@ -614,6 +614,6 @@ def done_task_tui(stdscr, sel):
             time_repository.stop_active_time_entry(end_time=updates["end"])
         # Update the task
         task_repository.update_task(t["id"], updates)
-        popup_show(stdscr, [f"✔️ Task '{t['title']}' marked done"])
+        popup_show(stdscr, [f"Task '{t['title']}' marked done"])
     except Exception as e:
-        popup_show(stdscr, [f"❌ Error: {e}"])
+        popup_show(stdscr, [f"Error: {e}"])
