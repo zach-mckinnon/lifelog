@@ -177,6 +177,21 @@ def insight_missed_goals(trackers):
             )
     return insights
 
+
+def pearson_corr(xs, ys):
+    n = len(xs)
+    if n < 2:
+        return 0.0
+    avg_x = sum(xs) / n
+    avg_y = sum(ys) / n
+    num = sum((x - avg_x)*(y - avg_y) for x, y in zip(xs, ys))
+    den_x = sum((x - avg_x)**2 for x in xs)
+    den_y = sum((y - avg_y)**2 for y in ys)
+    denom = (den_x * den_y) ** 0.5
+    if denom == 0:
+        return 0.0
+    return num / denom
+
 # ---------- Main Clinical Insight Generator ----------
 
 

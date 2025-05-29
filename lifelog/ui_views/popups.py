@@ -5,6 +5,8 @@ import textwrap
 import curses
 import traceback
 
+LOG_FILE = "/tmp/lifelog_tui.log"
+
 
 def show_help_popup(stdscr, current_tab):
     lines = []
@@ -105,18 +107,42 @@ def popup_error(stdscr, error, title=" Error "):
 
 
 def log_and_popup_error(stdscr, message, exc=None):
-    """Unified error handling for TUI and logging."""
+    """Unified error popup (TUI) and log to main log file (always)."""
+    from lifelog.ui_views.popups import popup_error
     try:
-        from lifelog.ui_views.popups import popup_error
         if stdscr:
             popup_error(stdscr, message)
     except Exception as popup_exc:
         print(f"Popup error: {popup_exc} -- {message}")
-    log_msg = f"{datetime.now().isoformat()} | {message}\n"
-    if exc:
-        log_msg += f"Exception: {exc}\n{traceback.format_exc()}\n"
-    with open("/tmp/lifelog_tui.log", "a") as f:
-        f.write(log_msg)
+    try:
+        with open(LOG_FILE, "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] {message}\n")
+            if exc:
+                f.write(f"{exc}\n")
+                f.write(traceback.format_exc())
+            f.write("\n\n")
+    except Exception as log_exc:
+        print(f"LOGGING ERROR: {log_exc} -- {message}")
+
+
+def user_friendly_empty_message(module="insights"):
+    """Standardized no-data message."""
+    return f"[yellow]No usable {module} data available yet. Please track more to generate valuable insights.[/yellow]"
+
+
+def handle_no_data(stdscr=None, module="insights"):
+    msg = user_friendly_empty_message(module)
+    log_and_popup_error(stdscr, msg)
+    return None
+
+
+def try_or_log(fn, *args, stdscr=None, **kwargs):
+    """Call fn(*args, **kwargs), logging errors and showing popup if fails."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        log_and_popup_error(stdscr, f"Exception in {fn.__name__}", exc=e)
+        return None
 
 
 def popup_show(stdscr, lines, title=""):

@@ -3,7 +3,7 @@
 import curses
 from lifelog.commands.report import daily_tracker, get_ai_credentials, show_clinical_insights, show_insights, summary_time, summary_trackers
 from lifelog.ui_views.popups import log_and_popup_error, popup_input, popup_error
-from ui_views.ui_helpers import log_exception
+from lifelog.ui_views.ui_helpers import log_exception
 
 
 def _drop_to_console(func, *args):
