@@ -1,4 +1,7 @@
 # lifelog/ui_helpers.py
+from datetime import datetime
+import logging
+import traceback
 import curses
 
 from lifelog.ui_views.popups import popup_input, popup_show
@@ -76,3 +79,15 @@ def tag_picker_tui(stdscr, existing_tags):
         elif idx.isdigit() and int(idx) < len(existing_tags):
             selected.append(existing_tags[int(idx)])
     return ",".join(selected) if selected else None
+
+
+def log_exception(context, exc):
+    """Log any exception with traceback to the main log file."""
+    try:
+        with open("/tmp/lifelog_tui.log", "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] {context}: {exc}\n")
+            f.write(traceback.format_exc())
+            f.write("\n\n")
+    except Exception as e:
+        # If logging itself fails, print to stderr (last resort)
+        print(f"LOGGING ERROR in {context}: {e}")

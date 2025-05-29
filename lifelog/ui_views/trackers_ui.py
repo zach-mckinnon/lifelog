@@ -9,6 +9,7 @@ from lifelog.commands.utils.goal_util import get_description_for_goal_kind
 from lifelog.commands.utils.db import track_repository
 from lifelog.commands.utils.shared_utils import parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_show
+from lifelog.ui_views.ui_helpers import log_exception
 
 
 def draw_trackers(pane, h, w, selected_idx, color_pair=0):
@@ -63,7 +64,7 @@ def add_tracker_tui(stdscr):
 
     # 3) Optionally create a goal
     if popup_confirm(stdscr, "Add a goal now?"):
-        goal = add_goal_tui(stdscr, ttype)
+        goal = add_or_edit_goal_tui(stdscr, ttype)
     else:
         goal = None
 
@@ -81,6 +82,7 @@ def add_tracker_tui(stdscr):
         popup_show(stdscr, [f"Tracker '{title}' added"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("add_tracker_tui", e)
 
 
 def delete_tracker_tui(stdscr, sel):
@@ -104,6 +106,7 @@ def delete_tracker_tui(stdscr, sel):
             popup_show(stdscr, [f"Deleted '{t['title']}'"])
         except Exception as e:
             popup_show(stdscr, [f"Error: {e}"])
+            log_exception("delete_tracker_tui", e)
 
 
 def edit_tracker_tui(stdscr, sel):
@@ -132,6 +135,7 @@ def edit_tracker_tui(stdscr, sel):
         popup_show(stdscr, [f"Updated '{t['title']}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("edit_tracker_tui", e)
 
 
 def log_entry_tui(stdscr, sel):
@@ -160,6 +164,7 @@ def log_entry_tui(stdscr, sel):
         popup_show(stdscr, [f"Logged {val} at {ts}"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("log_track_tui", e)
 
 
 def view_tracker_tui(stdscr, sel):
@@ -295,154 +300,118 @@ def show_goals_help_tui(stdscr):
     popup_show(stdscr, lines, title=" Goal Types ")
 
 
-def create_goal_tui(stdscr, tracker_type):
+def add_or_edit_goal_tui(stdscr, tracker_sel, edit_goal=None):
     """
-    Popup‐based wizard to build a goal dict matching your DB schema.
+    Popup-based wizard to create or edit a goal dict matching your DB schema.
+    If edit_goal is None, creates a new goal. If passed, edits existing goal.
     """
-    kind = popup_input(stdscr, "Kind (sum/count/bool/streak/...):")
-    title = popup_input(stdscr, "Title:")
-    period = popup_input(stdscr, "Period (day/week/month):")
-    goal = {"kind": kind, "title": title, "period": period}
-
-    # prompt subtype fields
-    if kind in ("sum", "count", "reduction"):
-        amt = popup_input(stdscr, "Amount:")
-        unit = popup_input(stdscr, "Unit (opt):")
-        goal["amount"] = float(amt)
-        goal["unit"] = unit or None
-    elif kind == "streak":
-        targ = popup_input(stdscr, "Target streak (# days):")
-        goal["target_streak"] = int(targ)
-    # … other kinds similarly …
-
-    return goal
-
-
-def add_goal_tui(stdscr, tracker_sel):
+    # --- Fetch tracker and set initial fields ---
     trackers = track_repository.get_all_trackers()
     t = trackers[tracker_sel]
-    # 1) Let user pick goal fields via curses popups
-    kind = popup_input(stdscr, "Goal kind (sum/count/bool/...):")
+    goal = edit_goal.copy() if edit_goal else {}
+
+    # 1. Pick kind (with help)
+    kind = popup_input(
+        stdscr,
+        f"Kind (sum/count/bool/streak/duration/milestone/reduction/range/percentage/replacement)"
+        f" [{goal.get('kind','count')}] :"
+    ) or goal.get("kind", "count")
     popup_show(stdscr, [get_description_for_goal_kind(kind)],
                title="About this goal kind")
-    title = popup_input(stdscr, "Goal title:")
-    period = popup_input(stdscr, "Period (day/week/month):")
-    # collect any extra params based on kind
-    extra = {}
-    if kind in ("sum", "count", "reduction"):
-        amt = popup_input(stdscr, "Target amount:")
-        unit = popup_input(stdscr, "Unit (opt):")
-        extra.update({"amount": float(amt), "unit": unit or None})
-    # … handle other kinds similarly …
 
-    goal = {"title": title, "kind": kind, "period": period, **extra}
+    # 2. Title
+    title = popup_input(
+        stdscr, f"Title [{goal.get('title','')}] :") or goal.get("title", "")
+    # 3. Period (day/week/month)
+    period = popup_input(
+        stdscr, f"Period (day/week/month) [{goal.get('period','day')}] :") or goal.get("period", "day")
 
-    # 2) Save
-    try:
-        track_repository.add_goal(t["id"], goal)
-        popup_show(stdscr, [f"Goal added to '{t['title']}'"])
-    except Exception as e:
-        popup_show(stdscr, [f"Error adding goal: {e}"])
-
-
-def edit_goal_tui(stdscr, tracker_sel, goal_idx=0):
-    trackers = track_repository.get_all_trackers()
-    t = trackers[tracker_sel]
-    goals = track_repository.get_goals_for_tracker(t["id"])
-    if not goals:
-        return popup_show(stdscr, ["No goal to edit"])
-    g = goals[goal_idx]
-    kind = g.get('kind')
-
-    updates = {}
-    # Show/edit all fields per type
-    new_title = popup_input(stdscr, f"Title [{g.get('title', '')}]:")
-    if new_title:
-        updates["title"] = new_title
-    new_period = popup_input(stdscr, f"Period [{g.get('period', '')}]:")
-    if new_period:
-        updates["period"] = new_period
-    # Kind-specific edits
-    if kind in ("sum", "count"):
-        amt = popup_input(stdscr, f"Target [{g.get('amount', '')}]:")
-        unit = popup_input(stdscr, f"Unit [{g.get('unit', '')}]:")
+    # --- Fields by kind ---
+    data = {
+        "title": title,
+        "kind": kind,
+        "period": period,
+    }
+    # Numeric goals
+    if kind in ("sum", "count", "reduction", "duration"):
+        amt = popup_input(stdscr, f"Target amount [{goal.get('amount','')}] :")
+        unit = popup_input(stdscr, f"Unit [{goal.get('unit','')}] :")
         if amt:
-            updates["amount"] = float(amt)
+            data["amount"] = float(amt)
         if unit:
-            updates["unit"] = unit
-    elif kind == "bool":
-        pass  # nothing extra to edit
-    elif kind == "streak":
-        for field in ("target_streak", "current_streak", "best_streak"):
-            val = popup_input(
-                stdscr, f"{field.replace('_', ' ').title()} [{g.get(field, '')}]:")
-            if val:
-                updates[field] = int(val)
-    elif kind == "duration":
-        amt = popup_input(stdscr, f"Duration [{g.get('amount', '')}]:")
-        unit = popup_input(stdscr, f"Unit [{g.get('unit', '')}]:")
-        if amt:
-            updates["amount"] = float(amt)
-        if unit:
-            updates["unit"] = unit
-    elif kind == "milestone":
-        targ = popup_input(stdscr, f"Target [{g.get('target', '')}]:")
-        cur = popup_input(stdscr, f"Current [{g.get('current', '')}]:")
-        unit = popup_input(stdscr, f"Unit [{g.get('unit', '')}]:")
-        if targ:
-            updates["target"] = float(targ)
-        if cur:
-            updates["current"] = float(cur)
-        if unit:
-            updates["unit"] = unit
-    elif kind == "reduction":
-        amt = popup_input(stdscr, f"Target [{g.get('amount', '')}]:")
-        unit = popup_input(stdscr, f"Unit [{g.get('unit', '')}]:")
-        if amt:
-            updates["amount"] = float(amt)
-        if unit:
-            updates["unit"] = unit
-    elif kind == "range":
-        min_amt = popup_input(stdscr, f"Min [{g.get('min_amount', '')}]:")
-        max_amt = popup_input(stdscr, f"Max [{g.get('max_amount', '')}]:")
-        unit = popup_input(stdscr, f"Unit [{g.get('unit', '')}]:")
-        mode = popup_input(stdscr, f"Mode [{g.get('mode', '')}]:")
+            data["unit"] = unit or None
+    # Streak
+    if kind == "streak":
+        target_streak = popup_input(
+            stdscr, f"Target streak [{goal.get('target_streak','')}] :")
+        if target_streak:
+            data["target_streak"] = int(target_streak)
+    # Range
+    if kind == "range":
+        min_amt = popup_input(
+            stdscr, f"Min amount [{goal.get('min_amount','')}] :")
+        max_amt = popup_input(
+            stdscr, f"Max amount [{goal.get('max_amount','')}] :")
+        unit = popup_input(stdscr, f"Unit [{goal.get('unit','')}] :")
+        mode = popup_input(stdscr, f"Mode [{goal.get('mode','')}] :")
         if min_amt:
-            updates["min_amount"] = float(min_amt)
+            data["min_amount"] = float(min_amt)
         if max_amt:
-            updates["max_amount"] = float(max_amt)
+            data["max_amount"] = float(max_amt)
         if unit:
-            updates["unit"] = unit
+            data["unit"] = unit or None
         if mode:
-            updates["mode"] = mode
-    elif kind == "percentage":
-        tgt = popup_input(
-            stdscr, f"Target % [{g.get('target_percentage', '')}]:")
-        cur = popup_input(
-            stdscr, f"Current % [{g.get('current_percentage', '')}]:")
-        if tgt:
-            updates["target_percentage"] = float(tgt)
-        if cur:
-            updates["current_percentage"] = float(cur)
-    elif kind == "replacement":
+            data["mode"] = mode or None
+    # Milestone
+    if kind == "milestone":
+        target = popup_input(stdscr, f"Target [{goal.get('target','')}] :")
+        current = popup_input(stdscr, f"Current [{goal.get('current','0')}] :")
+        unit = popup_input(stdscr, f"Unit [{goal.get('unit','')}] :")
+        if target:
+            data["target"] = float(target)
+        if current:
+            data["current"] = float(current)
+        if unit:
+            data["unit"] = unit or None
+    # Percentage
+    if kind == "percentage":
+        target_pct = popup_input(
+            stdscr, f"Target % [{goal.get('target_percentage','')}] :")
+        current_pct = popup_input(
+            stdscr, f"Current % [{goal.get('current_percentage','0')}] :")
+        if target_pct:
+            data["target_percentage"] = float(target_pct)
+        if current_pct:
+            data["current_percentage"] = float(current_pct)
+    # Bool (habit)
+    if kind == "bool":
+        data["amount"] = True
+    # Replacement
+    if kind == "replacement":
         old = popup_input(
-            stdscr, f"Old Behavior [{g.get('old_behavior', '')}]:")
+            stdscr, f"Old Behavior [{goal.get('old_behavior','')}] :")
         new = popup_input(
-            stdscr, f"New Behavior [{g.get('new_behavior', '')}]:")
-        amt = popup_input(stdscr, f"Amount [{g.get('amount', '') or 1}]:")
+            stdscr, f"New Behavior [{goal.get('new_behavior','')}] :")
+        amt = popup_input(stdscr, f"Amount [{goal.get('amount','1')}] :")
         if old:
-            updates["old_behavior"] = old
+            data["old_behavior"] = old
         if new:
-            updates["new_behavior"] = new
+            data["new_behavior"] = new
         if amt:
-            updates["amount"] = float(amt)
-    # Save update
+            data["amount"] = float(amt)
+
+    # --- Save or Update ---
     try:
-        track_repository.delete_goal(g["id"])
-        track_repository.add_goal(t["id"], {**g, **updates})
-        popup_show(stdscr, ["Goal updated"])
+        if edit_goal:
+            # Remove then re-add to update
+            track_repository.delete_goal(edit_goal["id"])
+            track_repository.add_goal(t["id"], {**edit_goal, **data})
+            popup_show(stdscr, ["Goal updated!"])
+        else:
+            track_repository.add_goal(t["id"], data)
+            popup_show(stdscr, [f"Goal added to '{t['title']}'"])
     except Exception as e:
-        popup_show(stdscr, [f"Error updating goal: {e}"])
+        popup_show(stdscr, [f"Error saving goal: {e}"])
 
 
 def delete_goal_tui(stdscr, tracker_sel):
@@ -463,3 +432,4 @@ def delete_goal_tui(stdscr, tracker_sel):
             popup_show(stdscr, ["Goal deleted"])
         except Exception as e:
             popup_show(stdscr, [f"Error deleting goal: {e}"])
+            log_exception("delete_goal_tui", e)

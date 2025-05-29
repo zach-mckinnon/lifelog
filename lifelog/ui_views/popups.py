@@ -1,5 +1,6 @@
 # ─── Popups & Helpers ─────────────────────────────────────────────────
 
+import textwrap
 import curses
 
 
@@ -47,6 +48,58 @@ def show_help_popup(stdscr, current_tab):
         lines = ["Q: Quit   ?: Close Help"]
 
     popup_show(stdscr, lines, title="Available Hotkeys")
+
+
+def popup_error(stdscr, error, title=" Error "):
+    """
+    Show a centered popup window for errors (multi-line-safe).
+    - `error`: Can be a string, Exception, or list of strings.
+    - Always fits to the screen, with word-wrapped text.
+    """
+    h, w = stdscr.getmaxyx()
+    # Accept Exception, str, or list
+    if isinstance(error, Exception):
+        lines = [str(error)]
+    elif isinstance(error, str):
+        lines = error.splitlines()
+    elif isinstance(error, list):
+        lines = []
+        for item in error:
+            lines.extend(str(item).splitlines())
+    else:
+        lines = [repr(error)]
+
+    # Word wrap to fit the popup width (max 60 cols, but not wider than screen)
+    win_w = min(60, w - 4)
+    win_h = min(3 + len(lines)*2, h - 2)
+    wrapped = []
+    for line in lines:
+        wrapped.extend(textwrap.wrap(line, width=win_w - 4) or [""])
+
+    win_h = min(3 + len(wrapped), h - 2)
+    starty = max((h - win_h) // 2, 0)
+    startx = max((w - win_w) // 2, 0)
+
+    win = curses.newwin(win_h, win_w, starty, startx)
+    win.keypad(True)
+    win.border()
+    # Draw title
+    if win_w - len(title) > 4:
+        win.addstr(0, (win_w - len(title)) // 2, title, curses.A_BOLD)
+    # Print error lines
+    for idx, line in enumerate(wrapped[:win_h-3]):
+        win.addstr(1 + idx, 2, line[:win_w-4],
+                   curses.A_BOLD | curses.color_pair(0))
+    # Prompt to close
+    prompt = "<Press any key to close>"
+    if win_h > 2:
+        win.addstr(win_h-2, max((win_w - len(prompt)) // 2, 1),
+                   prompt, curses.A_DIM)
+    win.refresh()
+    win.getch()
+    win.clear()
+    stdscr.touchwin()
+    stdscr.refresh()
 
 
 def popup_show(stdscr, lines, title=""):

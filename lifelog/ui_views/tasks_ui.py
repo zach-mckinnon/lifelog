@@ -15,6 +15,8 @@ import calendar
 import re
 from datetime import datetime
 
+from lifelog.ui_views.ui_helpers import log_exception
+
 
 def draw_agenda(pane, h, w, selected_idx):
     try:
@@ -113,6 +115,7 @@ def draw_agenda(pane, h, w, selected_idx):
         pane.noutrefresh()
         return selected_idx
     except Exception as e:
+        log_exception("draw_agenda", e)
         max_h, _ = pane.getmaxyx()
         pane.addstr(max_h-2, 2, f"Agenda err: {e}", curses.A_BOLD)
         pane.noutrefresh()
@@ -195,6 +198,7 @@ def draw_burndown(pane, h, w):
     except Exception as e:
         pane.addstr(h-2, 2, f"Burndown err: {e}", curses.A_BOLD)
         pane.noutrefresh()
+        log_exception("burndown_tui", e)
 
 
 def popup_recurrence(stdscr):
@@ -323,6 +327,7 @@ def add_task_tui(stdscr):
         popup_show(stdscr, [f"Task '{title}' added"])
     except Exception as e:
         popup_show(stdscr, [f"Error saving task: {e}"])
+        log_exception("add_task_tui", e)
 
 
 def quick_add_task_tui(stdscr):
@@ -358,6 +363,7 @@ def quick_add_task_tui(stdscr):
         popup_show(stdscr, [f"Quick Task '{title}' added"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("quick_add_task_tui", e)
 
 
 def clone_task_tui(stdscr, sel):
@@ -393,6 +399,7 @@ def clone_task_tui(stdscr, sel):
         popup_show(stdscr, [f"Task cloned as '{new_title}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("clone_task_tui", e)
 
 
 def focus_mode_tui(stdscr, sel):
@@ -463,6 +470,7 @@ def set_task_reminder_tui(stdscr, sel):
         popup_show(stdscr, ["Reminder set!"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("reminder_task_tui", e)
 
 
 def delete_task_tui(stdscr, sel):
@@ -481,6 +489,7 @@ def delete_task_tui(stdscr, sel):
             popup_show(stdscr, [f"Deleted task #{tid}"])
         except Exception as e:
             popup_show(stdscr, [f"Error: {e}"])
+            log_exception("delete_task_tui", e)
 
 
 def edit_task_tui(stdscr, sel):
@@ -516,6 +525,7 @@ def edit_task_tui(stdscr, sel):
             }
         except Exception as e:
             popup_show(stdscr, [f"Recurrence setup failed: {e}"])
+            log_exception("edit_task_tui", e)
             return
 
     updates = {
@@ -535,6 +545,7 @@ def edit_task_tui(stdscr, sel):
         popup_show(stdscr, [f"Updated #{t['id']}"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("edit_task_tui", e)
 
 
 def edit_recurrence_tui(stdscr, sel):
@@ -619,6 +630,7 @@ def edit_recurrence_tui(stdscr, sel):
                 updates = None
     except Exception as e:
         popup_show(stdscr, [f"Invalid recurrence: {e}"])
+        log_exception("edit_recur_tui", e)
         return
 
     # Save update
@@ -647,6 +659,7 @@ def edit_notes_tui(stdscr, sel):
         popup_show(stdscr, ["Notes updated"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("edit_task_notes_tui", e)
 
 
 # Module‐level state for task filter:
@@ -727,6 +740,7 @@ def start_task_tui(stdscr, sel):
         popup_show(stdscr, [f"Started '{t['title']}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("start_task_tui", e)
 
 
 def stop_task_tui(stdscr):
@@ -767,6 +781,7 @@ def stop_task_tui(stdscr):
         popup_show(stdscr, [f"Paused '{task['title']}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("stop_task_tui", e)
 
 
 def done_task_tui(stdscr, sel):
@@ -799,3 +814,4 @@ def done_task_tui(stdscr, sel):
         popup_show(stdscr, [f"Task '{t['title']}' marked done"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
+        log_exception("done_task_tui", e)
