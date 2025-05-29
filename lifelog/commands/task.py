@@ -5,6 +5,8 @@ This module provides functionality to create, modify, delete, and manage tasks w
 It includes features for tracking time spent on tasks, setting reminders, and managing task recurrence.
 The module uses JSON files for data storage and integrates with a cron job system for scheduling reminders.
 '''
+from rich.console import Console
+from datetime import datetime, timedelta
 from lifelog.commands.utils.db import time_repository, task_repository
 import re
 import typer
@@ -594,59 +596,121 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 
 
 @app.command()
-def burndown(
-):
+def burndown():
     """
-    📉 Remaining priority burndown over the next N days_of_week.
+    📉 Improved Remaining Task Burndown Over the Next N Days.
+    Shows:
+      - Actual Tasks Open
+      - Ideal Burn Line
+      - Overdue Count
+      - Completions per Day
     """
+    console = Console()
     tasks = task_repository.get_all_tasks()
 
     now = datetime.now()
-    plt.date_form(input_form='Y-m-d H:M:S', output_form='d/m/Y')
     start_date = now - timedelta(days=2)
     end_date = now + timedelta(days=3)
 
     all_dates = []
+    date_objs = []
     current_date = start_date
     while current_date <= end_date:
         all_dates.append(current_date.strftime('%Y-%m-%d'))
+        date_objs.append(current_date)
         current_date += timedelta(days=1)
 
-    all_tasks_in_range = []
-    for d in all_dates:
-        not_done_count = 0
-        for task in tasks:
-            if task and task.get("status") != "done":
-                due_date_str = task.get("due")
-                if due_date_str:
-                    try:
-                        due_date = datetime.fromisoformat(
-                            due_date_str).strftime('%Y-%m-%d %H:%M:%S')
+    open_counts = []
+    overdue_counts = []
+    completed_per_day = []
+    added_per_day = []
 
-                        print(due_date)
-                        if due_date <= d:
-                            not_done_count += 1
-                    except ValueError as e:
-                        console.print(
-                            f"Warning: Could not parse date: {due_date_str} for task: {task.get('title')}. Error: {e}")
-
-        all_tasks_in_range.append(not_done_count)
-
-    if all_tasks_in_range != []:
-        plt.clf()
-        plt.theme("matrix")
-        formatted_dates = [datetime.strptime(
-            date_str, "%Y-%m-%d").strftime("%d/%m/%Y") for date_str in all_dates]
-        plt.plot(formatted_dates, all_tasks_in_range, marker="*")
-        plt.xticks(formatted_dates, [date.strftime(
-            "%m/%d") for date in [datetime.strptime(d, "%Y-%m-%d") for d in all_dates]])
-        plt.xlabel("Date")
-        plt.ylabel("Tasks Due")
-        plt.title("Task Burndown")
-        plt.show()
+    # For ideal burn line:
+    open_now = sum(1 for t in tasks if t and t.get("status") != "done")
+    total_days = len(all_dates)
+    if total_days > 1:
+        ideal_per_day = open_now / (total_days-1)
     else:
-        console.print(
-            f"Warning: Not enough data to create chart.. let's fill it up! ")
+        ideal_per_day = open_now
+
+    # Build up the day-by-day stats:
+    for i, dstr in enumerate(all_dates):
+        date_obj = date_objs[i]
+        not_done_count = 0
+        overdue_count = 0
+        completed_today = 0
+        added_today = 0
+
+        for task in tasks:
+            if not task or not task.get("due"):
+                continue
+            try:
+                due_date = datetime.fromisoformat(task["due"])
+            except Exception:
+                continue
+
+            # Not yet done and due on or before this day?
+            if task.get("status") != "done" and due_date.date() <= date_obj.date():
+                not_done_count += 1
+            # Overdue as of this day?
+            if task.get("status") != "done" and due_date.date() < now.date() and date_obj.date() >= now.date():
+                overdue_count += 1
+            # Completed today?
+            completed = task.get("completed_at")
+            if completed:
+                try:
+                    completed_date = datetime.fromisoformat(completed).date()
+                    if completed_date == date_obj.date():
+                        completed_today += 1
+                except Exception:
+                    pass
+            # Added today?
+            created = task.get("created_at")
+            if created:
+                try:
+                    created_date = datetime.fromisoformat(created).date()
+                    if created_date == date_obj.date():
+                        added_today += 1
+                except Exception:
+                    pass
+
+        open_counts.append(not_done_count)
+        overdue_counts.append(overdue_count)
+        completed_per_day.append(completed_today)
+        added_per_day.append(added_today)
+
+    # Calculate ideal line (linear from open_now to 0)
+    ideal_line = [max(0, int(round(open_now - ideal_per_day * i)))
+                  for i in range(total_days)]
+
+    # Format for plotting
+    plot_dates = [datetime.strptime(
+        d, "%Y-%m-%d").strftime("%m/%d") for d in all_dates]
+
+    plt.clf()
+    plt.theme("matrix")
+    plt.title("Task Burndown")
+    plt.plot(plot_dates, open_counts, marker="*", label="Tasks Left")
+    plt.plot(plot_dates, ideal_line, marker=".", label="Ideal Burn")
+    plt.plot(plot_dates, overdue_counts, marker="!",
+             label="Overdue", color="red")
+    plt.scatter(plot_dates, completed_per_day, marker="o",
+                label="Completed/Day", color="green")
+    plt.scatter(plot_dates, added_per_day, marker="+",
+                label="Added/Day", color="yellow")
+    plt.xlabel("Date")
+    plt.ylabel("Count")
+    plt.legend()
+    plt.show()
+
+    # Print a summary table:
+    console.print(
+        f"[bold]Open now:[/] {open_counts[-1]}   [bold]Overdue now:[/] {overdue_counts[-1]}")
+    console.print(
+        f"[bold]Completed in window:[/] {sum(completed_per_day)}   [bold]Added in window:[/] {sum(added_per_day)}")
+    if total_days > 1:
+        avg_completion = sum(completed_per_day) / (total_days-1)
+        console.print(f"[bold]Avg completed/day:[/] {avg_completion:.2f}")
 
 
 def build_calendar_panel(now: datetime, tasks: list) -> Panel:

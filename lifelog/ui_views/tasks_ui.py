@@ -4,11 +4,16 @@
 
 
 import curses
-from datetime import datetime
+from datetime import datetime, timedelta
 from lifelog.commands.task import calculate_priority
 from lifelog.commands.utils.db import task_repository, time_repository
 from lifelog.commands.utils.shared_utils import create_recur_schedule, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_show
+
+
+import calendar
+import re
+from datetime import datetime
 
 
 def draw_agenda(pane, h, w, selected_idx):
@@ -16,39 +21,153 @@ def draw_agenda(pane, h, w, selected_idx):
         pane.erase()
         max_h, max_w = pane.getmaxyx()
         pane.border()
-        title = " Tasks "
+        title = " Agenda "
         pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
-        tasks = task_repository.query_tasks(sort="priority")
-        n = len(tasks)
-        if n == 0:
-            pane.addstr(2, 2, "(no tasks)", curses.A_DIM)
-            pane.noutrefresh()
-            return 0
+        now = datetime.now()
 
-        selected_idx = max(0, min(selected_idx, n-1))
-        visible_rows = max_h - 3  # 1 for border, 1 for title, 1 for bottom border
+        # -- Calendar panel (text-based, fits ~7x20, no rich colors)
+        cal = calendar.TextCalendar(firstweekday=0)
+        month_lines = cal.formatmonth(now.year, now.month).splitlines()
+        # Find all due days for this month
+        tasks = task_repository.query_tasks(
+            show_completed=False, sort="priority")
+        due_days = {
+            datetime.fromisoformat(t["due"]).day
+            for t in tasks if t.get("due")
+            and datetime.fromisoformat(t["due"]).month == now.month
+            and datetime.fromisoformat(t["due"]).year == now.year
+        }
+        # Render calendar, bold today, underline due days
+        for i, line in enumerate(month_lines[:min(len(month_lines), max_h-2)]):
+            y = 1 + i
+            if y < max_h - 1 and len(line) < max_w - 2:
+                for match in re.finditer(r'\b(\d{1,2})\b', line):
+                    day = int(match.group(1))
+                    x = match.start()
+                    if day == now.day:
+                        pane.addstr(y, 2+x, f"{day:>2}", curses.A_REVERSE)
+                    elif day in due_days:
+                        pane.addstr(y, 2+x, f"{day:>2}", curses.A_UNDERLINE)
+                    else:
+                        pane.addstr(y, 2+x, f"{day:>2}")
+            elif y < max_h - 1:
+                pane.addstr(y, 2, line[:max_w-4])
 
-        start = max(0, selected_idx - visible_rows // 2)
-        end = min(start + visible_rows, n)
+        cal_panel_height = len(month_lines) + 1
 
-        for i, t in enumerate(tasks[start:end], start=start):
-            is_sel = (i == selected_idx)
-            attr = curses.A_REVERSE if is_sel else curses.A_NORMAL
-            due = t.get("due") or ""
-            due_str = due.split("T")[0] if due else "-"
-            recur = " [R]" if t.get("recur_interval") else ""
-            line = f"{t['id']:>2} [{t['priority']}] {due_str} {t['title']}{recur}"
-            y = 1 + i - start + 1  # 1 for border, 1 for title
-            if y < max_h - 1:
-                pane.addstr(y, 2, line[:max_w-4], attr)
+        # -- Compact task table: ID | P | Due | Task
+        pane.addstr(cal_panel_height, 2, "ID P Due  Task", curses.A_UNDERLINE)
+
+        def sort_key(t):
+            due_dt = datetime.fromisoformat(
+                t["due"]) if t.get("due") else datetime.max
+            return due_dt
+
+        top_three = sorted(tasks, key=sort_key)[:3]
+        for i, task in enumerate(top_three):
+            row_y = cal_panel_height + 1 + i
+            if row_y >= max_h - 1:
+                break
+            id_str = f"{task['id']:>2}"
+            prio_raw = str(task.get("priority", "-"))[:1]
+            due_str = "-"
+            if task.get("due"):
+                try:
+                    due_str = datetime.fromisoformat(
+                        task["due"]).strftime("%m/%d")
+                except Exception:
+                    due_str = "-"
+            title = task.get("title", "-")
+            line = f"{id_str} {prio_raw} {due_str:>5} {title[:max_w-15]}"
+            pane.addstr(
+                row_y, 2, line[:max_w-4], curses.A_BOLD if i == selected_idx else curses.A_NORMAL)
 
         pane.noutrefresh()
         return selected_idx
 
     except Exception as e:
+        max_h, _ = pane.getmaxyx()
         pane.addstr(max_h-2, 2, f"Agenda err: {e}", curses.A_BOLD)
         pane.noutrefresh()
         return 0
+
+
+def draw_burndown(pane, h, w):
+    try:
+        pane.erase()
+        pane.border()
+        title = " Task Burndown "
+        pane.addstr(0, max((w - len(title)) // 2, 1), title, curses.A_BOLD)
+
+        tasks = task_repository.get_all_tasks()
+        now = datetime.now()
+        start_date = now - timedelta(days=2)
+        end_date = now + timedelta(days=3)
+
+        all_dates = []
+        date_labels = []
+        current_date = start_date
+        while current_date <= end_date:
+            all_dates.append(current_date)
+            date_labels.append(current_date.strftime("%m/%d"))
+            current_date += timedelta(days=1)
+
+        not_done_counts = []
+        overdue_counts = []
+        for d in all_dates:
+            not_done = 0
+            overdue = 0
+            for task in tasks:
+                if task and task.get("status") != "done":
+                    due_str = task.get("due")
+                    if due_str:
+                        try:
+                            due_date = datetime.fromisoformat(due_str)
+                            if due_date.date() <= d.date():
+                                not_done += 1
+                                if due_date.date() < now.date() and d.date() >= now.date():
+                                    overdue += 1
+                        except Exception:
+                            continue
+            not_done_counts.append(not_done)
+            overdue_counts.append(overdue)
+
+        # Y-axis: max outstanding
+        max_count = max(not_done_counts + [1])
+        chart_height = max(5, min(h-6, max_count + 1))
+        left_margin = 4
+
+        # Draw Y-axis
+        for i in range(chart_height):
+            y = 2 + i
+            val = max_count - i
+            if y < h - 2:
+                pane.addstr(y, left_margin-2, f"{val:2d}|")
+
+        # Draw bars
+        for x, (count, overdue) in enumerate(zip(not_done_counts, overdue_counts)):
+            bar_height = int((count / max_count) *
+                             (chart_height-1)) if max_count > 0 else 0
+            for i in range(bar_height):
+                y = 2 + chart_height - 1 - i
+                if y < h - 2:
+                    pane.addstr(y, left_margin + x, "#" if overdue == 0 else "!",
+                                curses.A_BOLD if overdue else curses.A_NORMAL)
+
+        # X-axis (dates)
+        pane.addstr(2+chart_height, left_margin, "".join(
+            date_labels[i][3:]+" " for i in range(len(date_labels)))[:w-left_margin-1])
+
+        # Stats
+        pane.addstr(
+            h-3, left_margin, f"Outstanding: {not_done_counts[-1]}, Overdue: {overdue_counts[-1]}")
+        pane.addstr(h-2, left_margin, "Key: # = open, ! = overdue")
+
+        pane.noutrefresh()
+
+    except Exception as e:
+        pane.addstr(h-2, 2, f"Burndown err: {e}", curses.A_BOLD)
+        pane.noutrefresh()
 
 
 def add_task_tui(stdscr):
