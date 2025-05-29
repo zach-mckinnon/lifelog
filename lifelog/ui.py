@@ -18,8 +18,18 @@ from lifelog.ui_views.trackers_ui import add_goal_tui, add_tracker_tui, delete_g
 SCREENS = ["H", "TSK", "TM", "TRK", "R"]
 
 
+def create_main_panes(stdscr, h, w, menu_h):
+    """Create and return bordered panes for each tab below the menu."""
+    body_h = h - menu_h - 1
+    panes = {}
+    for idx, screen in enumerate(SCREENS):
+        panes[screen] = curses.newwin(body_h, w, menu_h, 0)
+        panes[screen].border()
+    return panes
+
+
 def main(stdscr, show_status: bool = True):
-    # ─── Color & Cursor Setup ──────────────────────────────────────────────
+    # --- Color & Cursor Setup ---
     curses.start_color()
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)    # menu bar
@@ -28,18 +38,23 @@ def main(stdscr, show_status: bool = True):
     curses.curs_set(0)
     stdscr.keypad(True)
 
-    # ─── State ──────────────────────────────────────────────────────────────
-    current = 0   # which tab
-    agenda_sel = 0   # selected row in Agenda
-    tracker_sel = 0   # selected row in Trackers
-    time_sel = 0   # selected row in Time
+    # --- State ---
+    current = 0
+    agenda_sel = 0
+    tracker_sel = 0
+    time_sel = 0
 
-    # ─── Main Loop ──────────────────────────────────────────────────────────
+    menu_h = 3  # 2 lines for menu/status + 1 for padding
+    h, w = stdscr.getmaxyx()
+    panes = create_main_panes(stdscr, h, w, menu_h)
+
+    MIN_HEIGHT = 8
+    MIN_WIDTH = 20
+
     while True:
         h, w = stdscr.getmaxyx()
-        MIN_HEIGHT = 8
-        MIN_WIDTH = 20
         if h < MIN_HEIGHT or w < MIN_WIDTH:
+            stdscr.clear()
             stdscr.addstr(
                 0, 0, f"Terminal too small ({w}x{h}).", curses.A_BOLD)
             stdscr.addstr(1, 0, "Resize or lower font size.")
@@ -49,51 +64,58 @@ def main(stdscr, show_status: bool = True):
                 return
             continue
 
-        # Always draw the top menu
+        # Draw menu bar
         try:
             draw_menu(stdscr, SCREENS, current, w, color_pair=1)
         except Exception as e:
             stdscr.addstr(0, 0, f"Menu err: {e}")
 
-       # Tab content
-        try:
-            if SCREENS[current] == "Home":
-                draw_home(stdscr, h, w)
-            elif SCREENS[current] == "Task":
-                agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
-            elif SCREENS[current] == "Time":
-                time_sel = draw_time(stdscr, h, w, time_sel)
-            elif SCREENS[current] == "Track":
-                tracker_sel = draw_trackers(
-                    stdscr, h, w, tracker_sel, color_pair=2)
-            elif SCREENS[current] == "Report":
-                draw_report(stdscr, h, w)
-        except Exception as e:
-            stdscr.addstr(3, 2, f"Tab err: {e}")
+        # Erase and border all panes (optional: only border active pane)
+        for pane in panes.values():
+            pane.erase()
+            pane.border()
 
-        # Always draw the status/help bar
+        # Draw the current tab content on its pane
+        active_screen = SCREENS[current]
+        active_pane = panes[active_screen]
+        try:
+            if active_screen == "H":
+                draw_home(active_pane, h, w)
+            elif active_screen == "TSK":
+                agenda_sel = draw_agenda(active_pane, h, w, agenda_sel)
+            elif active_screen == "TM":
+                time_sel = draw_time(active_pane, h, w, time_sel)
+            elif active_screen == "TRK":
+                tracker_sel = draw_trackers(
+                    active_pane, h, w, tracker_sel, color_pair=2)
+            elif active_screen == "R":
+                draw_report(active_pane, h, w)
+        except Exception as e:
+            active_pane.addstr(1, 1, f"Tab err: {e}")
+
+        # Only show the active pane (you could also overlay)
+        active_pane.noutrefresh()
+        # Draw status/help bar
         if show_status:
             try:
                 draw_status(stdscr, h, w, current)
             except Exception as e:
                 stdscr.addstr(h-1, 0, f"Status err: {e}")
 
-        stdscr.refresh()
+        stdscr.noutrefresh()
+        curses.doupdate()
 
-        # THEN read a key
         key = stdscr.getch()
 
-        # Quit or “back to Agenda”
-        if key == ord("Q"):            # Shift+Q to quit
+        # --- Key handling ---
+        if key == ord("Q"):
             if popup_confirm(stdscr, "❓ Exit the app? (Y/n)"):
                 break
             else:
                 continue
-        if key == 27:                  # ESC = back to Agenda
+        if key == 27:
             current = 0
             continue
-
-        #  ←/→ to switch tabs
         if key == curses.KEY_RIGHT:
             current = (current + 1) % len(SCREENS)
             continue
@@ -101,19 +123,16 @@ def main(stdscr, show_status: bool = True):
             current = (current - 1) % len(SCREENS)
             continue
 
-        # ─── Agenda-Specific Nav & Commands ─────────────────────────────────
-        elif SCREENS[current] == "Agenda":
+        # Now, context-sensitive key handling per tab:
+        if active_screen == "TSK":
             max_idx = len(task_repository.query_tasks(
                 status=None, show_completed=False, sort="priority")) - 1
             if key == curses.KEY_DOWN:
                 agenda_sel = min(agenda_sel + 1, max_idx)
-                continue
-            if key == curses.KEY_UP:
+            elif key == curses.KEY_UP:
                 agenda_sel = max(agenda_sel - 1, 0)
-                continue
-            if key == ord("?"):
+            elif key == ord("?"):
                 show_help_popup(stdscr, current)
-                continue
             elif key == ord("a"):
                 add_task_tui(stdscr)
             elif key == ord("q"):
@@ -143,18 +162,14 @@ def main(stdscr, show_status: bool = True):
             elif key == ord("n"):
                 edit_notes_tui(stdscr, agenda_sel)
 
-        # ─── Time-Specific Nav & Commands ────────────────────────────────────
-        elif SCREENS[current] == "Time":
+        elif active_screen == "TM":
             max_idx = len(time_repository.get_all_time_logs(since=None)) - 1
             if key == curses.KEY_DOWN:
                 time_sel = min(time_sel + 1, max_idx)
-                continue
-            if key == curses.KEY_UP:
+            elif key == curses.KEY_UP:
                 time_sel = max(time_sel - 1, 0)
-                continue
-            if key == ord("?"):
+            elif key == ord("?"):
                 show_help_popup(stdscr, current)
-                continue
             elif key == ord("s"):
                 start_time_tui(stdscr)
             elif key == ord("a"):
@@ -182,17 +197,14 @@ def main(stdscr, show_status: bool = True):
             elif key == ord("A"):
                 set_time_period('all')
 
-        elif SCREENS[current] == "Trackers":
+        elif active_screen == "TRK":
             max_idx = len(track_repository.get_all_trackers()) - 1
             if key == curses.KEY_DOWN:
                 tracker_sel = min(tracker_sel + 1, max_idx)
-                continue
-            if key == curses.KEY_UP:
+            elif key == curses.KEY_UP:
                 tracker_sel = max(tracker_sel - 1, 0)
-                continue
-            if key == ord("?"):
+            elif key == ord("?"):
                 show_help_popup(stdscr, current)
-                continue
             elif key == ord("a"):
                 add_tracker_tui(stdscr)
             elif key == ord("d"):
@@ -209,54 +221,62 @@ def main(stdscr, show_status: bool = True):
                 edit_goal_tui(stdscr, tracker_sel)
             elif key == ord("x"):
                 delete_goal_tui(stdscr, tracker_sel)
-            elif key == ord("V"):  # View goals list for tracker
+            elif key == ord("V"):
                 view_goals_list_tui(stdscr, tracker_sel)
-            elif key == ord("h"):  # Show goal types help
+            elif key == ord("h"):
                 show_goals_help_tui(stdscr)
 
-        elif SCREENS[current] == "Report":
+        elif active_screen == "R":
             if key == ord("?"):
                 show_help_popup(stdscr, current)
-                continue
-            if key == ord("1"):
-                from ui_views.ui_helpers import run_summary_trackers
+            elif key == ord("1"):
+                from lifelog.ui_views.ui_helpers import run_summary_trackers
                 run_summary_trackers(stdscr)
             elif key == ord("2"):
-                from ui_views.ui_helpers import run_summary_time
+                from lifelog.ui_views.ui_helpers import run_summary_time
                 run_summary_time(stdscr)
             elif key == ord("3"):
-                from ui_views.ui_helpers import run_daily_tracker
+                from lifelog.ui_views.ui_helpers import run_daily_tracker
                 run_daily_tracker(stdscr)
-            elif key == ord("4"):   # ← new bindings for insights
-                from ui_views.ui_helpers import run_insights
+            elif key == ord("4"):
+                from lifelog.ui_views.ui_helpers import run_insights
                 run_insights(stdscr)
-
             elif key in (ord("q"), 27):
                 current = 0
-    # end while
 
 
-def draw_home(stdscr, h, w):
+def draw_home(pane, h, w):
     try:
-        stdscr.addstr(1, 2, "Home", curses.A_BOLD)
-        stdscr.addstr(3, 2, "Top Tasks:", curses.A_UNDERLINE)
+        pane.erase()
+        max_h, max_w = pane.getmaxyx()
+        pane.border()
+        title = " Home "
+        pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
+        y = 2
+        pane.addstr(y, 2, "Top Tasks:", curses.A_UNDERLINE)
         tasks = task_repository.query_tasks(sort="priority")[:3]
         for i, t in enumerate(tasks):
-            stdscr.addstr(4+i, 4, f"{t['title'][:w-8]}")
-        stdscr.addstr(8, 2, "Time:", curses.A_UNDERLINE)
+            if y+1+i < max_h - 1:
+                pane.addstr(y+1+i, 4, f"{t['title'][:max_w-8]}")
+        y += len(tasks) + 2
+        pane.addstr(y, 2, "Time:", curses.A_UNDERLINE)
         active = time_repository.get_active_time_entry()
         if active:
-            stdscr.addstr(9, 4, f"▶ {active['title'][:w-10]}")
+            pane.addstr(y+1, 4, f"▶ {active['title'][:max_w-10]}")
+            y += 2
         else:
-            # Show last time entry if no active
             logs = time_repository.get_all_time_logs()
-            if logs:
+            if logs and y+1 < max_h - 1:
                 last = logs[-1]
-                stdscr.addstr(
-                    9, 4, f"Last: {last['title'][:w-10]} ({int(last.get('duration_minutes', 0))} min)")
-        stdscr.addstr(12, 2, "Recent Trackers:", curses.A_UNDERLINE)
+                pane.addstr(
+                    y+1, 4, f"Last: {last['title'][:max_w-10]} ({int(last.get('duration_minutes', 0))} min)")
+                y += 2
+        pane.addstr(y, 2, "Recent Trackers:", curses.A_UNDERLINE)
         trackers = track_repository.get_all_trackers()[-2:]
         for i, t in enumerate(trackers):
-            stdscr.addstr(13+i, 4, f"{t['title'][:w-8]}")
+            if y+1+i < max_h - 1:
+                pane.addstr(y+1+i, 4, f"{t['title'][:max_w-8]}")
+        pane.noutrefresh()
     except Exception as e:
-        stdscr.addstr(h-2, 2, f"Err: {e}", curses.A_BOLD)
+        pane.addstr(h-2, 2, f"Home err: {e}", curses.A_BOLD)
+        pane.noutrefresh()

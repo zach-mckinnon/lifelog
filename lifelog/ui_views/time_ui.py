@@ -36,56 +36,55 @@ def get_since_from_period(period):
         return now - timedelta(days=365*10)
 
 
-def draw_time(stdscr, h, w, selected_idx):
-    global current_time_period
-    menu_h = 3
-    body_h = h - menu_h - 1
-    pane = curses.newwin(body_h, w, menu_h, 0)
-    pane.border()
-    period = get_time_period()
+def draw_time(pane, h, w, selected_idx):
+    try:
+        pane.erase()
+        max_h, max_w = pane.getmaxyx()
+        pane.border()
+        period = get_time_period()
+        period_title = {
+            'day': ' (last 24h)',
+            'week': ' (last 7 days)',
+            'month': ' (last 30 days)',
+            'all': ' (all time)'
+        }.get(period, '')
+        pane.addstr(0, max((max_w - 13) // 2, 1),
+                    f" Time {period_title} ", curses.A_BOLD)
 
-    period_title = {
-        'day': ' (last 24h)',
-        'week': ' (last 7 days)',
-        'month': ' (last 30 days)',
-        'all': ' (all time)'
-    }[period]
+        y = 2
+        active = time_repository.get_active_time_entry()
+        if active:
+            start_dt = datetime.fromisoformat(active["start"])
+            elapsed = (datetime.now() - start_dt).total_seconds()//60
+            pane.addstr(
+                y, 2, f"▶ {active['title']} ({int(elapsed)} min)", curses.A_BOLD)
+            y += 2
 
-    pane.addstr(1, 2, f"Time Spent{period_title}", curses.A_BOLD)
-    # show active session if exists
-    active = time_repository.get_active_time_entry()
-    y = 3
-    if active:
-        start_dt = datetime.fromisoformat(active["start"])
-        elapsed = (datetime.now() - start_dt).total_seconds()//60
-        pane.addstr(
-            y, 2, f"Running: {active['title']} ({int(elapsed)} min)", curses.A_BOLD)
-        y += 2
+        since = get_since_from_period(period)
+        logs = time_repository.get_all_time_logs(since=since)
+        n = len(logs)
+        if n == 0:
+            pane.addstr(y, 2, "(no history)")
+            pane.noutrefresh()
+            return 0
 
-    # history pad
-    since = get_since_from_period(period)
-    logs = time_repository.get_all_time_logs(since=since)
-    n = len(logs)
-    if n == 0:
-        pane.addstr(y, 2, "(no history)")
-        pane.refresh()
+        selected_idx = max(0, min(selected_idx, n-1))
+        visible_rows = max_h - y - 2
+        start = max(0, selected_idx - visible_rows // 2)
+        end = min(start + visible_rows, n)
+        for i, r in enumerate(logs[start:end], start=start):
+            m = int(r.get("duration_minutes", 0))
+            line = f"{r['id']:>2} {r['title'][:20]:20} {m:>4} min"
+            row_y = y + i - start
+            if row_y < max_h - 1:
+                attr = curses.A_REVERSE if i == selected_idx else curses.A_NORMAL
+                pane.addstr(row_y, 2, line[:max_w-4], attr)
+        pane.noutrefresh()
+        return selected_idx
+    except Exception as e:
+        pane.addstr(h-2, 2, f"Time err: {e}", curses.A_BOLD)
+        pane.noutrefresh()
         return 0
-
-    selected_idx = max(0, min(selected_idx, n-1))
-    pad_h = max(body_h-y-2, n)
-    pad = curses.newpad(pad_h, w-4)
-    for i, r in enumerate(logs):
-        m = int(r.get("duration_minutes", 0))
-        line = f"{r['id']:>2} {r['title'][:20]:20} {m:>4} min"
-        attr = curses.color_pair(2) if i == selected_idx else curses.A_NORMAL
-        pad.addstr(i, 0, line[:w-6], attr)
-
-    start = max(0, selected_idx - (body_h - y - 3))
-    pad.refresh(start, 0,
-                menu_h+y, 2,
-                menu_h+body_h-2, w-2)
-    pane.refresh()
-    return selected_idx
 
 
 # ——— Start Timer ———

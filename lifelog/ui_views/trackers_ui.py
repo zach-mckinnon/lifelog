@@ -13,71 +13,40 @@ from lifelog.ui_views.popups import popup_confirm, popup_input, popup_show
 from lifelog.ui_views.ui_helpers import create_pane
 
 
-def draw_trackers(stdscr, h, w, selected_idx, color_pair=0):
-    """
-    Renders the Trackers tab:
-      - stdscr: main window
-      - h,w   : terminal size
-      - selected_idx: which row is highlighted
-      - color_pair   : optional curses color pair for selection
-    Returns the clamped selected_idx.
-    """
-    menu_h = 3
-    body_h = h - menu_h - 1
+def draw_trackers(pane, h, w, selected_idx, color_pair=0):
+    try:
+        pane.erase()
+        max_h, max_w = pane.getmaxyx()
+        pane.border()
+        title = " Trackers "
+        pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
+        trackers = track_repository.get_all_trackers()
+        n = len(trackers)
+        if n == 0:
+            pane.addstr(2, 2, "(no trackers)", curses.A_DIM)
+            pane.noutrefresh()
+            return 0
 
-    # 1) Create the bordered pane
-    pane = create_pane(stdscr, menu_h, h, w, " Trackers ",
-                       color_pair=color_pair)
+        selected_idx = max(0, min(selected_idx, n-1))
+        visible_rows = max_h - 3  # 1 for border, 1 for title, 1 for bottom border
 
-    # 2) Fetch data & handle empty state
-    trackers = track_repository.get_all_trackers()
-    n = len(trackers)
-    if n == 0:
-        pane.addstr(2, 2, "(no trackers)", curses.A_DIM)
-        pane.refresh()
+        start = max(0, selected_idx - visible_rows // 2)
+        end = min(start + visible_rows, n)
+
+        for i, t in enumerate(trackers[start:end], start=start):
+            goals = track_repository.get_goals_for_tracker(t["id"]) or [{}]
+            g = goals[0]
+            line = f"{t['id']:>2} {t['title'][:20]:20} {g.get('title', '-')[:15]:15}"
+            attr = curses.A_REVERSE if i == selected_idx else curses.A_NORMAL
+            y = 1 + i - start + 1  # 1 for border, 1 for title
+            if y < max_h - 1:
+                pane.addstr(y, 2, line[:max_w-4], attr)
+        pane.noutrefresh()
+        return selected_idx
+    except Exception as e:
+        pane.addstr(h-2, 2, f"Trackers err: {e}", curses.A_BOLD)
+        pane.noutrefresh()
         return 0
-
-    # 3) Clamp selection
-    selected_idx = max(0, min(selected_idx, n - 1))
-
-    # 4) Prepare a pad for scrolling if needed
-    pad_h = max(n, body_h - 2)
-    pad_w = w - 4
-    pad = curses.newpad(pad_h, pad_w)
-
-    # 5) Column widths for alignment
-    col_widths = (4, 20, 20, 10)  # ID, Title, Goal, Progress
-
-    # 6) Draw each tracker row
-    for i, t in enumerate(trackers):
-        goals = track_repository.get_goals_for_tracker(t["id"]) or [{}]
-        g = goals[0]
-        report = generate_goal_report(t) if goals else {}
-        prog = report.get("display_format", {}).get("primary", "-")
-
-        parts = (
-            str(t["id"]).ljust(col_widths[0]),
-            t["title"][:col_widths[1]].ljust(col_widths[1]),
-            g.get("title", "-")[:col_widths[2]].ljust(col_widths[2]),
-            prog.ljust(col_widths[3]),
-        )
-        line = " ".join(parts)
-
-        # Highlight selected row
-        attr = curses.color_pair(
-            color_pair) | curses.A_REVERSE if i == selected_idx else curses.A_NORMAL
-        pad.addstr(i, 0, line[:pad_w], attr)
-
-    # 7) Calculate visible window of the pad
-    top_row = max(0, selected_idx - (body_h - 3))
-    pad.refresh(
-        top_row, 0,               # pad upper‐left
-        menu_h + 1, 2,            # screen upper‐left
-        menu_h + body_h - 2, w - 2  # screen lower‐right
-    )
-
-    pane.refresh()
-    return selected_idx
 
 
 def add_tracker_tui(stdscr):

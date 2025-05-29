@@ -12,67 +12,44 @@ from lifelog.commands.utils.shared_utils import create_recur_schedule, parse_dat
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_show
 
 
-def draw_agenda(stdscr, h, w, selected_idx):
-    menu_h = 3
-    body_h = h - menu_h - 1   # leave bottom line for status
-    cal_w = int(w * 0.6)
-    list_w = w - cal_w
-
-    # Calendar pane
-    cal_win = curses.newwin(body_h, cal_w, menu_h, 0)
-    cal_win.border()
-    now = datetime.now()
-    title = f"{calendar.month_name[now.month]} {now.year}"
-    cal_win.addstr(0, (cal_w - len(title)) // 2, title, curses.A_BOLD)
-    cal_win.addstr(1, 2, "Su Mo Tu We Th Fr Sa")
-    for row_i, week in enumerate(calendar.monthcalendar(now.year, now.month), start=2):
-        for col_i, day in enumerate(week):
-            x, y = 2 + col_i * 3, row_i
-            text = f"{day:2}" if day else "  "
-            attr = curses.A_REVERSE if day == now.day else curses.A_NORMAL
-            cal_win.addstr(y, x, text, attr)
-    cal_win.refresh()
-
-    current_status = TASK_FILTERS[current_filter_idx]
-    tasks = task_repository.query_tasks(
-        status=current_status, show_completed=False, sort="priority"
-    )
-    n = len(tasks)
-    if n == 0:
-        # empty‐state UX (Fix 10)
-        pane = curses.newwin(body_h, list_w, menu_h, cal_w)
+def draw_agenda(pane, h, w, selected_idx):
+    try:
+        pane.erase()
+        max_h, max_w = pane.getmaxyx()
         pane.border()
-        pane.addstr(
-            body_h // 2,
-            (list_w - len("No tasks yet")) // 2,
-            "No tasks yet",
-            curses.A_DIM | curses.A_BOLD
-        )
-        pane.refresh()
-    # clamp selection
-    selected_idx = max(0, min(selected_idx, n-1))
+        title = " Tasks "
+        pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
+        tasks = task_repository.query_tasks(sort="priority")
+        n = len(tasks)
+        if n == 0:
+            pane.addstr(2, 2, "(no tasks)", curses.A_DIM)
+            pane.noutrefresh()
+            return 0
 
-    pane = curses.newwin(body_h, list_w, menu_h, cal_w)
-    pane.border()
-    pane.addstr(0, (list_w-6)//2, " Tasks ", curses.A_BOLD)
+        selected_idx = max(0, min(selected_idx, n-1))
+        visible_rows = max_h - 3  # 1 for border, 1 for title, 1 for bottom border
 
-    pad_h = max(body_h-2, n)
-    pad = curses.newpad(pad_h, list_w-2)
-    for i, t in enumerate(tasks):
-        due = t.get("due") or ""
-        due_str = due.split("T")[0] if due else "-"
-        recur_mark = " 🔁" if t.get("recur_interval") else ""
-        line = f"{t['id']:>2}[{t['priority']}] {due_str} {t['title']}{recur_mark}"
-        attr = curses.color_pair(2) if i == selected_idx else curses.A_NORMAL
-        pad.addstr(i, 0, line[:list_w-3], attr)
+        start = max(0, selected_idx - visible_rows // 2)
+        end = min(start + visible_rows, n)
 
-    start = max(0, selected_idx - (body_h-3))
-    pad.refresh(start, 0,
-                menu_h+1, cal_w+1,
-                menu_h+body_h-2, w-2)
-    pane.refresh()
+        for i, t in enumerate(tasks[start:end], start=start):
+            is_sel = (i == selected_idx)
+            attr = curses.A_REVERSE if is_sel else curses.A_NORMAL
+            due = t.get("due") or ""
+            due_str = due.split("T")[0] if due else "-"
+            recur = " [R]" if t.get("recur_interval") else ""
+            line = f"{t['id']:>2} [{t['priority']}] {due_str} {t['title']}{recur}"
+            y = 1 + i - start + 1  # 1 for border, 1 for title
+            if y < max_h - 1:
+                pane.addstr(y, 2, line[:max_w-4], attr)
 
-    return selected_idx
+        pane.noutrefresh()
+        return selected_idx
+
+    except Exception as e:
+        pane.addstr(max_h-2, 2, f"Agenda err: {e}", curses.A_BOLD)
+        pane.noutrefresh()
+        return 0
 
 
 def add_task_tui(stdscr):

@@ -50,23 +50,26 @@ def run_insights(stdscr):
     _drop_to_console(show_insights)
 
 
-def draw_report(stdscr, h, w):
-    menu_h = 3
-    body_h = h - menu_h - 1
-    pane = curses.newwin(body_h, w, menu_h, 0)
-    pane.border()
-    pane.addstr(1, 2, "Reports", curses.A_BOLD)
-
-    # ← added "4) insights" here
-    opts = [
-        "1) summary-trackers",
-        "2) summary-time",
-        "3) daily-tracker",
-        "4) insights",
-        "q) Back",
-    ]
-    for i, o in enumerate(opts, start=3):
-        pane.addstr(i, 4, o)
-    pane.addstr(body_h - 2, 2,
-                "Press key to run report → output to console.", curses.A_DIM)
-    pane.refresh()
+def draw_report(pane, h, w):
+    try:
+        pane.erase()
+        max_h, max_w = pane.getmaxyx()
+        pane.border()
+        title = " Reports "
+        pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
+        y = 2
+        lines = [
+            "1. Tracker Summary",
+            "2. Time Summary",
+            "3. Daily Tracker",
+            "4. Insights",
+            "",
+            "Use 1-4 to select. ESC/q to return."
+        ]
+        for i, line in enumerate(lines):
+            if y+i < max_h - 1:
+                pane.addstr(y+i, 2, line[:max_w-4])
+        pane.noutrefresh()
+    except Exception as e:
+        pane.addstr(h-2, 2, f"Report err: {e}", curses.A_BOLD)
+        pane.noutrefresh()
