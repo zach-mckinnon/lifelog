@@ -20,9 +20,9 @@ def show_help_popup(stdscr, current_tab):
         lines = [
             "Trackers Tab:",
             "a: Add Tracker    d: Delete Tracker   Enter: Edit Tracker",
-            "l: Log Entry      v: View Tracker     g: Add Goal",
-            "e: Edit Goal      x: Delete Goal      h: Goal Help",
-            "V: View All Goals for Tracker (if implemented)",
+            "l: Log Entry      v: View Tracker     g: Add/Edit Goal",
+            "x: Delete Goal      h: Goal Help",
+            "V: View All Goals for Tracker",
             "",
             "↑/↓: Move   ←/→: Switch Tab   Q: Quit   ?: Close Help"
         ]
