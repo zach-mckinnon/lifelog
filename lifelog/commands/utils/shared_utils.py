@@ -109,7 +109,8 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
     base_part = ts
     target = None
     is_time_only = False
-
+    if "." in time_string:
+        time_string = time_string.split(".")[0]
     # Handle "T" separator (e.g. 1dT18:00 or 4/5T17:00)
     if 'T' in ts:
         base_part, time_part = ts.split('T', 1)

@@ -108,7 +108,7 @@ def main(stdscr, show_status: bool = True):
 
         # --- Key handling ---
         if key == ord("Q"):
-            if popup_confirm(stdscr, "❓ Exit the app? (Y/n)"):
+            if popup_confirm(stdscr, "Exit the app? (Y/n)"):
                 break
             else:
                 continue
@@ -266,7 +266,9 @@ def draw_home(pane, h, w):
         else:
             logs = time_repository.get_all_time_logs()
             if logs and y+1 < max_h - 1:
-                last = logs[-1]
+                logs = sorted(logs, key=lambda l: l.get(
+                    'end', l.get('start', '')), reverse=True)
+                last = logs[0]
                 pane.addstr(
                     y+1, 4, f"Last: {last['title'][:max_w-10]} ({int(last.get('duration_minutes', 0))} min)")
                 y += 2

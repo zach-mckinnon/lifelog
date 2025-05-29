@@ -25,10 +25,9 @@ def draw_agenda(pane, h, w, selected_idx):
         pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
         now = datetime.now()
 
-        # -- Calendar panel (text-based, fits ~7x20, no rich colors)
+        # --- CALENDAR PANEL ---
         cal = calendar.TextCalendar(firstweekday=0)
         month_lines = cal.formatmonth(now.year, now.month).splitlines()
-        # Find all due days for this month
         tasks = task_repository.query_tasks(
             show_completed=False, sort="priority")
         due_days = {
@@ -37,54 +36,82 @@ def draw_agenda(pane, h, w, selected_idx):
             and datetime.fromisoformat(t["due"]).month == now.month
             and datetime.fromisoformat(t["due"]).year == now.year
         }
-        # Render calendar, bold today, underline due days
-        for i, line in enumerate(month_lines[:min(len(month_lines), max_h-2)]):
-            y = 1 + i
+        calendar_pad_top = 2
+        calendar_pad_left = 2
+        for i, line in enumerate(month_lines):
+            y = calendar_pad_top + i
             if y < max_h - 1 and len(line) < max_w - 2:
                 for match in re.finditer(r'\b(\d{1,2})\b', line):
                     day = int(match.group(1))
-                    x = match.start()
+                    x = calendar_pad_left + match.start()
                     if day == now.day:
-                        pane.addstr(y, 2+x, f"{day:>2}", curses.A_REVERSE)
+                        pane.addstr(y, x, f"{day:>2}", curses.A_REVERSE)
                     elif day in due_days:
-                        pane.addstr(y, 2+x, f"{day:>2}", curses.A_UNDERLINE)
+                        pane.addstr(y, x, f"{day:>2}", curses.A_UNDERLINE)
                     else:
-                        pane.addstr(y, 2+x, f"{day:>2}")
-            elif y < max_h - 1:
-                pane.addstr(y, 2, line[:max_w-4])
+                        pane.addstr(y, x, f"{day:>2}")
+                # For non-numeric lines (month/year/header)
+                if re.fullmatch(r"\D+", line.strip()):
+                    pane.addstr(y, calendar_pad_left, line[:max_w-4])
+        cal_panel_height = calendar_pad_top + len(month_lines) + 1
 
-        cal_panel_height = len(month_lines) + 1
+        # --- TASK LIST ---
+        tasks = task_repository.query_tasks(
+            show_completed=False, sort="priority")
+        n = len(tasks)
+        visible_rows = max_h - cal_panel_height - 5
+        if visible_rows < 1:
+            visible_rows = 1
 
-        # -- Compact task table: ID | P | Due | Task
-        pane.addstr(cal_panel_height, 2, "ID P Due  Task", curses.A_UNDERLINE)
+        pane.addstr(cal_panel_height, 2, "Tasks:", curses.A_UNDERLINE)
+        task_win_left = 2
+        task_win_top = cal_panel_height + 1
 
-        def sort_key(t):
-            due_dt = datetime.fromisoformat(
-                t["due"]) if t.get("due") else datetime.max
-            return due_dt
+        if n == 0:
+            pane.addstr(task_win_top, task_win_left,
+                        "(no tasks)", curses.A_DIM)
+        else:
+            # Scroll logic for task list
+            selected_idx = max(0, min(selected_idx, n-1))
+            start = max(0, selected_idx - visible_rows // 2)
+            end = min(start + visible_rows, n)
+            # Draw box for scroll area
+            for i in range(visible_rows):
+                y = task_win_top + i
+                if y < max_h - 2:
+                    pane.addstr(y, task_win_left, " " * (max_w//2-4))
+            for i, t in enumerate(tasks[start:end], start=start):
+                is_sel = (i == selected_idx)
+                attr = curses.A_REVERSE if is_sel else curses.A_NORMAL
+                id_str = f"{t['id']:>2}"
+                title = t.get("title", "-")
+                line = f"{id_str}: {title}"
+                y = task_win_top + i - start
+                if y < max_h - 2:
+                    pane.addstr(y, task_win_left, line[:max_w//2-8], attr)
 
-        top_three = sorted(tasks, key=sort_key)[:3]
-        for i, task in enumerate(top_three):
-            row_y = cal_panel_height + 1 + i
-            if row_y >= max_h - 1:
-                break
-            id_str = f"{task['id']:>2}"
-            prio_raw = str(task.get("priority", "-"))[:1]
-            due_str = "-"
-            if task.get("due"):
-                try:
-                    due_str = datetime.fromisoformat(
-                        task["due"]).strftime("%m/%d")
-                except Exception:
-                    due_str = "-"
-            title = task.get("title", "-")
-            line = f"{id_str} {prio_raw} {due_str:>5} {title[:max_w-15]}"
-            pane.addstr(
-                row_y, 2, line[:max_w-4], curses.A_BOLD if i == selected_idx else curses.A_NORMAL)
+            # --- TASK DETAIL PREVIEW (right side, if enough space) ---
+            if max_w > 40:
+                preview_left = max_w//2 + 2
+                detail_y = cal_panel_height
+                t = tasks[selected_idx]
+                preview_lines = [
+                    f"ID: {t['id']}",
+                    f"Title: {t.get('title', '-')}",
+                    f"Due: {t.get('due', '-')}",
+                    f"Status: {t.get('status', '-')}",
+                    f"Category: {t.get('category', '-')}",
+                    f"Project: {t.get('project', '-')}",
+                    f"Priority: {t.get('priority', '-')}",
+                    f"Notes: {(t.get('notes', '-') or '-')[:max_w//2-6]}",
+                ]
+                for idx, line in enumerate(preview_lines):
+                    if detail_y + idx < max_h - 2:
+                        pane.addstr(detail_y + idx, preview_left,
+                                    line[:max_w//2-6])
 
         pane.noutrefresh()
         return selected_idx
-
     except Exception as e:
         max_h, _ = pane.getmaxyx()
         pane.addstr(max_h-2, 2, f"Agenda err: {e}", curses.A_BOLD)

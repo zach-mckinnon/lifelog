@@ -72,7 +72,7 @@ def popup_show(stdscr, lines, title=""):
 
 def popup_input(stdscr, prompt):
     h, w = stdscr.getmaxyx()
-    ph, pw = 5, max(len(prompt), 20)+4
+    ph, pw = 5, max(len(prompt), 20) + 4
     win = curses.newwin(ph, pw, (h-ph)//2, (w-pw)//2)
     win.border()
     win.addstr(1, 2, prompt)
@@ -80,10 +80,29 @@ def popup_input(stdscr, prompt):
     curses.echo()
     curses.curs_set(1)
     win.refresh()
-    inp = win.getstr(2, 4, pw-6).decode().strip()
+    inp = []
+    while True:
+        c = win.getch(2, 4 + len(inp))
+        if c in (10, 13):  # Enter
+            break
+        if c in (27,):     # ESC
+            inp = []
+            break
+        if c in (curses.KEY_BACKSPACE, 127, 8):
+            if inp:
+                inp.pop()
+                win.addstr(2, 4 + len(inp), ' ')
+                win.move(2, 4 + len(inp))
+        else:
+            if 32 <= c <= 126:  # Printable
+                inp.append(chr(c))
+                win.addstr(2, 4 + len(inp) - 1, chr(c))
     curses.noecho()
     curses.curs_set(0)
-    return inp
+    win.clear()
+    stdscr.touchwin()
+    stdscr.refresh()
+    return "".join(inp).strip() if inp else None
 
 
 def popup_confirm(stdscr, message) -> bool:
