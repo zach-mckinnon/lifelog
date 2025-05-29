@@ -4,7 +4,6 @@ import curses
 
 from lifelog.commands.utils.db import task_repository, time_repository, track_repository
 from lifelog.ui_views.ui_helpers import (
-    draw_env,
     draw_menu,
     draw_status,
 )

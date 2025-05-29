@@ -3,7 +3,6 @@
 # -------------------------------------------------------------------
 
 
-import calendar
 import curses
 from datetime import datetime
 from lifelog.commands.task import calculate_priority
