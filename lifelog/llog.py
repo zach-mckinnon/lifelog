@@ -17,7 +17,7 @@ from lifelog.commands.utils.db import database_manager
 from lifelog.commands.utils import get_quotes
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs
-from lifelog.commands import time, task, track, report, environmental_sync, debug
+from lifelog.commands import time, task, track, report, environmental_sync
 from lifelog.commands.utils import feedback
 from lifelog.ui import main as ui_main
 
@@ -78,6 +78,12 @@ def ui(
     """
     # Pass the flag into your UI entrypoint
     curses.wrapper(ui_main, status_bar)
+
+
+@app.command("setup-ai")
+def cli_setup_ai():
+    """Walk the user through entering AI API keys and model."""
+    report.setup_ai_credentials()
 
 
 @app.callback(invoke_without_command=True)

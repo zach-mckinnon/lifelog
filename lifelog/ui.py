@@ -9,7 +9,7 @@ from lifelog.ui_views.ui_helpers import (
     draw_status,
 )
 from lifelog.ui_views.popups import popup_confirm, popup_error, show_help_popup
-from lifelog.ui_views.reports_ui import draw_report, run_daily_tracker, run_insights, run_summary_time, run_summary_trackers
+from lifelog.ui_views.reports_ui import draw_report, run_clinical_insights, run_daily_tracker, run_insights, run_summary_time, run_summary_trackers
 from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_filter, delete_task_tui, done_task_tui, draw_agenda, edit_notes_tui, edit_recurrence_tui, edit_task_tui, focus_mode_tui, quick_add_task_tui, set_task_reminder_tui, start_task_tui, stop_task_tui, view_task_tui
 from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entry_tui, draw_time, edit_time_entry_tui, set_time_period, start_time_tui, status_time_tui, stop_time_tui, stopwatch_tui, summary_time_tui, view_time_entry_tui
 from lifelog.ui_views.trackers_ui import add_or_edit_goal_tui, add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
@@ -240,6 +240,8 @@ def main(stdscr, show_status: bool = True):
                     run_daily_tracker(stdscr)
                 elif key == ord("4"):
                     run_insights(stdscr)
+                elif key == ord("5"):
+                    run_clinical_insights(stdscr)
                 elif key in (ord("q"), 27):
                     current = 0
     except Exception:

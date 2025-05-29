@@ -1,7 +1,9 @@
 # ─── Popups & Helpers ─────────────────────────────────────────────────
 
+from datetime import datetime
 import textwrap
 import curses
+import traceback
 
 
 def show_help_popup(stdscr, current_tab):
@@ -100,6 +102,21 @@ def popup_error(stdscr, error, title=" Error "):
     win.clear()
     stdscr.touchwin()
     stdscr.refresh()
+
+
+def log_and_popup_error(stdscr, message, exc=None):
+    """Unified error handling for TUI and logging."""
+    try:
+        from lifelog.ui_views.popups import popup_error
+        if stdscr:
+            popup_error(stdscr, message)
+    except Exception as popup_exc:
+        print(f"Popup error: {popup_exc} -- {message}")
+    log_msg = f"{datetime.now().isoformat()} | {message}\n"
+    if exc:
+        log_msg += f"Exception: {exc}\n{traceback.format_exc()}\n"
+    with open("/tmp/lifelog_tui.log", "a") as f:
+        f.write(log_msg)
 
 
 def popup_show(stdscr, lines, title=""):

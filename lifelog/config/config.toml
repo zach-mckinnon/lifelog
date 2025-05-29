@@ -15,6 +15,23 @@ health = 1.1
 [tracker]
 [mood]
 [water]
+[sleep]
+[sleepq]
+[exercise]
+
+[reporting]
+categories = [
+  "tasks",
+  "trackers",
+  "time",
+  "mood",
+  "energy",
+  "productivity",
+  "health",
+  "environment",
+  "goals",
+  "custom"
+]
 
 [paths]
 CONFIG_FILE = "~/.lifelog/config.toml"
@@ -22,6 +39,11 @@ DAILY_QUOTE_FILE = "~/.lifelog/daily_quote.json"
 ENV_DATA_FILE = "~/.lifelog/environment.json"
 FEEDBACK_FILE = "~/.lifelog/feedback.json"
 FC_FILE = "~/.lifelog/initialized.json"
+
+[ai]
+chatgpt_api_key = "sk-..."          # For OpenAI/ChatGPT
+gemini_api_key = "..."              # For Gemini/Google
+preferred_ai_model = "chatgpt"
 
 [aliases]
 m = "mood"

@@ -291,6 +291,10 @@ def safe_format_notes(notes_raw):
         return "-"
 
 
+def user_friendly_empty_message(module="insights"):
+    return f"No usable {module} data available yet. Please track more to generate valuable insights."
+
+
 def filter_entries_for_current_period(entries, period: str):
     now = datetime.now()
     df = pd.DataFrame(entries)

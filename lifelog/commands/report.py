@@ -1,4 +1,5 @@
 # lifelog/commands/report.py
+import toml
 import json
 from typing import Dict, Any
 from datetime import datetime, timedelta
@@ -9,6 +10,8 @@ import typer
 from rich.table import Table
 from rich.console import Console
 
+from lifelog.commands.utils.reporting.clinical_insight_engine import generate_clinical_insights
+from lifelog.commands.utils.db import environment_repository, task_repository
 from lifelog.commands.utils.db import report_repository
 from lifelog.commands.utils.db import track_repository, time_repository
 from lifelog.commands.utils.reporting.insight_engine import generate_insights
@@ -419,3 +422,118 @@ def _report_replacement(tracker, goal, details, df):
         },
         "status": "✅ Strong replacement habit!" if ratio >= 75 else "🔄 Still replacing..."
     }
+
+# --- Clinical/AI Insights Command ---
+
+
+def setup_ai_credentials():
+    cfg_path = "config.toml"
+    try:
+        cfg = toml.load(cfg_path)
+    except Exception:
+        cfg = {}
+
+    ai = cfg.get("ai", {})
+    changed = False
+
+    if not ai.get("chatgpt_api_key"):
+        ai["chatgpt_api_key"] = input(
+            "Enter your ChatGPT/OpenAI API key (or leave blank): ").strip()
+        changed = True
+    if not ai.get("gemini_api_key"):
+        ai["gemini_api_key"] = input(
+            "Enter your Gemini API key (or leave blank): ").strip()
+        changed = True
+    if not ai.get("preferred_ai_model"):
+        model = input(
+            "Preferred AI model for insights? (chatgpt/gemini): ").strip().lower()
+        if model in ("chatgpt", "gemini"):
+            ai["preferred_ai_model"] = model
+            changed = True
+
+    if changed:
+        cfg["ai"] = ai
+        with open(cfg_path, "w") as f:
+            toml.dump(cfg, f)
+        print("AI configuration updated.")
+    else:
+        print("AI configuration unchanged.")
+
+
+def get_ai_credentials():
+    """
+    Returns (model_name, api_key) based on config preferences.
+    """
+    try:
+        cfg = toml.load("config.toml")
+        ai_cfg = cfg.get("ai", {})
+        model = ai_cfg.get("preferred_ai_model", "chatgpt").lower()
+        if model == "gemini":
+            key = ai_cfg.get("gemini_api_key")
+        else:
+            model = "chatgpt"  # default
+            key = ai_cfg.get("chatgpt_api_key")
+        if not key or not key.strip():
+            return None, None
+        return model, key
+    except Exception as e:
+        print(f"Config error: {e}")
+        return None, None
+
+
+def gather_all_data():
+    return {
+        "tasks": task_repository.get_all_tasks(),
+        "trackers": track_repository.get_all_trackers(),
+        "tracker_entries": track_repository.get_all_entries(),
+        "goals": [g for t in track_repository.get_all_trackers() for g in track_repository.get_goals_for_tracker(t["id"])],
+        "time_logs": time_repository.get_all_time_logs(),
+        "environment": environment_repository.get_all_environmental_data() if hasattr(environment_repository, "get_all_environmental_data") else [],
+    }
+
+
+def format_insight_prompt(user_data):
+    prompt = (
+        "You are a clinical behavioral analyst AI. Analyze the user's tracked data and deliver meaningful, valuable, and actionable insights."
+        "\n\nDATA TO ANALYZE (JSON):\n"
+        f"{json.dumps(user_data, indent=2)}"
+        "\n\nInstructions: "
+        "1. Identify trends, problems, and strengths in productivity, habits, and well-being.\n"
+        "2. Surface any patterns between time use, tasks, and environment.\n"
+        "3. Highlight unusual behaviors, suggest possible explanations, and offer practical advice for improvement.\n"
+        "4. Use bullet points and concise explanations, suitable for a self-tracking user.\n"
+        "Do NOT repeat the raw data."
+    )
+    return prompt
+
+
+@app.command("clinical-insights")
+def show_clinical_insights(
+    use_ai: bool = True,
+    model: str = None
+):
+    """
+    Run clinical/behavioral insight engine (optionally via AI, with model selection).
+    """
+
+    # Get model/key from config (unless overridden)
+    config_model, api_key = get_ai_credentials()
+    model = model or config_model
+
+    if use_ai and (not api_key or not model):
+        print(
+            "[red]AI API key or model missing. Set them in config.toml under [ai].[/red]")
+        use_ai = False
+
+    result = generate_clinical_insights(
+        use_ai=use_ai and bool(api_key),
+        ai_key=api_key,
+        ai_model=model
+    )
+
+    print("\n[bold blue]Clinical/Behavioral Insight Report[/bold blue]")
+    if isinstance(result, dict):
+        for section, value in result.items():
+            print(f"[bold]{section}[/bold]:\n{value}\n")
+    else:
+        print(result)
