@@ -15,7 +15,7 @@ from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entr
 from lifelog.ui_views.trackers_ui import add_goal_tui, add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_goal_tui, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
 
 
-SCREENS = ["Agenda", "Trackers", "Time", "Report", "Environment"]
+SCREENS = ["Home", "Task", "Time", "Track", "Report"]
 
 
 def main(stdscr, show_status: bool = True):
@@ -34,41 +34,49 @@ def main(stdscr, show_status: bool = True):
     tracker_sel = 0   # selected row in Trackers
     time_sel = 0   # selected row in Time
 
-    MIN_HEIGHT = 12
-    MIN_WIDTH = 40
     # ─── Main Loop ──────────────────────────────────────────────────────────
     while True:
         h, w = stdscr.getmaxyx()
+        MIN_HEIGHT = 8
+        MIN_WIDTH = 20
         if h < MIN_HEIGHT or w < MIN_WIDTH:
-            stdscr.erase()
-            stdscr.addstr(0, 0, f"Terminal too small ({w}x{h}). Enlarge window to use Lifelog.",
-                          curses.A_BOLD)
+            stdscr.addstr(
+                0, 0, f"Terminal too small ({w}x{h}).", curses.A_BOLD)
+            stdscr.addstr(1, 0, "Resize or lower font size.")
             stdscr.refresh()
             key = stdscr.getch()
-            if key in (ord('q'), 27):
-                break  # or return, as needed
+            if key in (ord('q'), 27):  # quit or ESC
+                return
             continue
-        stdscr.erase()
 
         # Always draw the top menu
-        draw_menu(stdscr, SCREENS, current, w, color_pair=1)
+        try:
+            draw_menu(stdscr, SCREENS, current, w, color_pair=1)
+        except Exception as e:
+            stdscr.addstr(0, 0, f"Menu err: {e}")
 
-        # Always draw the active pane
-        if SCREENS[current] == "Agenda":
-            agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
-        elif SCREENS[current] == "Trackers":
-            tracker_sel = draw_trackers(
-                stdscr, h, w, tracker_sel, color_pair=2)
-        elif SCREENS[current] == "Time":
-            time_sel = draw_time(stdscr, h, w, time_sel)
-        elif SCREENS[current] == "Report":
-            draw_report(stdscr, h, w)
-        else:  # Environment
-            draw_env(stdscr, h, w)
+       # Tab content
+        try:
+            if SCREENS[current] == "Home":
+                draw_home(stdscr, h, w)
+            elif SCREENS[current] == "Task":
+                agenda_sel = draw_agenda(stdscr, h, w, agenda_sel)
+            elif SCREENS[current] == "Time":
+                time_sel = draw_time(stdscr, h, w, time_sel)
+            elif SCREENS[current] == "Track":
+                tracker_sel = draw_trackers(
+                    stdscr, h, w, tracker_sel, color_pair=2)
+            elif SCREENS[current] == "Report":
+                draw_report(stdscr, h, w)
+        except Exception as e:
+            stdscr.addstr(3, 2, f"Tab err: {e}")
 
         # Always draw the status/help bar
         if show_status:
-            draw_status(stdscr, h, w, current)
+            try:
+                draw_status(stdscr, h, w, current)
+            except Exception as e:
+                stdscr.addstr(h-1, 0, f"Status err: {e}")
 
         stdscr.refresh()
 
@@ -83,23 +91,6 @@ def main(stdscr, show_status: bool = True):
                 continue
         if key == 27:                  # ESC = back to Agenda
             current = 0
-            continue
-
-        # Environment “o” → dump to console
-        if SCREENS[current] == "Environment" and key == ord("o"):
-            curses.endwin()
-            from rich.console import Console
-            from lifelog.commands.utils.db import environment_repository
-            console = Console()
-            for sec in ("weather", "air_quality", "moon", "satellite"):
-                try:
-                    data = environment_repository.get_latest_environment_data(
-                        sec)
-                    console.rule(f"{sec}")
-                    console.print(data)
-                except Exception as e:
-                    console.print(f"[red]Error: {e}[/]")
-            input("Press Enter to return…")
             continue
 
         #  ←/→ to switch tabs
@@ -243,3 +234,29 @@ def main(stdscr, show_status: bool = True):
             elif key in (ord("q"), 27):
                 current = 0
     # end while
+
+
+def draw_home(stdscr, h, w):
+    try:
+        stdscr.addstr(1, 2, "🏠 Lifelog Home", curses.A_BOLD)
+        stdscr.addstr(3, 2, "Top Tasks:", curses.A_UNDERLINE)
+        tasks = task_repository.query_tasks(sort="priority")[:3]
+        for i, t in enumerate(tasks):
+            stdscr.addstr(4+i, 4, f"{t['title'][:w-8]}")
+        stdscr.addstr(8, 2, "Time:", curses.A_UNDERLINE)
+        active = time_repository.get_active_time_entry()
+        if active:
+            stdscr.addstr(9, 4, f"▶ {active['title'][:w-10]}")
+        else:
+            # Show last time entry if no active
+            logs = time_repository.get_all_time_logs()
+            if logs:
+                last = logs[-1]
+                stdscr.addstr(
+                    9, 4, f"Last: {last['title'][:w-10]} ({int(last.get('duration_minutes', 0))} min)")
+        stdscr.addstr(12, 2, "Recent Trackers:", curses.A_UNDERLINE)
+        trackers = track_repository.get_all_trackers()[-2:]
+        for i, t in enumerate(trackers):
+            stdscr.addstr(13+i, 4, f"{t['title'][:w-8]}")
+    except Exception as e:
+        stdscr.addstr(h-2, 2, f"Err: {e}", curses.A_BOLD)
