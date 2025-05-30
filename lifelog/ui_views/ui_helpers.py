@@ -90,3 +90,13 @@ def log_exception(context, exc):
     except Exception as e:
         # If logging itself fails, print to stderr (last resort)
         print(f"LOGGING ERROR in {context}: {e}")
+
+
+def safe_addstr(win, y, x, s, attr=0):
+    max_y, max_x = win.getmaxyx()
+    if 0 <= y < max_y and 0 <= x < max_x:
+        s = str(s)[:max_x - x - 1]
+        try:
+            win.addstr(y, x, s, attr)
+        except Exception:
+            pass  # Or log if you wish

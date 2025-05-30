@@ -8,6 +8,7 @@ from lifelog.commands.utils.db import task_repository, time_repository, track_re
 from lifelog.ui_views.ui_helpers import (
     draw_menu,
     draw_status,
+    safe_addstr,
 )
 from lifelog.ui_views.popups import popup_confirm, popup_error, show_help_popup
 from lifelog.ui_views.reports_ui import draw_report, run_clinical_insights, run_daily_tracker, run_insights, run_summary_time, run_summary_trackers, draw_burndown
@@ -96,7 +97,7 @@ def main(stdscr, show_status: bool = True):
                 elif active_screen == "R":
                     draw_report(active_pane, h, w)
             except Exception as e:
-                active_pane.addstr(1, 1, f"Tab err: {e}")
+                safe_addstr(active_pane, 1, 1, f"Tab err: {e}")
 
             # Only show the active pane (you could also overlay)
             active_pane.noutrefresh()
@@ -262,18 +263,19 @@ def draw_home(pane, h, w):
         max_h, max_w = pane.getmaxyx()
         pane.border()
         title = " Home "
-        pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
+        safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
+                    title, curses.A_BOLD)
         y = 2
-        pane.addstr(y, 2, "Top Tasks:", curses.A_UNDERLINE)
+        safe_addstr(pane, y, 2, "Top Tasks:", curses.A_UNDERLINE)
         tasks = task_repository.query_tasks(sort="priority")[:3]
         for i, t in enumerate(tasks):
             if y+1+i < max_h - 1:
-                pane.addstr(y+1+i, 4, f"{t['title'][:max_w-8]}")
+                safe_addstr(pane, y+1+i, 4, f"{t['title'][:max_w-8]}")
         y += len(tasks) + 2
-        pane.addstr(y, 2, "Time:", curses.A_UNDERLINE)
+        safe_addstr(pane, y, 2, "Time:", curses.A_UNDERLINE)
         active = time_repository.get_active_time_entry()
         if active:
-            pane.addstr(y+1, 4, f">> {active['title'][:max_w-10]}")
+            safe_addstr(pane, y+1, 4, f">> {active['title'][:max_w-10]}")
             y += 2
         else:
             logs = time_repository.get_all_time_logs()
@@ -281,21 +283,21 @@ def draw_home(pane, h, w):
                 logs = sorted(logs, key=lambda l: l.get(
                     'end', l.get('start', '')), reverse=True)
                 last = logs[0]
-                pane.addstr(
-                    y+1, 4, f"Last: {last['title'][:max_w-10]} ({int(last.get('duration_minutes', 0))} min)")
+                safe_addstr(pane,
+                            y+1, 4, f"Last: {last['title'][:max_w-10]} ({int(last.get('duration_minutes', 0))} min)")
                 y += 2
-        pane.addstr(y, 2, "Recent Trackers:", curses.A_UNDERLINE)
+        safe_addstr(pane, y, 2, "Recent Trackers:", curses.A_UNDERLINE)
         trackers = track_repository.get_all_trackers()[-2:]
         for i, t in enumerate(trackers):
             if y+1+i < max_h - 1:
-                pane.addstr(y+1+i, 4, f"{t['title'][:max_w-8]}")
+                safe_addstr(pane, y+1+i, 4, f"{t['title'][:max_w-8]}")
         pane.noutrefresh()
         env = environment_repository.get_latest_environmental_data()
 
         if env:
-            pane.addstr(
-                y, 2, f"Weather: {env['weather']} AQI: {env['air_quality']} Moon: {env['moon']}")
+            safe_addstr(
+                pane, y, 2, f"Weather: {env['weather']} AQI: {env['air_quality']} Moon: {env['moon']}")
 
     except Exception as e:
-        pane.addstr(h-2, 2, f"Home err: {e}", curses.A_BOLD)
+        safe_addstr(pane, h-2, 2, f"Home err: {e}", curses.A_BOLD)
         pane.noutrefresh()

@@ -9,6 +9,7 @@ from lifelog.commands.utils.db.models import TimeLog
 from lifelog.commands.utils.db import time_repository
 from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, get_available_categories, get_available_projects, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
+from ui_views.ui_helpers import safe_addstr
 
 TIME_PERIODS = {'d': 'day', 'w': 'week', 'm': 'month', 'a': 'all'}
 
@@ -58,7 +59,7 @@ def draw_time(pane, h, w, selected_idx):
             'month': ' (last 30 days)',
             'all': ' (all time)'
         }.get(period, '')
-        pane.addstr(0, max((max_w - 13) // 2, 1),
+        safe_addstr(pane, 0, max((max_w - 13) // 2, 1),
                     f" Time {period_title} ", curses.A_BOLD)
 
         y = 2
@@ -66,15 +67,15 @@ def draw_time(pane, h, w, selected_idx):
         if active:
             start_dt = active.start
             elapsed = (datetime.now() - start_dt).total_seconds() // 60
-            pane.addstr(
-                y, 2, f"▶ {active.title} ({int(elapsed)} min)", curses.A_BOLD)
+            safe_addstr(pane,
+                        y, 2, f"▶ {active.title} ({int(elapsed)} min)", curses.A_BOLD)
             y += 2
 
         since = get_since_from_period(period)
         logs = time_repository.get_all_time_logs(since=since)
         n = len(logs)
         if n == 0:
-            pane.addstr(y, 2, "(no history)")
+            safe_addstr(pane, y, 2, "(no history)")
             pane.noutrefresh()
             return 0
 
@@ -88,11 +89,11 @@ def draw_time(pane, h, w, selected_idx):
             row_y = y + i - start
             if row_y < max_h - 1:
                 attr = curses.A_REVERSE if i == selected_idx else curses.A_NORMAL
-                pane.addstr(row_y, 2, line[:max_w-4], attr)
+                safe_addstr(pane, row_y, 2, line[:max_w-4], attr)
         pane.noutrefresh()
         return selected_idx
     except Exception as e:
-        pane.addstr(h-2, 2, f"Time err: {e}", curses.A_BOLD)
+        safe_addstr(pane, h-2, 2, f"Time err: {e}", curses.A_BOLD)
         pane.noutrefresh()
         return 0
 

@@ -11,7 +11,7 @@ from lifelog.commands.utils.goal_util import get_description_for_goal_kind
 from lifelog.commands.utils.db import track_repository
 from lifelog.commands.utils.shared_utils import add_category_to_config, get_available_categories, get_available_tags, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_option, popup_show
-from lifelog.ui_views.ui_helpers import log_exception, tag_picker_tui
+from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
 
 
 def draw_trackers(pane, h, w, selected_idx):
@@ -25,7 +25,7 @@ def draw_trackers(pane, h, w, selected_idx):
             attr = curses.A_REVERSE
         else:
             attr = curses.A_NORMAL
-        pane.addstr(y + i, 2, line[:w-4], attr)
+        safe_addstr(pane, y + i, 2, line[:w-4], attr)
     pane.noutrefresh()
 
 

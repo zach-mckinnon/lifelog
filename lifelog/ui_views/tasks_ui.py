@@ -17,7 +17,7 @@ import calendar
 import re
 from datetime import datetime
 
-from lifelog.ui_views.ui_helpers import log_exception, tag_picker_tui
+from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
 
 
 def draw_agenda(pane, h, w, selected_idx):
@@ -26,7 +26,8 @@ def draw_agenda(pane, h, w, selected_idx):
         max_h, max_w = pane.getmaxyx()
         pane.border()
         title = " Agenda "
-        pane.addstr(0, max((max_w - len(title)) // 2, 1), title, curses.A_BOLD)
+        safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
+                    title, curses.A_BOLD)
         now = datetime.now()
 
         # --- CALENDAR PANEL ---
@@ -49,14 +50,15 @@ def draw_agenda(pane, h, w, selected_idx):
                     day = int(match.group(1))
                     x = calendar_pad_left + match.start()
                     if day == now.day:
-                        pane.addstr(y, x, f"{day:>2}", curses.A_REVERSE)
+                        safe_addstr(pane, y, x, f"{day:>2}", curses.A_REVERSE)
                     elif day in due_days:
-                        pane.addstr(y, x, f"{day:>2}", curses.A_UNDERLINE)
+                        safe_addstr(
+                            pane, y, x, f"{day:>2}", curses.A_UNDERLINE)
                     else:
-                        pane.addstr(y, x, f"{day:>2}")
+                        safe_addstr(pane, y, x, f"{day:>2}")
                 # For non-numeric lines (month/year/header)
                 if re.fullmatch(r"\D+", line.strip()):
-                    pane.addstr(y, calendar_pad_left, line[:max_w-4])
+                    safe_addstr(pane, y, calendar_pad_left, line[:max_w-4])
         cal_panel_height = calendar_pad_top + len(month_lines) + 1
 
         # --- TASK LIST ---
@@ -67,12 +69,12 @@ def draw_agenda(pane, h, w, selected_idx):
         if visible_rows < 1:
             visible_rows = 1
 
-        pane.addstr(cal_panel_height, 2, "Tasks:", curses.A_UNDERLINE)
+        safe_addstr(pane, cal_panel_height, 2, "Tasks:", curses.A_UNDERLINE)
         task_win_left = 2
         task_win_top = cal_panel_height + 1
 
         if n == 0:
-            pane.addstr(task_win_top, task_win_left,
+            safe_addstr(pane, task_win_top, task_win_left,
                         "(no tasks)", curses.A_DIM)
         else:
             # Scroll logic for task list
@@ -83,7 +85,7 @@ def draw_agenda(pane, h, w, selected_idx):
             for i in range(visible_rows):
                 y = task_win_top + i
                 if y < max_h - 2:
-                    pane.addstr(y, task_win_left, " " * (max_w//2-4))
+                    safe_addstr(pane, y, task_win_left, " " * (max_w//2-4))
             for i, t in enumerate(tasks[start:end], start=start):
                 is_sel = (i == selected_idx)
                 attr = curses.A_REVERSE if is_sel else curses.A_NORMAL
@@ -92,7 +94,8 @@ def draw_agenda(pane, h, w, selected_idx):
                 line = f"{id_str}: {title}"
                 y = task_win_top + i - start
                 if y < max_h - 2:
-                    pane.addstr(y, task_win_left, line[:max_w//2-8], attr)
+                    safe_addstr(pane, y, task_win_left,
+                                line[:max_w//2-8], attr)
 
             # --- TASK DETAIL PREVIEW (right side, if enough space) ---
             if max_w > 40:
@@ -111,7 +114,7 @@ def draw_agenda(pane, h, w, selected_idx):
                 ]
                 for idx, line in enumerate(preview_lines):
                     if detail_y + idx < max_h - 2:
-                        pane.addstr(detail_y + idx, preview_left,
+                        safe_addstr(pane, detail_y + idx, preview_left,
                                     line[:max_w//2-6])
 
         pane.noutrefresh()
@@ -119,7 +122,7 @@ def draw_agenda(pane, h, w, selected_idx):
     except Exception as e:
         log_exception("draw_agenda", e)
         max_h, _ = pane.getmaxyx()
-        pane.addstr(max_h-2, 2, f"Agenda err: {e}", curses.A_BOLD)
+        safe_addstr(pane, max_h-2, 2, f"Agenda err: {e}", curses.A_BOLD)
         pane.noutrefresh()
         return 0
 
