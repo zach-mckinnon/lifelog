@@ -70,6 +70,83 @@ def add_tracker_tui(stdscr):
     popup_show(stdscr, [f"Tracker '{title}' added!"])
 
 
+def log_entry_tui(stdscr):
+    """
+    TUI for logging a new tracker entry.
+    """
+    from lifelog.commands.utils.shared_utils import (
+        get_available_categories,
+        popup_select_option,
+        popup_input,
+        popup_show
+    )
+    import datetime
+
+    # 1. Select tracker
+    trackers = track_repository.get_all_trackers()
+    if not trackers:
+        popup_show(stdscr, ["No trackers found. Add a tracker first!"])
+        return
+
+    # Make display list for selection
+    tracker_titles = [f"{t.title} [{t.type}]" for t in trackers]
+    sel_idx = 0
+    tracker_sel = popup_select_option(
+        stdscr, "Select tracker:", tracker_titles
+    )
+    if not tracker_sel:
+        return
+
+    # Figure out which tracker was picked
+    tracker_idx = tracker_titles.index(tracker_sel)
+    tracker = trackers[tracker_idx]
+
+    # 2. Prompt for value
+    if tracker.type == "bool":
+        value = popup_select_option(stdscr, "Value:", ["True", "False"])
+        value = 1 if value == "True" else 0
+    elif tracker.type in ("int", "float"):
+        unit = getattr(tracker, "unit", "")
+        value_prompt = f"Value ({unit}):" if unit else "Value:"
+        while True:
+            val = popup_input(stdscr, value_prompt)
+            try:
+                value = float(val)
+                if tracker.type == "int":
+                    value = int(value)
+                break
+            except (ValueError, TypeError):
+                popup_show(stdscr, ["Invalid number, try again."])
+    elif tracker.type == "str":
+        value = popup_input(stdscr, "Value (string):")
+    else:
+        popup_show(stdscr, [f"Unknown tracker type: {tracker.type}"])
+        return
+
+    # 3. Timestamp (default now, allow override)
+    timestamp_str = popup_input(
+        stdscr, "Timestamp (YYYY-MM-DD HH:MM, blank for now):")
+    if timestamp_str:
+        try:
+            timestamp = datetime.datetime.fromisoformat(timestamp_str)
+        except Exception:
+            popup_show(stdscr, ["Invalid date format, using now."])
+            timestamp = datetime.datetime.now()
+    else:
+        timestamp = datetime.datetime.now()
+
+    # 4. Save entry
+    try:
+        track_repository.add_tracker_entry(
+            tracker_id=tracker.id,
+            timestamp=timestamp.isoformat(),
+            value=value
+        )
+        popup_show(stdscr, [f"Entry logged for {tracker.title}!"])
+    except Exception as e:
+        popup_show(stdscr, [f"Failed to log entry: {e}"])
+
+
 def delete_tracker_tui(stdscr, sel):
     tracker = track_repository.get_tracker_by_id(sel)
     if not tracker:
