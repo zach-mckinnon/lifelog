@@ -31,7 +31,9 @@ def add_tracker(title, type, category=None, created=None, goals=None):
         VALUES (?, ?, ?, ?, ?)
     """, (title, type, category, created, json.dumps(goals) if goals else None))
     conn.commit()
+    new_id = cur.lastrowid
     conn.close()
+    return new_id
 
 
 def add_tracker_entry(tracker_id, timestamp, value):
