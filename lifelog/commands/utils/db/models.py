@@ -90,6 +90,7 @@ def time_log_from_row(row):
     return TimeLog(**kwargs)
 
 
+@dataclass
 class Tracker:
     id: Optional[int]
     title: str
@@ -101,6 +102,7 @@ class Tracker:
     goals: Optional[list] = None
 
 
+@dataclass
 class TrackerEntry(BaseModel):
     id: int
     tracker_id: int
@@ -158,6 +160,7 @@ class GoalReduction(GoalBase):
     unit: Optional[str] = None@dataclass
 
 
+@dataclass
 class GoalRange(GoalBase):
     min_amount: float
     max_amount: float
