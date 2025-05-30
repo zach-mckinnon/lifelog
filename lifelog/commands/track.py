@@ -10,7 +10,6 @@ from typing import Any, List, Optional
 import typer
 from typer import prompt
 from datetime import datetime
-import json
 
 from lifelog.commands.utils.db import track_repository
 from lifelog.commands.report import generate_goal_report
@@ -18,7 +17,7 @@ from lifelog.commands.utils.shared_utils import parse_args, safe_format_notes
 import lifelog.config.config_manager as cf
 from lifelog.commands.utils.shared_options import category_option
 from lifelog.commands.utils.goal_util import create_goal_interactive, calculate_goal_progress
-
+from lifelog.commands.utils.db.models import Tracker
 
 from rich.console import Console
 from rich.prompt import Confirm
@@ -57,18 +56,15 @@ def add(
     '''
     now = datetime.now()
     try:
-        if args:
-            tags, notes = parse_args(args)
-        else:
-            tags, notes = [], []
+        tags, notes = parse_args(args) if args else ([], [])
     except ValueError as e:
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
 
-    # Check if tracker already exists by title
+    # Check if tracker already exists by title (now using dataclass)
     existing_trackers = track_repository.get_all_trackers()
     for tracker in existing_trackers:
-        if tracker.get("title") == title:
+        if getattr(tracker, "title", None) == title:
             console.print(
                 f"[red]⚠️ Tracker '{title}' already exists.[/red] Use a different name or modify the existing one.")
             raise typer.Exit(code=1)
@@ -93,22 +89,27 @@ def add(
                 f"[green]✅ Category '{category}' created.[/green]")
 
     # Goal setup
+    goal = None
     if Confirm.ask("Would you like to add a goal to this tracker?"):
         goal = create_goal_interactive(type)
-    else:
-        goal = None
+        track_repository.validate_goal_fields(goal, type)
+    # Create Tracker dataclass
 
-    # ✅ Directly insert using your new SQL repo method
+    tracker = Tracker(
+        id=None,
+        title=title,
+        type=type,
+        category=category,
+        created=now.isoformat(),
+        tags=",".join(tags) if tags else None,
+        notes=" ".join(notes) if notes else None,
+        goals=[goal] if goal else None,
+    )
+
+    # Add to repo
     try:
-        tracker_id = track_repository.add_tracker(
-            title=title,
-            type=type,
-            category=category,
-            created=now.isoformat(),
-            goals=[goal] if goal else None
-        )
+        tracker_id = track_repository.add_tracker(tracker)
         if goal:
-            # 2. Insert into goals table, using the tracker_id
             track_repository.add_goal(tracker_id=tracker_id, goal_data=goal)
     except Exception as e:
         console.print(f"[bold red]Failed to add tracker: {e}[/bold red]")
@@ -211,34 +212,30 @@ def modify(
         console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=1)
 
-    # Fetch tracker from SQL
     tracker = track_repository.get_tracker_by_id(id)
     if not tracker:
         console.print(
             f"[bold red]❌ Tracker with ID {id} not found.[/bold red]")
         raise typer.Exit(code=1)
 
-    # Prepare changes
     updates = {}
-    if title and title != tracker.get("title"):
+    if title and title != tracker.title:
         updates["title"] = title
-    if category and category != tracker.get("category"):
+    if category and category != tracker.category:
         updates["category"] = category
     if tags:
-        # append to existing tags or start fresh
-        current_tags = tracker.get("tags") or ""
+        current_tags = tracker.tags or ""
         merged_tags = ",".join(filter(None, [current_tags, *tags]))
         updates["tags"] = merged_tags
     if notes:
-        current_notes = tracker.get("notes") or ""
-        merged_notes = ",".join(filter(None, [current_notes, *notes]))
+        current_notes = tracker.notes or ""
+        merged_notes = " ".join(filter(None, [current_notes, *notes]))
         updates["notes"] = merged_notes
 
     if not updates:
         console.print("[yellow]⚠️ No changes were made.[/yellow]")
         raise typer.Exit(code=0)
 
-    # Apply updates
     try:
         track_repository.update_tracker(id, updates)
     except Exception as e:
@@ -259,7 +256,6 @@ def list_trackers(
     """
     List trackers with optional filtering by title or category.
     """
-    # Use SQL query with filters
     trackers = track_repository.query_trackers(
         title_contains=title_contains,
         category=category
@@ -285,22 +281,22 @@ def list_trackers(
     table.add_column("Progress", overflow="ellipsis", min_width=10)
 
     for t in trackers:
-        tracker_id = str(t.get("id", "-"))
-        title = t.get("title", "-")
-        category_str = t.get("category", "-")
+        tracker_id = str(t.id or "-")
+        title = t.title
+        category_str = t.category or "-"
 
-        goals = track_repository.get_goals_for_tracker(t["id"])
+        goals = track_repository.get_goals_for_tracker(t.id)
         goal_str = "-"
         progress_display = "-"
 
         if goals:
             goal = goals[0]
-            goal_title = goal.get("title", title)
+            goal_title = getattr(goal, "title", title)
             try:
                 report = generate_goal_report({
-                    "id": t["id"],
+                    "id": t.id,
                     "title": title,
-                    "type": t["type"],
+                    "type": t.type,
                     "category": category_str,
                     "goals": [goal]  # Pass the single goal explicitly
                 })
@@ -334,7 +330,7 @@ def delete(
 
     if not force:
         console.print(
-            f"[yellow]⚠️ This will permanently delete tracker '{tracker['title']}' and all its entries.[/yellow]")
+            f"[yellow]⚠️ This will permanently delete tracker '{tracker.title}' and all its entries.[/yellow]")
         if not Confirm.ask("Are you sure?"):
             console.print("[cyan]Deletion cancelled.[/cyan]")
             raise typer.Exit(code=0)
@@ -346,7 +342,7 @@ def delete(
         raise typer.Exit(code=1)
 
     console.print(
-        f"[green]🗑️ Tracker '{tracker['title']}' deleted successfully.[/green]")
+        f"[green]🗑️ Tracker '{tracker.title}' deleted successfully.[/green]")
 
 
 @app.command("goals-help")

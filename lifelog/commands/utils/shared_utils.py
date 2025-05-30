@@ -82,14 +82,6 @@ def count_entries(name: str, since: str = "today") -> int:
     return sum(1 for e in entries if e["metric"] == name and entry_ts >= cutoff)
 
 
-def serialize_task(task):
-    task_copy = task.copy()
-    for key in ["due", "created", "start", "end"]:
-        if isinstance(task_copy.get(key), datetime):
-            task_copy[key] = task_copy[key].isoformat()
-    return task_copy
-
-
 def parse_date_string(time_string: str, future: bool = False, now: datetime = datetime.now()) -> datetime:
     """
     Parses a smart or relative time string into a datetime.
@@ -315,3 +307,80 @@ def filter_entries_for_current_period(entries, period: str):
         return df
 
     return df[df['timestamp'] >= start]
+
+
+def validate_task_inputs(title: str, importance: int = None, priority: float = None):
+    if not title or len(title) > 60:
+        raise ValueError("Task title must be 1-60 characters long.")
+    if importance is not None and (not isinstance(importance, int) or importance < 0 or importance > 10):
+        raise ValueError("Importance must be an integer between 0 and 10.")
+    if priority is not None and (not isinstance(priority, (int, float)) or priority < 0 or priority > 10):
+        raise ValueError("Priority must be a number between 0 and 10.")
+
+
+def category_autocomplete(ctx: typer.Context, incomplete: str):
+    # Show all available plus the incomplete if not in list
+    options = get_available_categories()
+    return [c for c in options if c.startswith(incomplete)]
+
+
+def project_autocomplete(ctx: typer.Context, incomplete: str):
+    options = get_available_projects()
+    return [p for p in options if p.startswith(incomplete)]
+
+
+def tag_autocomplete(ctx: typer.Context, incomplete: str):
+    options = get_available_tags()
+    return [t for t in options if t.startswith(incomplete)]
+
+
+def get_available_categories() -> list:
+    config = cf.load_config()()
+    return list(config.get("categories", {}).keys())
+
+
+def add_category_to_config(category: str, description: str = ""):
+    config = cf.load_config()()
+    cats = config.get("categories", {})
+    if category not in cats:
+        cats[category] = description
+        config["categories"] = cats
+        cf.save_config()(config)
+
+
+def get_available_projects() -> list:
+    config = cf.load_config()()
+    return list(config.get("projects", {}).keys())
+
+
+def add_project_to_config(project: str, description: str = ""):
+    config = cf.load_config()
+    projs = config.get("projects", {})
+    if project not in projs:
+        projs[project] = description
+        config["projects"] = projs
+        cf.save_config(config)
+
+
+def get_available_tags() -> list:
+    config = cf.load_config()
+    return list(config.get("tags", {}).keys())
+
+
+def add_tag_to_config(tag: str, description: str = ""):
+    config = cf.load_config()
+    tags = config.get("tags", {})
+    if tag not in tags:
+        tags[tag] = description
+        config["tags"] = tags
+        cf.save_config()(config)
+
+
+def get_available_statuses() -> list:
+    config = cf.load_config()()
+    return config.get("statuses", ["backlog", "active", "done"])
+
+
+def get_available_priorities() -> list:
+    config = cf.load_config()()
+    return config.get("priorities", [str(x) for x in range(0, 11)])

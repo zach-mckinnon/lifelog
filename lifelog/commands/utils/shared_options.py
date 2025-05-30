@@ -6,9 +6,10 @@ It includes options for task management, metric definitions, and time tracking.
 These options are used to standardize command-line arguments across different commands.
 '''
 
-import re
-from typing import List, Optional
+
 import typer
+
+from commands.utils.shared_utils import category_autocomplete, project_autocomplete, tag_autocomplete
 
 
 def get_option(options: dict, key: str, default=None):
@@ -24,6 +25,8 @@ category_option = typer.Option(
     None,
     "-c", "--cat",
     help="Task category (e.g., work, rest, personal_projects, social_events). Organizes tasks into meaningful groups.",
+    autocompletion=category_autocomplete,
+    show_choices=True,
     show_default=False,
 )
 
@@ -31,6 +34,8 @@ project_option = typer.Option(
     None,
     "-p", "--pro",
     help="Associated project name (e.g., client_followups, python_app). Useful for grouping related tasks.",
+    autocompletion=project_autocomplete,
+    show_choices=True,
     show_default=False,
 )
 
@@ -61,6 +66,8 @@ recur_option = typer.Option(
 tags_option = typer.Option(
     [],
     help="Tags to quickly filter tasks or entries. Use space-separated format prefixed with '+', e.g., +work +urgent",
+    autocompletion=tag_autocomplete,
+    show_choices=True,
     show_default=False,
 )
 

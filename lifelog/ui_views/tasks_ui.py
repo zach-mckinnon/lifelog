@@ -4,18 +4,20 @@
 
 
 import curses
+from dataclasses import asdict
 from datetime import datetime, timedelta
+from lifelog.commands.utils.db.models import Task, get_task_fields
 from lifelog.commands.task import calculate_priority
 from lifelog.commands.utils.db import task_repository, time_repository
-from lifelog.commands.utils.shared_utils import create_recur_schedule, parse_date_string
-from lifelog.ui_views.popups import popup_confirm, popup_input, popup_show
+from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, create_recur_schedule, get_available_categories, get_available_priorities, get_available_projects, get_available_statuses, get_available_tags, parse_date_string, validate_task_inputs
+from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
 
 
 import calendar
 import re
 from datetime import datetime
 
-from lifelog.ui_views.ui_helpers import log_exception
+from lifelog.ui_views.ui_helpers import log_exception, tag_picker_tui
 
 
 def draw_agenda(pane, h, w, selected_idx):
@@ -175,152 +177,90 @@ def popup_recurrence(stdscr):
 
 
 def add_task_tui(stdscr):
-    """
-    Prompt for all task fields, compute priority, and save.
-    """
-    # 1) Title
-    title = popup_input(stdscr, "Title:")
-    if not title:
-        return
+    """Prompt for all task fields using the dataclass model, with validation and dropdowns."""
+    fields = get_task_fields()
+    input_data = {}
 
-    # 2) Category & Project
-    category = popup_input(stdscr, "Category [optional]:") or None
-    project = popup_input(stdscr, "Project  [optional]:") or None
+    for field in fields:
+        if field == "created":
+            continue
+        if field == "title":
+            val = popup_input(stdscr, "Title (max 60 chars):", max_length=60)
+        elif field == "category":
+            val = popup_select_option(
+                stdscr, "Category:", get_available_categories(), allow_new=True)
+            if val and val not in get_available_categories():
+                add_category_to_config(val)
+        elif field == "project":
+            val = popup_select_option(
+                stdscr, "Project:", get_available_projects(), allow_new=True)
+            if val and val not in get_available_projects():
+                add_project_to_config(val)
+        elif field == "status":
+            val = popup_select_option(
+                stdscr, "Status:", get_available_statuses())
+        elif field == "priority":
+            val = 0
+        elif field == "tags":
+            tag_list = tag_picker_tui(stdscr, get_available_tags())
+            val = tag_list
+            if val:
+                for tag in (val.split(",") if isinstance(val, str) else val):
+                    add_tag_to_config(tag)
+        elif field == "notes":
+            val = popup_multiline_input(stdscr, "Notes (multi-line allowed):")
+        else:
+            val = popup_input(stdscr, f"{field.capitalize()}:")
+        input_data[field] = val if val else None
 
-    # 3) Importance
-    impt_str = popup_input(stdscr, "Importance (1–5) [default 1]:")
-    impt = int(impt_str) if impt_str.isdigit() else 1
-
-    # 4) Due date
-    due_str = popup_input(
-        stdscr, "Due (e.g. 'tomorrow' or '2025-12-31') [optional]:")
-    due_iso = None
-    if due_str:
-        try:
-            due_iso = parse_date_string(due_str).isoformat()
-        except Exception as e:
-            popup_show(stdscr, [f"Invalid due date: {e}"])
-            return
-
-    # 5) Recurrence
-    recurrence = None
-    if popup_confirm(stdscr, "Add recurrence rule?"):
-        recur_input = popup_recurrence(stdscr)
-        try:
-            recur_data = create_recur_schedule("interactive", recur_input)
-            recurrence = {
-                "everyX": recur_data.get("interval"),
-                "unit": recur_data.get("unit"),
-                "daysOfWeek": recur_data.get("days_of_week"),
-                "onFirstOfMonth": recur_data.get("on_first_of_month", False)
-            }
-        except Exception as e:
-            popup_show(stdscr, [f"Recurrence setup failed: {e}"])
-            return
-
-    # 6) Tags & Notes
-    tags = popup_input(stdscr, "Tags (comma-separated) [opt]:") or None
-    notes = popup_input(stdscr, "Notes [optional]:") or None
-
-    # 7) Build task_data and compute priority
-    now = datetime.now().isoformat()
-    task_data = {
-        "title":            title,
-        "category":         category,
-        "project":          project,
-        "imptortance":      impt,
-        "created":          now,
-        "due":              due_iso,
-        "status":           "backlog",
-        "start":            None,
-        "end":              None,
-        "priority":         0,
-        "recurrence": recurrence,
-        "tags":             tags,
-        "notes":            notes,
-    }
-    # compute final priority
-    task_data["priority"] = calculate_priority(task_data)
-
-    # 8) Save
+    input_data["created"] = datetime.now().isoformat()
+    input_data["priority"] = calculate_priority(input_data)
     try:
-        task_repository.add_task(task_data)
-        popup_show(stdscr, [f"Task '{title}' added"])
+        validate_task_inputs(
+            title=input_data.get("title", ""),
+            importance=int(input_data.get("importance")
+                           or 0) if input_data.get("importance") else None,
+            priority=float(input_data.get("priority")
+                           or 0) if input_data.get("priority") else None,
+        )
+        task = Task(**input_data)
     except Exception as e:
-        popup_show(stdscr, [f"Error saving task: {e}"])
-        log_exception("add_task_tui", e)
+        popup_show(stdscr, [f"Invalid input: {e}"])
+        return
+    task_repository.add_task(task)
+    popup_show(stdscr, [f"Task '{task.title}' added!"])
 
 
 def quick_add_task_tui(stdscr):
-    """
-    Add a new task with minimal fields: title (required) and optional category.
-    """
-    title = popup_input(stdscr, "Quick Task Title:")
+    """Add a task with just a title."""
+    title = popup_input(stdscr, "Quick Task Title:", max_length=60)
     if not title:
         popup_show(stdscr, ["Title required."])
         return
 
-    category = popup_input(stdscr, "Category [optional]:") or None
-
     now = datetime.now().isoformat()
-    task_data = {
-        "title": title,
-        "category": category,
-        "created": now,
-        "status": "backlog",
-        "priority": 1,
-        "imptortance": 1,
-        "project": None,
-        "due": None,
-        "recurrence": None,
-        "tags": None,
-        "notes": None,
-        "start": None,
-        "end": None,
-    }
-    task_data["priority"] = calculate_priority(task_data)
-    try:
-        task_repository.add_task(task_data)
-        popup_show(stdscr, [f"Quick Task '{title}' added"])
-    except Exception as e:
-        popup_show(stdscr, [f"Error: {e}"])
-        log_exception("quick_add_task_tui", e)
+    task = Task(title=title, created=now)
+    task_repository.add_task(task)
+    popup_show(stdscr, [f"Quick Task '{title}' added!"])
 
 
 def clone_task_tui(stdscr, sel):
-    """
-    Clone the selected task, prompting for new title/due.
-    """
-    tasks = task_repository.query_tasks(show_completed=False, sort="priority")
-    if sel < 0 or sel >= len(tasks):
-        popup_show(stdscr, ["No task selected to clone"])
-        return
+    tasks = task_repository.get_all_tasks()
     t = tasks[sel]
-    new_title = popup_input(
-        stdscr, f"Clone Title [{t['title']}] :") or t["title"]
-    new_due = popup_input(
-        stdscr, f"Due [{t.get('due') or '-'}] :") or t.get("due")
+    new_title = popup_input(stdscr, f"Clone Title [{t.title}]:") or t.title
+    new_due = popup_input(stdscr, f"Due [{t.due or '-'}]:") or t.due
     now = datetime.now().isoformat()
-
-    task_data = {**t}
-    task_data.update({
-        "title": new_title,
-        "due": parse_date_string(new_due).isoformat() if new_due else None,
-        "created": now,
-        "status": "backlog",
-        "start": None,
-        "end": None,
-    })
-    # Remove the original id if present
-    task_data.pop("id", None)
-    task_data["priority"] = calculate_priority(task_data)
-
+    task_dict = asdict(t)
+    task_dict["title"] = new_title
+    task_dict["due"] = new_due
+    task_dict["created"] = now
+    task_dict.pop("id", None)
     try:
-        task_repository.add_task(task_data)
+        task = Task(**task_dict)
+        task_repository.add_task(task)
         popup_show(stdscr, [f"Task cloned as '{new_title}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
-        log_exception("clone_task_tui", e)
 
 
 def focus_mode_tui(stdscr, sel):
@@ -491,59 +431,49 @@ def delete_task_tui(stdscr, sel):
 
 
 def edit_task_tui(stdscr, sel):
-    """
-    Edit ALL fields of the selected task.
-    """
-    tasks = task_repository.query_tasks(show_completed=False, sort="priority")
+    """Edit ALL fields of the selected task using the model."""
+    tasks = task_repository.get_all_tasks()
     t = tasks[sel]
-    # Prompt for all fields, with current value as default
-    new_title = popup_input(stdscr, f"Title [{t['title']}]:") or t["title"]
-    new_due = popup_input(
-        stdscr, f"Due [{t.get('due') or '-'}]:") or t.get("due")
-    new_cat = popup_input(
-        stdscr, f"Category [{t.get('category') or '-'}]:") or t.get("category")
-    new_prj = popup_input(
-        stdscr, f"Project [{t.get('project') or '-'}]:") or t.get("project")
-    new_impt = popup_input(stdscr, f"Importance [{t.get('impt', 1)}]:")
-    new_tags = popup_input(
-        stdscr, f"Tags [{t.get('tags') or ''}]:") or t.get("tags")
-    new_notes = popup_input(
-        stdscr, f"Notes [{t.get('notes') or ''}]:") or t.get("notes")
-    recurrence = None
-    # Optional: Edit recurrence interactively
-    if popup_confirm(stdscr, "Edit recurrence?"):
-        recur_input = popup_recurrence(stdscr)
-        try:
-            recur_data = create_recur_schedule("interactive", recur_input)
-            recurrence = {
-                "everyX": recur_data.get("interval"),
-                "unit": recur_data.get("unit"),
-                "daysOfWeek": recur_data.get("days_of_week"),
-                "onFirstOfMonth": recur_data.get("on_first_of_month", False)
-            }
-        except Exception as e:
-            popup_show(stdscr, [f"Recurrence setup failed: {e}"])
-            log_exception("edit_task_tui", e)
-            return
+    fields = get_task_fields()
+    input_data = {}
+    for field in fields:
+        if field == "created":
+            input_data[field] = t.created.isoformat() if t.created else None
+            continue
+        old_val = getattr(t, field, None) or ""
+        if field == "category":
+            val = popup_select_option(
+                stdscr, f"Category [{old_val}]:", get_available_categories(), allow_new=True)
+            if val and val not in get_available_categories():
+                add_category_to_config(val)
+        elif field == "project":
+            val = popup_select_option(
+                stdscr, f"Project [{old_val}]:", get_available_projects(), allow_new=True)
+            if val and val not in get_available_projects():
+                add_project_to_config(val)
+        elif field == "status":
+            val = popup_select_option(
+                stdscr, f"Status [{old_val}]:", get_available_statuses())
+        elif field == "tags":
+            tag_list = tag_picker_tui(stdscr, get_available_tags())
+            val = tag_list
+            if val:
+                for tag in (val.split(",") if isinstance(val, str) else val):
+                    add_tag_to_config(tag)
+        elif field == "notes":
+            val = popup_multiline_input(
+                stdscr, f"Notes [{old_val[:20]}...]:", initial=old_val)
+        else:
+            val = popup_input(stdscr, f"{field.capitalize()} [{old_val}]:")
+        input_data[field] = val if val else old_val
 
-    updates = {
-        "title": new_title,
-        "due": parse_date_string(new_due).isoformat() if new_due else None,
-        "category": new_cat,
-        "project": new_prj,
-        "imptortance": int(new_impt) if new_impt and new_impt.isdigit() else t.get("impt", 1),
-        "tags": new_tags,
-        "notes": new_notes,
-        "recurrence": recurrence,
-    }
-    # Priority recalculation
-    updates["priority"] = calculate_priority({**t, **updates})
+        input_data["priority"] = calculate_priority(input_data)
     try:
-        task_repository.update_task(t["id"], updates)
-        popup_show(stdscr, [f"Updated #{t['id']}"])
+        task = Task(**input_data)
+        task_repository.update_task(t.id, asdict(task))
+        popup_show(stdscr, [f"Task #{t.id} updated!"])
     except Exception as e:
-        popup_show(stdscr, [f"Error: {e}"])
-        log_exception("edit_task_tui", e)
+        popup_show(stdscr, [f"Error updating task: {e}"])
 
 
 def edit_recurrence_tui(stdscr, sel):
@@ -676,27 +606,12 @@ def cycle_task_filter(stdscr):
 
 
 def view_task_tui(stdscr, sel):
-    """
-    Display all details of a selected task.
-    """
-    tasks = task_repository.query_tasks(show_completed=False, sort="priority")
+    tasks = task_repository.get_all_tasks()
     t = tasks[sel]
-    fields = [
-        f"Title: {t.get('title') or '-'}",
-        f"Category: {t.get('category') or '-'}",
-        f"Project: {t.get('project') or '-'}",
-        f"Importance: {t.get('impt') or '-'}",
-        f"Priority: {t.get('priority') or '-'}",
-        f"Due: {t.get('due') or '-'}",
-        f"Status: {t.get('status') or '-'}",
-        f"Recurrence: {t.get('recur_interval') or '-'} {t.get('recur_unit') or ''} {t.get('recur_days_of_week') or ''}",
-        f"Tags: {t.get('tags') or '-'}",
-        f"Notes: {t.get('notes') or '-'}",
-        f"Created: {t.get('created') or '-'}",
-        f"Start: {t.get('start') or '-'}",
-        f"End: {t.get('end') or '-'}",
-    ]
-    popup_show(stdscr, fields, title=" Task Details ")
+    fields = get_task_fields()
+    display_lines = [
+        f"{field.capitalize()}: {getattr(t, field) or '-'}" for field in fields]
+    popup_show(stdscr, display_lines, title=" Task Details ")
 
 
 def start_task_tui(stdscr, sel):

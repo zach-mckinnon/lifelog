@@ -99,7 +99,7 @@ def initialize_schema():
         min_amount REAL NOT NULL,
         max_amount REAL NOT NULL,
         unit TEXT,
-        mode TEXT CHECK (mode IN ('goal', 'tracker')) DEFAULT 'goal', -- ✅ Supports both range types
+        mode TEXT CHECK (mode IN ('goal', 'tracker')) DEFAULT 'goal',
         FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
     );
 
@@ -156,6 +156,7 @@ def initialize_schema():
         project TEXT,
         tags TEXT,
         notes TEXT,
+        distracted_minutes FLOAT DEFAULT 0,
         FOREIGN KEY(task_id) REFERENCES tasks(id)
     );
 
@@ -174,5 +175,33 @@ def initialize_schema():
     );
     """)
 
+    conn.commit()
+    conn.close()
+
+
+def add_record(table, data, fields):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cols = ', '.join(fields)
+    placeholders = ', '.join(['?'] * len(fields))
+    values = [data.get(f) for f in fields]
+    cursor.execute(f"""
+        INSERT INTO {table} ({cols}) VALUES ({placeholders})
+    """, values)
+    conn.commit()
+    conn.close()
+
+
+def update_record(table, record_id, updates):
+    conn = get_connection()
+    cursor = conn.cursor()
+    fields = []
+    values = []
+    for key, value in updates.items():
+        fields.append(f"{key} = ?")
+        values.append(value)
+    values.append(record_id)
+    cursor.execute(
+        f"UPDATE {table} SET {', '.join(fields)} WHERE id = ?", values)
     conn.commit()
     conn.close()

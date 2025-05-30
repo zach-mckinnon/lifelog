@@ -5,18 +5,18 @@ This module provides functionality to create, modify, delete, and manage tasks w
 It includes features for tracking time spent on tasks, setting reminders, and managing task recurrence.
 The module uses JSON files for data storage and integrates with a cron job system for scheduling reminders.
 '''
-from rich.console import Console
+from dataclasses import asdict
+
 from datetime import datetime, timedelta
-from lifelog.commands.utils.db import time_repository, task_repository
 import re
 import typer
 import json
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from tomlkit import table
 from typing import List, Optional
 import plotext as plt
 
-from rich.console import Console, Group
+from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
 from rich.panel import Panel
@@ -24,9 +24,9 @@ from rich.text import Text
 import calendar
 import paho.mqtt.publish as publish
 
-
+from lifelog.commands.utils.db.models import Task, get_task_fields
 from lifelog.commands.utils.db import task_repository, time_repository
-from lifelog.commands.utils.shared_utils import parse_date_string, create_recur_schedule, safe_format_notes, serialize_task, parse_args
+from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, safe_format_notes, serialize_task, parse_args, validate_task_inputs
 from lifelog.commands.utils.feedback import get_feedback_saying
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs, save_config
@@ -58,94 +58,32 @@ def add(
     Add a new task.
     """
     now = datetime.now()
-    try:
-        if args != None:
+    tags, notes = [], []
+    if args:
+        try:
             tags, notes = parse_args(args)
-        else:
-            tags, notes = [], []
-    except ValueError as e:
-        console.print(f"[error]{e}[/error]")
-        raise typer.Exit(code=1)
-
-    if not title:
-        console.print(
-            "[bold red]Your task must have a title! How else will you know what to do??[/bold red]")
-        if Confirm.ask(f"[yellow]Add a title (no to exit)?[/yellow]"):
-            title = typer.prompt("Enter a title")
-        else:
+            for tag in tags:
+                if tag and tag not in get_available_tags():
+                    add_tag_to_config(tag)
+        except ValueError as e:
+            console.print(f"[error]{e}[/error]")
+            raise typer.Exit(code=1)
+        except ValueError as e:
+            console.print(f"[error]{e}[/error]")
             raise typer.Exit(code=1)
 
-    doc = cf.load_config()
-    existing_categories = cf.get_config_section("categories").keys()
+    # Validate and set up recurrence fields
+    if category and category not in get_available_categories():
+        if typer.confirm(f"Category '{category}' not in your config. Add it?"):
+            add_category_to_config(category)
+    if project and project not in get_available_projects():
+        if typer.confirm(f"Project '{project}' not in your config. Add it?"):
+            add_project_to_config(project)
 
-    if category not in existing_categories and category != None:
-        console.print(f"[blue]⚠️ Category '{category}' not found.[/blue]")
-        if Confirm.ask(f"[yellow]Would you like to create it now?[/yellow]"):
-            try:
-                doc.setdefault("categories", {})
-                doc["categories"][category] = category
-                cf.save_config(doc)
-                console.print(
-                    f"[green]✅ Category '{category}' added to your config.[/green]")
-            except Exception as e:
-                console.print(
-                    f"[bold red]Failed to create category: {e}[/bold red]")
-                raise typer.Exit(code=1)
-
-    if project:
-        doc.setdefault("projects", {})
-        if project not in doc["projects"]:
-            console.print(
-                f"[yellow]⚠️ Project '{project}' not found.[/yellow]")
-            if Confirm.ask(f"[yellow]Create project '{project}' now?[/yellow]"):
-                try:
-                    doc["projects"][project] = project
-                    cf.save_config(doc)
-                    console.print(
-                        f"[green]✅ Project '{project}' added to your config.[/green]")
-                except Exception as e:
-                    console.print(
-                        f"[bold red]Failed to create project: {e}[/bold red]")
-                    raise typer.Exit(code=1)
-            else:
-                raise typer.Exit(code=1)
-
-    impt = impt if impt else 1
-
-    if due:
-        while True:
-            try:
-                due_dt = parse_date_string(due, future=True, now=now)
-                break  # valid, exit loop
-            except Exception as e:
-                console.print(f"[bold red]❌ Invalid due date: {e}[/bold red]")
-                if not Confirm.ask("[cyan]Enter a new date?[/cyan]"):
-                    raise typer.Exit(code=1)
-                due = typer.prompt(
-                    "Enter a valid due date (e.g. 1d, tomorrow, 2025-12-31)")
-        if due_dt < now:
-            console.print("[bold red]⚠️ Due date is in the past![/bold red]")
-            if not Confirm.ask("[red]Add anyway?[/red]"):
-                raise typer.Exit(code=1)
-    else:
-        due_dt = None
-
-    existing_task = task_repository.task_exists_with_title(title)
-    if existing_task:
-        console.print(
-            f"[bold yellow]⚠️ Task with the same title already exists![/bold yellow]")
-        if not Confirm.ask("[cyan]Would you like to overwrite it?[/cyan]"):
-            console.print("[yellow]⚠️ Task not added.[/yellow]")
-            raise typer.Exit(code=1)
-        else:
-            task_repository.delete_task(existing_task["id"])
-
-    # --- Recur handling ---
     recur_interval = None
     recur_unit = None
     recur_days_of_week = None
     recur_base = None
-
     if recur:
         try:
             recur_data = create_recur_schedule("interactive")
@@ -160,41 +98,63 @@ def add(
                 f"[bold red]❌ Invalid recurrence setup: {e}[/bold red]")
             raise typer.Exit(code=1)
 
+    due_dt = None
+    if due:
+        while True:
+            try:
+                due_dt = parse_date_string(due, future=True, now=now)
+                break
+            except Exception as e:
+                console.print(f"[bold red]❌ Invalid due date: {e}[/bold red]")
+                if not Confirm.ask("[cyan]Enter a new date?[/cyan]"):
+                    raise typer.Exit(code=1)
+                due = typer.prompt(
+                    "Enter a valid due date (e.g. 1d, tomorrow, 2025-12-31)")
+
+    # Build data dict using model fields, ignoring extras
     task_data = {
         "title": title,
         "project": project,
         "category": category,
-        "impt": impt if impt else 1,
+        "importance": impt if impt else 1,
         "created": now.isoformat(),
         "due": due_dt.isoformat() if due_dt else None,
         "status": "backlog",
-        "start": None,
-        "end": None,
-        "priority": 0,
+        "priority": 0,  # calculated next
         "recur_interval": recur_interval,
         "recur_unit": recur_unit,
         "recur_days_of_week": recur_days_of_week,
         "recur_base": recur_base,
+        "tags": ",".join(tags) if tags else None,
+        "notes": " ".join(notes) if notes else None,
     }
-
+    # Calculate and set priority
     task_data["priority"] = calculate_priority(task_data)
 
-    # --- Save to DB ---
+    # Validate and create Task instance (model-level validation)
     try:
-        task_repository.add_task(task_data)
+        task = Task(**{k: task_data[k]
+                    for k in get_task_fields() if k in task_data})
+    except Exception as e:
+        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+        raise typer.Exit(code=1)
+    try:
+        validate_task_inputs(
+            title=title,
+            importance=impt,
+            priority=task_data.get("priority"),
+        )
+
+    except Exception as e:
+        console.print(f"[bold red]❌ {e}[/bold red]")
+        raise typer.Exit(code=1)
+    # Save using repository (already generic)
+    try:
+        task_repository.add_task(task)
     except Exception as e:
         console.print(f"[bold red]❌ Failed to save task: {e}[/bold red]")
         raise typer.Exit(code=1)
 
-    # --- Optional Reminder ---
-    if due_dt and Confirm.ask("[yellow]Set reminder before due?[/yellow]"):
-        try:
-            create_due_alert(task_data)
-        except Exception as e:
-            console.print(
-                f"[bold red]❌ Failed to create due alert: {e}[/bold red]")
-
-    # --- Done ---
     console.print(
         f"[green]✅ Task added[/green]: [bold blue]{title}[/bold blue]")
     console.print(get_feedback_saying("task_added"))
@@ -251,15 +211,17 @@ def list(
     table.add_column("Due", style="yellow", overflow="ellipsis", width=5)
 
     for task in tasks:
-        id_str = str(task["id"])
-        title_str = task["title"]
-        due_raw = task["due"]
+        id_str = str(task.id)
+        title_str = task.title
+        due_raw = task.due  # <-- fix typo here
         due_str = "-"
         if due_raw:
-            due_dt = datetime.fromisoformat(due_raw)
-            due_str = due_dt.strftime("%m/%d")
-
-        prio = str(task["priority"])
+            try:
+                due_dt = datetime.fromisoformat(due_raw)
+                due_str = due_dt.strftime("%m/%d")
+            except Exception:
+                due_str = str(due_raw)
+        prio = str(task.priority)
         color = priority_color(prio)
         prio_text = Text(prio)
         prio_text.stylize(color)
@@ -293,9 +255,8 @@ def agenda():
 
     # --- Select top 3 by priority DESC and due ASC (already sorted by SQL) ---
     def sort_key(t):
-        due_dt = datetime.fromisoformat(
-            t["due"]) if t.get("due") else datetime.max
-        return (due_dt)
+        due_dt = datetime.fromisoformat(t.due) if t.due else datetime.max
+        return due_dt
 
     top_three = sorted(tasks, key=sort_key)[:3]
 
@@ -315,13 +276,13 @@ def agenda():
     table.add_column("Task", overflow="ellipsis", min_width=8)
 
     for task in top_three:
-        id_str = str(task["id"])
-        prio_raw = task.get("priority", 0)
+        id_str = str(task.id)
+        prio_raw = task.priority
         prio_text = Text(str(prio_raw), style=priority_color(prio_raw))
         due_str = "-"
-        if task.get("due"):
-            due_str = datetime.fromisoformat(task["due"]).strftime("%m/%d")
-        title = task.get("title", "-")
+        if task.due:
+            due_str = datetime.fromisoformat(task.due).strftime("%m/%d")
+        title = task.title or "-"
 
         table.add_row(id_str, prio_text, due_str, title)
 
@@ -342,14 +303,17 @@ def info(id: int):
         raise typer.Exit(code=1)
 
     console.rule(f"📋 Task Details [ID {id}]")
-    for key, value in task.items():
+    for key in get_task_fields():
+        value = getattr(task, key, "-")
         if value is None or str(value).strip() == "":
             value = "-"
         console.print(f"[bold blue]{key.capitalize()}:[/bold blue] {value}")
 
+
 # Start tracking a task (Like moving to in-progress)
 
 
+@app.command()
 @app.command()
 def start(id: int):
     """
@@ -361,7 +325,7 @@ def start(id: int):
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
-    if task["status"] not in ["backlog", "active"]:
+    if task.status not in ["backlog", "active"]:
         console.print(
             f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (backlog or active only).")
         raise typer.Exit(code=1)
@@ -379,12 +343,10 @@ def start(id: int):
 
     # Start time tracking linked to the task
     time_repository.start_time_entry(
-        task["title"], task_id=id, start_time=now.isoformat())
+        task.title, task_id=id, start_time=now.isoformat())
 
     console.print(
-        f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task['title']}")
-
-# Modify an existing task.
+        f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task.title}")
 
 
 @app.command()
@@ -408,33 +370,34 @@ def modify(
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
-    try:
-        if args is not None:
+    tags, notes = [], []
+    if args is not None:
+        try:
             tags, notes = parse_args(args)
-        else:
-            tags, notes = [], []
-    except ValueError as e:
-        console.print(f"[error]{e}[/error]")
-        raise typer.Exit(code=1)
+        except ValueError as e:
+            console.print(f"[error]{e}[/error]")
+            raise typer.Exit(code=1)
 
     updates = {}
-    if title and title != task.get("title"):
+    if title and title != task.title:
         updates["title"] = title
-    if category and category != task.get("category"):
+    if category and category != task.category:
         updates["category"] = category
-    if project and project != task.get("project"):
+    if project and project != task.project:
         updates["project"] = project
     if due:
         try:
-            parse_date_string(due)
-            updates["due"] = due
+            due_dt = parse_date_string(due)
+            updates["due"] = due_dt.isoformat()
         except Exception as e:
             console.print(f"[bold red]❌ Invalid due date: {e}[/bold red]")
             raise typer.Exit(code=1)
     if impt is not None:
         updates["importance"] = impt
-
-    # Handle recurrence using your SQL model columns
+    if tags:
+        updates["tags"] = ",".join(tags)
+    if notes:
+        updates["notes"] = " ".join(notes)
     if recur:
         try:
             recur_data = create_recur_schedule("interactive")
@@ -450,16 +413,25 @@ def modify(
                 f"[bold red]❌ Recurrence setup failed: {e}[/bold red]")
             raise typer.Exit(code=1)
 
-    # Recalculate priority
-    updates["priority"] = calculate_priority({**task, **updates})
+    # Priority recalc
+    merged = asdict(task)
+    merged.update(updates)
+    updates["priority"] = calculate_priority(merged)
 
     if not updates:
-        console.print(
-            "[yellow]⚠️ No changes were made - you can always come back later when you're ready! ✌️[/yellow]")
+        console.print("[yellow]⚠️ No changes were made.[/yellow]")
         raise typer.Exit(code=0)
+    try:
+        validate_task_inputs(
+            title=title,
+            importance=impt,
+            priority=updates.get("priority"),
+        )
 
+    except Exception as e:
+        console.print(f"[bold red]❌ {e}[/bold red]")
+        raise typer.Exit(code=1)
     task_repository.update_task(id, updates)
-
     console.print(
         f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
 
@@ -476,9 +448,7 @@ def delete(id: int):
 
     task_repository.delete_task(id)
     console.print(
-        f"[red]🗑️ Deleted[/red] task [bold blue][{id}][/bold blue]: {task['title']}")
-
-# Pause a task (Like putting back to to-do) but keep logged time and do not set to done.
+        f"[red]🗑️ Deleted[/red] task [bold blue][{id}][/bold blue]: {task.title}")
 
 
 @app.command()
@@ -520,7 +490,7 @@ def stop(
         notes=notes if notes else None
     )
 
-    # Update the task back to 'backlog' and optionally handle custom tracking array if still needed
+    # Update the task back to 'backlog'
     updates = {
         "status": "backlog"
     }
@@ -530,10 +500,11 @@ def stop(
         end_time - datetime.fromisoformat(active["start"])).total_seconds() / 60
 
     console.print(
-        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task['id']}][/bold blue]: {task['title']} — Duration: [cyan] {round(duration_minutes, 2)} [/cyan] minutes")
-
+        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task.id}][/bold blue]: {task.title} — Duration: [cyan] {round(duration_minutes, 2)} [/cyan] minutes")
 
 # Set a task to completed.
+
+
 @app.command()
 def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
     """
@@ -555,7 +526,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 
         # Just mark task done directly
         task_repository.update_task(id, {"status": "done"})
-        console.print(f"[green]✔️ Done[/green] [{id}]: {task['title']}")
+        console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
         return
 
     # Validate active log matches the task being marked done
@@ -580,7 +551,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     task_repository.update_task(id, {"status": "done"})
 
     console.print(
-        f"[green]✔️ Task Complete! [/green] task [bold blue]{task['title']}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
+        f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_feedback_saying("task_done"))
     try:
         publish.single(
@@ -625,15 +596,13 @@ def burndown():
     completed_per_day = []
     added_per_day = []
 
-    # For ideal burn line:
-    open_now = sum(1 for t in tasks if t and t.get("status") != "done")
+    open_now = sum(1 for t in tasks if t and t.status != "done")
     total_days = len(all_dates)
     if total_days > 1:
         ideal_per_day = open_now / (total_days-1)
     else:
         ideal_per_day = open_now
 
-    # Build up the day-by-day stats:
     for i, dstr in enumerate(all_dates):
         date_obj = date_objs[i]
         not_done_count = 0
@@ -642,21 +611,19 @@ def burndown():
         added_today = 0
 
         for task in tasks:
-            if not task or not task.get("due"):
+            if not task or not task.due:
                 continue
             try:
-                due_date = datetime.fromisoformat(task["due"])
+                due_date = datetime.fromisoformat(task.due)
             except Exception:
                 continue
 
-            # Not yet done and due on or before this day?
-            if task.get("status") != "done" and due_date.date() <= date_obj.date():
+            if task.status != "done" and due_date.date() <= date_obj.date():
                 not_done_count += 1
-            # Overdue as of this day?
-            if task.get("status") != "done" and due_date.date() < now.date() and date_obj.date() >= now.date():
+            if task.status != "done" and due_date.date() < now.date() and date_obj.date() >= now.date():
                 overdue_count += 1
-            # Completed today?
-            completed = task.get("completed_at")
+
+            completed = getattr(task, "completed_at", None)
             if completed:
                 try:
                     completed_date = datetime.fromisoformat(completed).date()
@@ -664,8 +631,7 @@ def burndown():
                         completed_today += 1
                 except Exception:
                     pass
-            # Added today?
-            created = task.get("created_at")
+            created = getattr(task, "created_at", None)
             if created:
                 try:
                     created_date = datetime.fromisoformat(created).date()
@@ -679,11 +645,9 @@ def burndown():
         completed_per_day.append(completed_today)
         added_per_day.append(added_today)
 
-    # Calculate ideal line (linear from open_now to 0)
     ideal_line = [max(0, int(round(open_now - ideal_per_day * i)))
                   for i in range(total_days)]
 
-    # Format for plotting
     plot_dates = [datetime.strptime(
         d, "%Y-%m-%d").strftime("%m/%d") for d in all_dates]
 
@@ -703,7 +667,6 @@ def burndown():
     plt.legend()
     plt.show()
 
-    # Print a summary table:
     console.print(
         f"[bold]Open now:[/] {open_counts[-1]}   [bold]Overdue now:[/] {overdue_counts[-1]}")
     console.print(
@@ -752,14 +715,13 @@ def auto_recur():
     new_tasks_count = 0
 
     for task in tasks:
-        # Check for recurrence info
-        recur_interval = task.get("recur_interval")
-        recur_unit = task.get("recur_unit")
-        recur_base = task.get("recur_base")
-        recur_days_of_week = task.get("recur_days_of_week")
+        recur_interval = task.recur_interval
+        recur_unit = task.recur_unit
+        recur_base = task.recur_base
+        recur_days_of_week = task.recur_days_of_week
 
         if not (recur_interval and recur_unit and recur_base):
-            continue  # skip non-recurring
+            continue
 
         base_dt = datetime.fromisoformat(recur_base)
         interval = recur_interval
@@ -794,13 +756,10 @@ def auto_recur():
                 should_recur = True
 
         if should_recur:
-            # Clone the task as a new DB row
             new_task_data = clone_task_for_db(task, now)
             task_repository.add_task(new_task_data)
-
-            # Update the old task's last recur date (important for tracking!)
             task_repository.update_task(
-                task["id"], {"recur_base": now.isoformat()})
+                task.id, {"recur_base": now.isoformat()})
             new_tasks_count += 1
 
     if new_tasks_count:
@@ -815,31 +774,35 @@ def clone_task_for_db(task, now):
     Clone task for SQL-based insertion.
     """
     new_due = None
-    if task.get("due") and task.get("created"):
+    if task.due and task.created:
         try:
-            due_dt = datetime.fromisoformat(task["due"])
-            created_dt = datetime.fromisoformat(task["created"])
+            due_dt = datetime.fromisoformat(task.due)
+            created_dt = datetime.fromisoformat(task.created)
             offset = due_dt - created_dt
             new_due = (now + offset).replace(microsecond=0).isoformat()
         except Exception:
             new_due = None
 
-    return {
-        "title": task["title"],
-        "project": task.get("project"),
-        "category": task.get("category"),
-        "impt": task.get("impt", 1),
-        "created": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
-        "due": new_due,
-        "status": "backlog",
-        "start": None,
-        "end": None,
-        "priority": 0,
-        "recur_interval": task.get("recur_interval"),
-        "recur_unit": task.get("recur_unit"),
-        "recur_days_of_week": task.get("recur_days_of_week"),
-        "recur_base": now.isoformat(),
-    }
+    return Task(
+        title=task.title,
+        project=task.project,
+        category=task.category,
+        importance=task.importance if hasattr(task, "importance") else 1,
+        created=now.replace(hour=0, minute=0, second=0,
+                            microsecond=0).isoformat(),
+        due=new_due,
+        status="backlog",
+        start=None,
+        end=None,
+        priority=0,
+        recur_interval=task.recur_interval,
+        recur_unit=task.recur_unit,
+        recur_days_of_week=task.recur_days_of_week,
+        recur_base=now.isoformat(),
+        tags=task.tags,
+        notes=task.notes
+    )
+
 
 # Load the task from the json file storing them.
 
@@ -934,7 +897,7 @@ def create_due_alert(task):
         "How long before due would you like an alert? (examples: '120' for minutes or '1d' for 1 day)",
         type=str
     )
-    due = task["due"]
+    due = task.due
     now = datetime.now()
     if isinstance(due, str):
         due_time = datetime.fromisoformat(due)
@@ -964,9 +927,9 @@ def create_due_alert(task):
 
     doc = cf.load_config()
     cron_section = doc.get("cron", table())
-    cron_section[f"task_alert_{task['id']}"] = {
+    cron_section[f"task_alert_{task.id}"] = {
         "schedule": cron_time,
-        "command": f"notify-send '⏰ Reminder: Task [{task['id']}] {task['title']} is due soon!'"
+        "command": f"notify-send '!! Reminder: Task [{task.id}] {task.title} is due soon!!'"
     }
 
     doc["cron"] = cron_section

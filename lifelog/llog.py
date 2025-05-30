@@ -9,6 +9,7 @@ import curses
 from datetime import datetime
 import json
 from pathlib import Path
+from typing import Annotated
 from tomlkit import table
 import typer
 import requests  # type: ignore
@@ -67,11 +68,9 @@ app.add_typer(environmental_sync.app, name="env",
 
 @app.command("ui")
 def ui(
-    status_bar: bool = typer.Option(
-        True,
-        "--status-bar/--no-status-bar",
-        help="Include or exclude the controls bar at the bottom",
-    )
+    status_bar: Annotated[bool, typer.Option(
+        "--no-help", help="Disable the help bar.")] = False
+
 ):
     """
     Launch the full-screen Lifelog TUI (like Calcurse).

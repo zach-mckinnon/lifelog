@@ -3,6 +3,7 @@
 import curses
 import traceback
 
+from lifelog.commands.utils.db import environment_repository
 from lifelog.commands.utils.db import task_repository, time_repository, track_repository
 from lifelog.ui_views.ui_helpers import (
     draw_menu,
@@ -272,7 +273,7 @@ def draw_home(pane, h, w):
         pane.addstr(y, 2, "Time:", curses.A_UNDERLINE)
         active = time_repository.get_active_time_entry()
         if active:
-            pane.addstr(y+1, 4, f"▶ {active['title'][:max_w-10]}")
+            pane.addstr(y+1, 4, f">> {active['title'][:max_w-10]}")
             y += 2
         else:
             logs = time_repository.get_all_time_logs()
@@ -289,6 +290,12 @@ def draw_home(pane, h, w):
             if y+1+i < max_h - 1:
                 pane.addstr(y+1+i, 4, f"{t['title'][:max_w-8]}")
         pane.noutrefresh()
+        env = environment_repository.get_latest_environmental_data()
+
+        if env:
+            pane.addstr(
+                y, 2, f"Weather: {env['weather']} AQI: {env['air_quality']} Moon: {env['moon']}")
+
     except Exception as e:
         pane.addstr(h-2, 2, f"Home err: {e}", curses.A_BOLD)
         pane.noutrefresh()

@@ -202,6 +202,67 @@ def popup_input(stdscr, prompt, max_length=48):
     return "".join(inp).strip() if inp else None
 
 
+def popup_multiline_input(stdscr, prompt, initial=""):
+    """
+    Let the user enter multiline text (like notes) in a popup.
+    """
+    from curses import ascii
+    h, w = stdscr.getmaxyx()
+    ph, pw = 10, 60
+    win = curses.newwin(ph, pw, (h-ph)//2, (w-pw)//2)
+    win.border()
+    win.addstr(1, 2, prompt)
+    win.addstr(2, 2, "Ctrl+D = finish, ESC = cancel")
+    text = initial.splitlines() if initial else []
+    y = 3
+    for idx, line in enumerate(text):
+        win.addstr(y+idx, 2, line[:pw-4])
+    win.move(y+len(text), 2)
+    curses.curs_set(1)
+    lines = text[:]
+    while True:
+        c = win.getch()
+        if c == 27:  # ESC
+            curses.curs_set(0)
+            return initial  # Cancel: keep old
+        if c in (curses.ascii.EOT,):  # Ctrl+D to finish
+            break
+        elif c in (10, 13):  # Enter
+            lines.append("")
+            y += 1
+        elif c in (curses.KEY_BACKSPACE, 127, 8):
+            if lines and lines[-1]:
+                lines[-1] = lines[-1][:-1]
+            elif lines:
+                lines.pop()
+                y -= 1
+        elif 32 <= c <= 126:
+            if not lines:
+                lines.append("")
+            lines[-1] += chr(c)
+        win.move(3+len(lines)-1, 2+len(lines[-1]) if lines else 2)
+        for i in range(len(lines)):
+            win.addstr(3+i, 2, " "*(pw-4))  # Clear line
+            win.addstr(3+i, 2, lines[i][:pw-4])
+        win.refresh()
+    curses.curs_set(0)
+    return "\n".join(lines)
+
+
+def popup_select_option(stdscr, prompt, options, allow_new=False):
+    lines = [f"{i+1}: {opt}" for i, opt in enumerate(options)]
+    if allow_new:
+        lines.append(f"{len(options)+1}: [Add New]")
+    popup_show(stdscr, [prompt, ""] + lines)
+    choice = popup_input(stdscr, "Choose number: ", max_length=3)
+    if choice and choice.isdigit() and 1 <= int(choice) <= len(options):
+        return options[int(choice)-1]
+    elif allow_new and choice == str(len(options)+1):
+        new_val = popup_input(stdscr, "Enter new value:")
+        return new_val
+    return None
+
+
 def popup_confirm(stdscr, message) -> bool:
     h, w = stdscr.getmaxyx()
     ph, pw = 5, len(message)+10
