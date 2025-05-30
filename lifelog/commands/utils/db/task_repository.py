@@ -56,3 +56,64 @@ def delete_task(task_id):
     cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
     conn.commit()
     conn.close()
+
+
+def query_tasks(
+    title_contains=None,
+    category=None,
+    project=None,
+    importance=None,
+    due_contains=None,
+    status=None,
+    show_completed=False,
+    sort="priority"
+):
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM tasks WHERE 1=1"
+    params = []
+
+    if not show_completed:
+        query += " AND (status IS NULL OR status != 'done')"
+
+    if title_contains:
+        query += " AND title LIKE ?"
+        params.append(f"%{title_contains}%")
+
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+
+    if project:
+        query += " AND project = ?"
+        params.append(project)
+
+    if importance is not None:
+        query += " AND importance = ?"
+        params.append(importance)
+
+    if due_contains:
+        query += " AND due LIKE ?"
+        params.append(f"%{due_contains}%")
+
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+
+    sort_field = {
+        "priority": "priority DESC",
+        "due": "due ASC",
+        "created": "created ASC",
+        "id": "id ASC",
+        "status": "status ASC"
+    }.get(sort, "priority DESC")
+
+    query += f" ORDER BY {sort_field}"
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    # --- Return dataclass objects instead of dicts
+    return [task_from_row(row) for row in rows]
