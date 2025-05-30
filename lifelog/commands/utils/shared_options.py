@@ -9,7 +9,7 @@ These options are used to standardize command-line arguments across different co
 
 import typer
 
-from commands.utils.shared_utils import category_autocomplete, project_autocomplete, tag_autocomplete
+from lifelog.commands.utils.shared_utils import category_autocomplete, project_autocomplete, tag_autocomplete
 
 
 def get_option(options: dict, key: str, default=None):
