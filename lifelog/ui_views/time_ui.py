@@ -9,7 +9,7 @@ from lifelog.commands.utils.db.models import TimeLog
 from lifelog.commands.utils.db import time_repository
 from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, get_available_categories, get_available_projects, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
-from ui_views.ui_helpers import safe_addstr
+from lifelog.ui_views.ui_helpers import safe_addstr
 
 TIME_PERIODS = {'d': 'day', 'w': 'week', 'm': 'month', 'a': 'all'}
 
