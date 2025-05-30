@@ -14,39 +14,37 @@ def show_help_popup(stdscr, current_tab):
         lines = [
             "Agenda/Tasks Tab:",
             "a: Add Task      q: Quick Add      c: Clone      F: Focus Mode",
-            "m: Custom Reminder      d: Delete      Enter: Edit      v: View",
-            "s: Start Timer   p: Stop Timer     o: Mark Done   f: Cycle Filter",
-            "r: Edit Recurrence    n: Edit Notes",
+            "m: Custom Reminder   d: Delete      e: Edit      v: View",
+            "s: Start Timer   p: Stop Timer     o: Mark Done     f: Cycle Filter",
+            "r: Edit Recurrence   n: Edit Notes",
             "",
-            "←/→: Switch Tab   Q: Quit   ?: Close Help"
+            "↑/↓: Move   ←/→: Switch Tab   ?: Help   Q: Quit"
         ]
     elif current_tab == 2:
         lines = [
-            "Trackers Tab:",
-            "a: Add Tracker    d: Delete Tracker   Enter: Edit Tracker",
-            "l: Log Entry      v: View Tracker     g: Add/Edit Goal",
-            "x: Delete Goal      h: Goal Help",
-            "V: View All Goals for Tracker",
+            "Time Tab:",
+            "s: Start Timer   a/l: Manual Entry   p: Stop Timer   v: Timer Status",
+            "t/Enter: View Entry   y: Summary   e: Edit Entry   x: Delete Entry",
+            "w: Stopwatch    W/D/M/A: Set Period",
             "",
-            "↑/↓: Move   ←/→: Switch Tab   Q: Quit   ?: Close Help"
+            "↑/↓: Move   ←/→: Switch Tab   ?: Help   Q: Quit"
         ]
     elif current_tab == 3:
         lines = [
-            "Time Tab:",
-            "s: Start Timer   a: Add Manual Entry   p: Stop Timer",
-            "v: Timer Status  y: Summary           e: Edit Entry",
-            "x: Delete Entry  w: Stopwatch",
-            "W: Week  D: Day  M: Month  A: All Time",
+            "Trackers Tab:",
+            "a: Add Tracker   d: Delete Tracker   e: Edit Tracker",
+            "l: Log Entry     v: View Tracker     g: Add/Edit Goal",
+            "x: Delete Goal   V: View All Goals   h: Goal Help",
             "",
-            "↑/↓: Move   ←/→: Switch Tab   Q: Quit   ?: Close Help"
+            "↑/↓: Move   ←/→: Switch Tab   ?: Help   Q: Quit"
         ]
     elif current_tab == 4:
         lines = [
             "Reports Tab:",
-            "1: Trackers Summary    2: Time Summary",
-            "3: Daily Tracker       4: Insights",
+            "1: Trackers Summary    2: Time Summary    3: Daily Tracker",
+            "4: Insights            C: Clinical Insights    B: Task Burndown",
             "",
-            "Q: Quit   ?: Close Help"
+            "←/→: Switch Tab   ?: Help   Q: Quit"
         ]
     else:
         lines = ["Q: Quit   ?: Close Help"]
@@ -166,7 +164,7 @@ def popup_show(stdscr, lines, title=""):
     stdscr.refresh()
 
 
-def popup_input(stdscr, prompt):
+def popup_input(stdscr, prompt, max_length=48):
     h, w = stdscr.getmaxyx()
     ph, pw = 5, max(len(prompt), 20) + 4
     win = curses.newwin(ph, pw, (h-ph)//2, (w-pw)//2)
@@ -178,6 +176,9 @@ def popup_input(stdscr, prompt):
     win.refresh()
     inp = []
     while True:
+        if len(inp) >= max_length:
+            win.addstr(3, 2, f"Max {max_length} chars!", curses.A_DIM)
+            win.clrtoeol()
         c = win.getch(2, 4 + len(inp))
         if c in (10, 13):  # Enter
             break
@@ -190,7 +191,7 @@ def popup_input(stdscr, prompt):
                 win.addstr(2, 4 + len(inp), ' ')
                 win.move(2, 4 + len(inp))
         else:
-            if 32 <= c <= 126:  # Printable
+            if 32 <= c <= 126:
                 inp.append(chr(c))
                 win.addstr(2, 4 + len(inp) - 1, chr(c))
     curses.noecho()

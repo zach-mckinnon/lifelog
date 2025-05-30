@@ -122,85 +122,6 @@ def draw_agenda(pane, h, w, selected_idx):
         return 0
 
 
-def draw_burndown(pane, h, w):
-    try:
-        pane.erase()
-        pane.border()
-        title = " Task Burndown "
-        pane.addstr(0, max((w - len(title)) // 2, 1), title, curses.A_BOLD)
-
-        tasks = task_repository.get_all_tasks()
-        now = datetime.now()
-        start_date = now - timedelta(days=2)
-        end_date = now + timedelta(days=3)
-
-        all_dates = []
-        date_labels = []
-        current_date = start_date
-        while current_date <= end_date:
-            all_dates.append(current_date)
-            date_labels.append(current_date.strftime("%m/%d"))
-            current_date += timedelta(days=1)
-
-        not_done_counts = []
-        overdue_counts = []
-        for d in all_dates:
-            not_done = 0
-            overdue = 0
-            for task in tasks:
-                if task and task.get("status") != "done":
-                    due_str = task.get("due")
-                    if due_str:
-                        try:
-                            due_date = datetime.fromisoformat(due_str)
-                            if due_date.date() <= d.date():
-                                not_done += 1
-                                if due_date.date() < now.date() and d.date() >= now.date():
-                                    overdue += 1
-                        except Exception:
-                            continue
-            not_done_counts.append(not_done)
-            overdue_counts.append(overdue)
-
-        # Y-axis: max outstanding
-        max_count = max(not_done_counts + [1])
-        chart_height = max(5, min(h-6, max_count + 1))
-        left_margin = 4
-
-        # Draw Y-axis
-        for i in range(chart_height):
-            y = 2 + i
-            val = max_count - i
-            if y < h - 2:
-                pane.addstr(y, left_margin-2, f"{val:2d}|")
-
-        # Draw bars
-        for x, (count, overdue) in enumerate(zip(not_done_counts, overdue_counts)):
-            bar_height = int((count / max_count) *
-                             (chart_height-1)) if max_count > 0 else 0
-            for i in range(bar_height):
-                y = 2 + chart_height - 1 - i
-                if y < h - 2:
-                    pane.addstr(y, left_margin + x, "#" if overdue == 0 else "!",
-                                curses.A_BOLD if overdue else curses.A_NORMAL)
-
-        # X-axis (dates)
-        pane.addstr(2+chart_height, left_margin, "".join(
-            date_labels[i][3:]+" " for i in range(len(date_labels)))[:w-left_margin-1])
-
-        # Stats
-        pane.addstr(
-            h-3, left_margin, f"Outstanding: {not_done_counts[-1]}, Overdue: {overdue_counts[-1]}")
-        pane.addstr(h-2, left_margin, "Key: # = open, ! = overdue")
-
-        pane.noutrefresh()
-
-    except Exception as e:
-        pane.addstr(h-2, 2, f"Burndown err: {e}", curses.A_BOLD)
-        pane.noutrefresh()
-        log_exception("burndown_tui", e)
-
-
 def popup_recurrence(stdscr):
     # Define prompts
     prompt = "Add recurrence rule?"
@@ -307,13 +228,13 @@ def add_task_tui(stdscr):
         "title":            title,
         "category":         category,
         "project":          project,
-        "impt":             impt,
+        "imptortance":      impt,
         "created":          now,
         "due":              due_iso,
         "status":           "backlog",
         "start":            None,
         "end":              None,
-        "priority":         0,  # will be overwritten
+        "priority":         0,
         "recurrence": recurrence,
         "tags":             tags,
         "notes":            notes,
@@ -348,7 +269,7 @@ def quick_add_task_tui(stdscr):
         "created": now,
         "status": "backlog",
         "priority": 1,
-        "impt": 1,
+        "imptortance": 1,
         "project": None,
         "due": None,
         "recurrence": None,
@@ -404,39 +325,92 @@ def clone_task_tui(stdscr, sel):
 
 def focus_mode_tui(stdscr, sel):
     """
-    Distraction-free fullscreen mode for working on a task.
-    Shows task info and a large timer.
+    Robust distraction-free focus mode for a task.
+    - Locks keys so only pause or mark done will exit.
+    - Shows total time spent.
+    - Supports Pomodoro timer cycles.
     """
     import time
+    from datetime import datetime
+    from lifelog.commands.utils.db import time_repository
 
+    # --- Get task
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
     t = tasks[sel]
-    start_time = datetime.now()
-    stdscr.clear()
-    stdscr.nodelay(True)  # non-blocking input
+
+    # --- Start timer if not running for this task
+    active = time_repository.get_active_time_entry()
+    if not (active and active.get("task_id") == t["id"]):
+        time_repository.start_time_entry(
+            title=t["title"],
+            category=t.get("category"),
+            project=t.get("project"),
+            tags=t.get("tags"),
+            notes=t.get("notes"),
+            task_id=t["id"]
+        )
+        timer_started = True
+    else:
+        timer_started = False
+
+    # --- Total time spent on task
+    def get_total_task_time():
+        logs = time_repository.get_all_time_logs()
+        return int(sum(e['duration_minutes'] for e in logs if e.get('task_id') == t['id'] and e.get('duration_minutes')))
+
+    # --- Pomodoro settings
+    pomodoro_mode = False
+    pomo_length = 25 * 60  # 25min focus
+    break_length = 5 * 60  # 5min break
+    in_break = False
+
+    session_start = time.time()
+    session_mode_start = session_start
+    stdscr.nodelay(True)  # Non-blocking input
 
     while True:
         stdscr.erase()
         h, w = stdscr.getmaxyx()
-        elapsed = (datetime.now() - start_time).seconds
+        elapsed = int(time.time() - session_mode_start)
         mins, secs = divmod(elapsed, 60)
-        timer = f"{mins:02}:{secs:02}"
 
-        # Task Info
+        # Display total task time (accumulated, plus current if timer running)
+        total_minutes = get_total_task_time()
+        # Add current session time if active and running for this task
+        active = time_repository.get_active_time_entry()
+        if active and active.get("task_id") == t["id"] and active.get("start"):
+            dt_start = datetime.fromisoformat(active["start"])
+            now = datetime.now()
+            total_minutes += int((now - dt_start).total_seconds() // 60)
+
+        timer_str = f"{mins:02}:{secs:02}"
         lines = [
-            f"FOCUS MODE",
+            "FOCUS MODE - Pomodoro ON" if pomodoro_mode else "FOCUS MODE",
             "",
             f"Title: {t['title']}",
             f"Project: {t.get('project', '-')}",
             f"Category: {t.get('category', '-')}",
             f"Due: {t.get('due', '-')}",
-            f"",
-            f"[{timer}]",
+            f"Total time: {total_minutes} min",
+            f"Session: [{timer_str}]",
             "",
-            "Press 'p' to pause, 'd' to mark done, or 'q' to exit focus."
         ]
+        if pomodoro_mode:
+            lines.append("Work" if not in_break else "Break")
+            if not in_break:
+                lines.append(
+                    "Press 'P' to toggle Pomodoro, 'p' to pause, 'd' to mark done.")
+            else:
+                lines.append("Break! Press any key to resume work.")
+        else:
+            lines.append(
+                "Press 'P' for Pomodoro, 'p' to pause, 'd' to mark done.")
+
+        lines.append("You must pause or complete the task to exit focus mode.")
+
         for idx, line in enumerate(lines):
-            stdscr.addstr(h//2 - len(lines)//2 + idx, (w - len(line))//2, line)
+            stdscr.addstr(h//2 - len(lines)//2 + idx,
+                          max(2, (w - len(line))//2), line)
 
         stdscr.refresh()
         c = stdscr.getch()
@@ -446,9 +420,33 @@ def focus_mode_tui(stdscr, sel):
         if c == ord("d"):
             done_task_tui(stdscr, sel)
             break
-        if c == ord("q"):
-            break
+        if c == ord("P"):
+            pomodoro_mode = not pomodoro_mode
+            in_break = False
+            session_mode_start = time.time()
+            continue
+        if c in (ord("q"), 27):  # Try to quit: prompt instead
+
+            popup_show(stdscr, [
+                "You must pause ('p') or mark done ('d') to exit focus mode.",
+                "Pomodoro: 'P' to toggle, stay focused!"
+            ])
+            continue
+
+        if pomodoro_mode:
+            if not in_break and elapsed >= pomo_length:
+
+                popup_show(stdscr, ["Pomodoro complete! Break time."])
+                in_break = True
+                session_mode_start = time.time()
+            elif in_break and elapsed >= break_length:
+
+                popup_show(stdscr, ["Break over! Back to focus."])
+                in_break = False
+                session_mode_start = time.time()
+
         time.sleep(1)
+
     stdscr.nodelay(False)
 
 
@@ -533,7 +531,7 @@ def edit_task_tui(stdscr, sel):
         "due": parse_date_string(new_due).isoformat() if new_due else None,
         "category": new_cat,
         "project": new_prj,
-        "impt": int(new_impt) if new_impt and new_impt.isdigit() else t.get("impt", 1),
+        "imptortance": int(new_impt) if new_impt and new_impt.isdigit() else t.get("impt", 1),
         "tags": new_tags,
         "notes": new_notes,
         "recurrence": recurrence,

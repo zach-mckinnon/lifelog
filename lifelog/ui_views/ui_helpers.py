@@ -20,15 +20,15 @@ def draw_status(stdscr, h, w, current_tab):
     if current_tab == 0:  # Home
         hint = "←/→: Switch  ↑/↓: Move"
     elif current_tab == 1:  # Tasks
-        hint = "a:Add  Enter:Edit  v:View  s:Start  p:Stop  o:Done  f:Filter  ?:Help  Q:Quit"
+        hint = "a:Add  e:Edit  v:View  s:Start  p:Stop  o:Done  f:Filter F:Focus  ?:Help  Q:Quit"
     elif current_tab == 2:  # Time
         hint = "s:Start  a:Manual  p:Stop  y:Sum  w:Watch  ?:Help  Q:Quit"
     elif current_tab == 3:  # Trackers
-        hint = "a:Add  l:Log  g:Goal  v:View  x:DelTime  ?:Help  Q:Quit"
+        hint = "a:Add  l:Log  g:Goal  v:View  x:Del  ?:Help  Q:Quit"
     elif current_tab == 4:  # Reports
-        hint = "1-4:Run Report  ?:Help  Q:Quit"
+        hint = "1-4:Run Report C:Insights B:Burndown  ?:Help  Q:Quit"
     else:
-        hint = "Q:Quit  ?:Help"
+        hint = "←/→: Switch  ↑/↓: Move Q:Quit  ?:Help"
     stdscr.addstr(status_y, 1, hint[: w - 2])
     stdscr.attroff(curses.color_pair(3))
 

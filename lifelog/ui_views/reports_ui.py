@@ -1,6 +1,8 @@
 # reports_ui.py
 
 import curses
+from datetime import datetime, timedelta
+from lifelog.commands.utils.db import task_repository
 from lifelog.commands.report import daily_tracker, get_ai_credentials, show_clinical_insights, show_insights, summary_time, summary_trackers
 from lifelog.ui_views.popups import log_and_popup_error, popup_input, popup_error
 from lifelog.ui_views.ui_helpers import log_exception
@@ -71,3 +73,82 @@ def draw_report(pane, h, w):
         pane.addstr(h-2, 2, f"Report err: {e}", curses.A_BOLD)
         pane.noutrefresh()
         log_exception("draw_report", e)
+
+
+def draw_burndown(pane, h, w):
+    try:
+        pane.erase()
+        pane.border()
+        title = " Task Burndown "
+        pane.addstr(0, max((w - len(title)) // 2, 1), title, curses.A_BOLD)
+
+        tasks = task_repository.get_all_tasks()
+        now = datetime.now()
+        start_date = now - timedelta(days=2)
+        end_date = now + timedelta(days=3)
+
+        all_dates = []
+        date_labels = []
+        current_date = start_date
+        while current_date <= end_date:
+            all_dates.append(current_date)
+            date_labels.append(current_date.strftime("%m/%d"))
+            current_date += timedelta(days=1)
+
+        not_done_counts = []
+        overdue_counts = []
+        for d in all_dates:
+            not_done = 0
+            overdue = 0
+            for task in tasks:
+                if task and task.get("status") != "done":
+                    due_str = task.get("due")
+                    if due_str:
+                        try:
+                            due_date = datetime.fromisoformat(due_str)
+                            if due_date.date() <= d.date():
+                                not_done += 1
+                                if due_date.date() < now.date() and d.date() >= now.date():
+                                    overdue += 1
+                        except Exception:
+                            continue
+            not_done_counts.append(not_done)
+            overdue_counts.append(overdue)
+
+        # Y-axis: max outstanding
+        max_count = max(not_done_counts + [1])
+        chart_height = max(5, min(h-6, max_count + 1))
+        left_margin = 4
+
+        # Draw Y-axis
+        for i in range(chart_height):
+            y = 2 + i
+            val = max_count - i
+            if y < h - 2:
+                pane.addstr(y, left_margin-2, f"{val:2d}|")
+
+        # Draw bars
+        for x, (count, overdue) in enumerate(zip(not_done_counts, overdue_counts)):
+            bar_height = int((count / max_count) *
+                             (chart_height-1)) if max_count > 0 else 0
+            for i in range(bar_height):
+                y = 2 + chart_height - 1 - i
+                if y < h - 2:
+                    pane.addstr(y, left_margin + x, "#" if overdue == 0 else "!",
+                                curses.A_BOLD if overdue else curses.A_NORMAL)
+
+        # X-axis (dates)
+        pane.addstr(2+chart_height, left_margin, "".join(
+            date_labels[i][3:]+" " for i in range(len(date_labels)))[:w-left_margin-1])
+
+        # Stats
+        pane.addstr(
+            h-3, left_margin, f"Outstanding: {not_done_counts[-1]}, Overdue: {overdue_counts[-1]}")
+        pane.addstr(h-2, left_margin, "Key: # = open, ! = overdue")
+
+        pane.noutrefresh()
+
+    except Exception as e:
+        pane.addstr(h-2, 2, f"Burndown err: {e}", curses.A_BOLD)
+        pane.noutrefresh()
+        log_exception("burndown_tui", e)
