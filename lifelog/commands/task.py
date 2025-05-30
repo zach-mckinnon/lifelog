@@ -26,7 +26,7 @@ import paho.mqtt.publish as publish
 
 from lifelog.commands.utils.db.models import Task, get_task_fields
 from lifelog.commands.utils.db import task_repository, time_repository
-from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, safe_format_notes, serialize_task, parse_args, validate_task_inputs
+from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, parse_args, validate_task_inputs
 from lifelog.commands.utils.feedback import get_feedback_saying
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs, save_config
