@@ -14,7 +14,7 @@ from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_opt
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
 
 
-def draw_trackers(pane, h, w, selected_idx):
+def draw_trackers(pane, h, w, selected_idx, color_pair=None):
     trackers = track_repository.get_all_trackers()
     pane.erase()
     pane.border()
@@ -22,7 +22,9 @@ def draw_trackers(pane, h, w, selected_idx):
     for i, tracker in enumerate(trackers):
         line = f"{tracker.id:>2} {tracker.title:20} {tracker.category or '-':8} {tracker.type:6}"
         if i == selected_idx:
-            attr = curses.A_REVERSE
+            # Use color_pair if set, otherwise reverse
+            attr = curses.color_pair(
+                color_pair) if color_pair else curses.A_REVERSE
         else:
             attr = curses.A_NORMAL
         safe_addstr(pane, y + i, 2, line[:w-4], attr)
