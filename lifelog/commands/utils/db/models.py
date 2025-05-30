@@ -116,48 +116,53 @@ class GoalBase:
     tracker_id: int    # FK to Tracker
     title: str
     kind: str          # sum, count, bool, streak, etc.
-    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalSum(GoalBase):
     amount: float
     unit: Optional[str] = None
+    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalCount(GoalBase):
     amount: int
     unit: Optional[str] = None
+    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalBool(GoalBase):
-    # No extra fields, just True/False tracking per period
+    period: str = "day"  # day/week/month
     pass
 
 
 @dataclass
 class GoalStreak(GoalBase):
     target_streak: int
+    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalDuration(GoalBase):
     amount: float
     unit: str = "minutes"
+    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalMilestone(GoalBase):
     target: float
     unit: Optional[str] = None
+    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalReduction(GoalBase):
     amount: float
-    unit: Optional[str] = None@dataclass
+    unit: Optional[str] = None
+    period: str = "day"  # day/week/month
 
 
 @dataclass
@@ -166,18 +171,21 @@ class GoalRange(GoalBase):
     max_amount: float
     unit: Optional[str] = None
     mode: str = "goal"  # could also be "tracker"
+    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalPercentage(GoalBase):
     target_percentage: float
     current_percentage: float = 0
+    period: str = "day"  # day/week/month
 
 
 @dataclass
 class GoalReplacement(GoalBase):
     old_behavior: str
     new_behavior: str
+    period: str = "day"  # day/week/month
 
 
 Goal = Union[
