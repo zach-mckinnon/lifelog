@@ -5,11 +5,11 @@
 
 import curses
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from lifelog.commands.utils.db.models import Task, get_task_fields
-from lifelog.commands.task import calculate_priority
+from task_module import calculate_priority
 from lifelog.commands.utils.db import task_repository, time_repository
-from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, create_recur_schedule, get_available_categories, get_available_priorities, get_available_projects, get_available_statuses, get_available_tags, parse_date_string, validate_task_inputs
+from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_statuses, get_available_tags, validate_task_inputs
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
 
 
@@ -406,7 +406,7 @@ def set_task_reminder_tui(stdscr, sel):
     reminder_str = popup_input(
         stdscr, "How long before due for reminder? (e.g. 1d, 120):")
     try:
-        from lifelog.commands.task import create_due_alert
+        from task_module import create_due_alert
         create_due_alert(t)
         popup_show(stdscr, ["Reminder set!"])
     except Exception as e:

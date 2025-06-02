@@ -18,7 +18,7 @@ from lifelog.commands.utils.db import database_manager
 from lifelog.commands.utils import get_quotes
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs
-from lifelog.commands import time, task, track, report, environmental_sync
+from lifelog.commands import report, environmental_sync
 from lifelog.commands.utils import feedback
 from lifelog.ui import main as ui_main
 
@@ -28,6 +28,8 @@ from rich.table import Table
 
 
 import faulthandler
+
+from lifelog.commands import task_module, time_module, track_module
 faulthandler.enable()
 
 # Constants for file paths
@@ -54,11 +56,11 @@ sync_app.command()(environmental_sync.satellite)
 app.add_typer(sync_app, name="sync", help="Fetch external environmental data")
 
 # Register all modules
-app.add_typer(track.app, name="track",
+app.add_typer(track_module.app, name="track",
               help="Track recurring self-measurements like mood, energy, pain, as well as habits and goals.")
-app.add_typer(time.app, name="time",
+app.add_typer(time_module.app, name="time",
               help="Track time in categories like resting, working, socializing.")
-app.add_typer(task.app, name="task",
+app.add_typer(task_module.app, name="task",
               help="Create, track, and complete actionable tasks.")
 app.add_typer(report.app, name="report",
               help="View detailed reports and insights.")

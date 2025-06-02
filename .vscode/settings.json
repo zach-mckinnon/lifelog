@@ -1,3 +1,3 @@
 {
-  "python.analysis.extraPaths": ["./lifelog"]
+  "python.analysis.extraPaths": ["./lifelog", "./lifelog/commands"]
 }
