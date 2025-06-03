@@ -35,7 +35,9 @@ def initialize_schema():
         recur_interval INTEGER,
         recur_unit TEXT,
         recur_days_of_week TEXT,
-        recur_base DATETIME
+        recur_base DATETIME,
+        tags TEXT
+        
     );
     
     CREATE TABLE IF NOT EXISTS goals (

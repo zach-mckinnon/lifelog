@@ -15,7 +15,7 @@ import typer
 import requests  # type: ignore
 
 from lifelog.commands.utils.db import database_manager
-from lifelog.commands.utils import get_quotes
+import lifelog.commands.utils.get_quotes as get_quotes
 import lifelog.config.config_manager as cf
 from lifelog.config.cron_manager import apply_scheduled_jobs
 from lifelog.commands import report, environmental_sync
