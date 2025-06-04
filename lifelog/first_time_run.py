@@ -1,3 +1,4 @@
+import curses
 import os
 from pathlib import Path
 import requests
@@ -13,32 +14,100 @@ from lifelog.utils.encrypt import encrypt_data, setup_encryption
 console = Console()
 
 
-LOGO = """\
-╦   ╦╔═╗╔═╗╦  ╔═╗╔═╗
-║   ║╠╣ ║╣ ║  ║ ║║ ╦
-╩═╝ ╩╚  ╚═╝╩═╝╚═╝╚═╝
-"""
+LOGO_LARGE = [
+    "██╗     ██╗███████╗███████╗██╗      ██████╗  ██████╗ ",
+    "██║     ██║██╔════╝██╔════╝██║     ██╔═══██╗██╔════╝ ",
+    "██║     ██║█████╗  █████╗  ██║     ██║   ██║██║  ███╗",
+    "██║     ██║██╔══╝  ██╔══╝  ██║     ██║   ██║██║   ██║",
+    "███████╗██║██║     ███████╗███████╗╚██████╔╝╚██████╔╝",
+    "╚══════╝╚═╝╚═╝     ╚══════╝╚══════╝ ╚═════╝  ╚═════╝ "
+]
+
+# Medium logo for medium terminals
+LOGO_MEDIUM = [
+    "╦  ╦╔═╗╔═╗╦  ╔═╗╔═╗",
+    "║  ║╠╣ ║╣ ║  ║ ║║ ╦",
+    "╚═╝╩╚  ╚═╝╩═╝╚═╝╚═╝"
+]
+
+# Minimal text for small terminals
+LOGO_SMALL = ["L I F E L O G"]
 
 
-def show_welcome():
-    """Display welcome banner and introduction"""
-    console.clear()
-    console.print(Panel(
-        LOGO,
-        style="bold cyan",
-        expand=False,
-        title="LIFELOG",
-        title_align="center",
-        subtitle="v1.0",
-        subtitle_align="center"
-    ))
-    console.print(Panel(
-        "[bold]Welcome to Lifelog![/bold]\n"
-        "Your personal life tracking companion\n\n"
-        "Let's get started with a quick setup",
-        style="green"
-    ))
-    typer.confirm("Press Enter to continue", default=True)
+def show_welcome(stdscr=None):
+    """Universal welcome screen that works for both CLI and TUI"""
+    if stdscr:  # TUI mode (curses)
+        h, w = stdscr.getmaxyx()
+        min_widths = [50, 30, 10]
+
+        # Select appropriate logo
+        if w >= min_widths[0]:
+            logo = LOGO_LARGE
+        elif w >= min_widths[1]:
+            logo = LOGO_MEDIUM
+        else:
+            logo = LOGO_SMALL
+
+        logo_height = len(logo)
+        start_y = max(1, h//2 - logo_height//2 - 1)
+
+        # Display logo
+        for i, line in enumerate(logo):
+            y = start_y + i
+            if y >= h - 1:
+                break
+            x = max(1, w//2 - len(line)//2)
+            # Truncate if necessary
+            if x + len(line) > w:
+                line = line[:w - x - 1]
+            try:
+                stdscr.addstr(y, x, line, curses.A_BOLD)
+            except curses.error:
+                pass
+
+        # Display message
+        message = "Press any key to begin"
+        msg_y = min(h-2, start_y + logo_height + 2)
+        msg_x = max(1, w//2 - len(message)//2)
+        try:
+            stdscr.addstr(msg_y, msg_x, message)
+        except curses.error:
+            pass
+
+        stdscr.refresh()
+        stdscr.getch()
+
+    else:  # CLI mode (Rich)
+        from rich.console import Console
+        console = Console()
+
+        # Get terminal width
+        width = console.width
+
+        # Select appropriate logo
+        if width >= 50:
+            logo = "\n".join(LOGO_LARGE)
+        elif width >= 30:
+            logo = "\n".join(LOGO_MEDIUM)
+        else:
+            logo = " ".join(LOGO_SMALL)
+
+        console.print(Panel(
+            logo,
+            style="bold cyan",
+            expand=False,
+            title="LIFELOG",
+            title_align="center",
+            subtitle="v1.0",
+            subtitle_align="center"
+        ))
+        console.print(Panel(
+            "[bold]Welcome to Lifelog![/bold]\n"
+            "Your personal life tracking companion\n\n"
+            "Let's get started with a quick setup",
+            style="green"
+        ))
+        typer.confirm("Press Enter to continue", default=True)
 
 
 def setup_location(config):

@@ -24,6 +24,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from utils.db import feedback_repository
+
 
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
@@ -273,21 +275,36 @@ def get_time_of_day():
 
 def greet_user():
     """Greet user with daily quote"""
-    show_daily_banner()
-
     try:
-        if quote := get_motivational_quote():
-            console.print(
-                f"\n[bold]Daily Inspiration:[/bold]\n[italic]{quote}[/italic]"
-            )
+        # Show daily banner
+        console.print(Panel(
+            "L I F E L O G",
+            style="bold cyan",
+            expand=False
+        ))
+        console.print(Panel(
+            f"[bold]Good {get_time_of_day()}![/bold] Ready for a productive day?",
+            style="green"
+        ))
+
+        # Show quote if available
+        try:
+            if quote := feedback_repository.get_motivational_quote():
+                console.print(
+                    f"\n[bold]Daily Inspiration:[/bold]\n[italic]{quote}[/italic]"
+                )
+        except Exception as e:
+            console.print(f"[dim]Couldn't load quote: {e}[/dim]")
+
     except Exception as e:
-        console.print(f"[red]⚠️ Error fetching quote: {e}[/red]")
+        console.print(f"[red]Error in greeting: {e}[/red]")
 # -------------------------------------------------------------------
 # Helper Functions
 # -------------------------------------------------------------------
 
 
 def check_first_command_of_day() -> bool:
+    """Check if this is the first command execution today"""
     today = datetime.now().date()
 
     try:
@@ -297,14 +314,22 @@ def check_first_command_of_day() -> bool:
                 "SELECT last_executed FROM first_command_flags WHERE id = 1"
             )
             row = cur.fetchone()
+
             if not row or not row[0]:
                 return True
 
+            # Handle different date formats
             try:
                 last_executed = datetime.strptime(row[0], "%Y-%m-%d").date()
-                return last_executed != today
-            except (ValueError, TypeError):
-                return True
+            except ValueError:
+                try:
+                    last_executed = datetime.strptime(
+                        row[0], "%Y-%m-%d %H:%M:%S").date()
+                except ValueError:
+                    return True
+
+            return last_executed != today
+
     except sqlite3.Error as e:
         console.print(f"[yellow]⚠️ Database warning: {e}[/yellow]")
         return True
