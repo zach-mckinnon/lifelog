@@ -20,6 +20,12 @@ LOGO = r"""
 ╚══════╝╚═╝╚═╝     ╚══════╝╚══════╝ ╚═════╝  ╚═════╝ 
 """
 
+ASCII_LOGO = [
+    r"╦   ╦╔═╗╔═╗╦  ╔═╗╔═╗",
+    r"║   ║╠╣ ║╣ ║  ║ ║║ ╦",
+    r"╩═╝ ╩╚  ╚═╝╩═╝╚═╝╚═╝"
+]
+
 
 def show_welcome():
     """Display welcome banner and introduction"""

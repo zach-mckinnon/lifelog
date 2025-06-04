@@ -22,7 +22,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 import calendar
-import paho.mqtt.publish as publish
+
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
@@ -552,17 +552,17 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     console.print(
         f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_motivational_quote("task_done"))
-    try:
-        publish.single(
-            topic="servo/control",
-            payload="open",
-            hostname="192.168.68.69",
-            port=1883,
-            qos=1
-        )
-        console.print("[cyan]📡 MQTT command sent to ESP32 servo.[/cyan]")
-    except Exception as e:
-        console.print(f"[bold red]❌ MQTT Publish Error[/bold red]: {e}")
+    # try:
+    #     publish.single(
+    #         topic="servo/control",
+    #         payload="open",
+    #         hostname="192.168.68.69",
+    #         port=1883,
+    #         qos=1
+    #     )
+    #     console.print("[cyan]📡 MQTT command sent to ESP32 servo.[/cyan]")
+    # except Exception as e:
+    #     console.print(f"[bold red]❌ MQTT Publish Error[/bold red]: {e}")
 
 
 @app.command()

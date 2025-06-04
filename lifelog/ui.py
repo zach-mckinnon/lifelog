@@ -1,6 +1,7 @@
 # lifelog/ui.py
 
 import curses
+import os
 import traceback
 
 from lifelog.utils.db import environment_repository
@@ -16,7 +17,7 @@ from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_f
 from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entry_tui, draw_time, edit_time_entry_tui, set_time_period, start_time_tui, status_time_tui, stop_time_tui, stopwatch_tui, summary_time_tui, view_time_entry_tui
 from lifelog.ui_views.trackers_ui import add_or_edit_goal_tui, add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
 import lifelog.config.config_manager as cf
-from lifelog.first_time_run import LOGO
+from lifelog.first_time_run import ASCII_LOGO, LOGO
 from lifelog.utils.shared_utils import log_error
 
 SCREENS = ["H", "TSK", "TM", "TRK", "R"]
@@ -36,14 +37,14 @@ def show_tui_welcome(stdscr):
     stdscr.clear()
     h, w = stdscr.getmaxyx()
 
-    # Choose appropriate logo based on terminal size
-    if h >= 10 and w >= 60:
-        logo = LOGO
+    # Use ASCII logo on Windows, block characters on other platforms
+    if os.name == 'nt':
+        logo = ASCII_LOGO
     else:
-        logo = "LIFELOG"
+        logo = LOGO  # Original block character logo
 
     logo_height = len(logo)
-    start_y = max(0, h//2 - logo_height//2 - 2)
+    start_y = max(1, h//2 - logo_height//2 - 1)  # Ensure at least line 1
 
     # Display logo with bounds checking
     for i, line in enumerate(logo):
@@ -52,15 +53,18 @@ def show_tui_welcome(stdscr):
             break
 
         # Center text with bounds checking
-        x_pos = max(0, w//2 - len(line)//2)
+        x_pos = max(1, w//2 - len(line)//2)
         if x_pos + len(line) > w:  # Truncate if too wide
             line = line[:w - x_pos - 1]
 
-        safe_addstr(stdscr, y_pos, x_pos, line, curses.A_BOLD)
+        try:
+            stdscr.addstr(y_pos, x_pos, line, curses.A_BOLD)
+        except curses.error:
+            pass  # Skip if position is invalid
 
     message = "Press any key to begin"
-    msg_x = max(0, w//2 - len(message)//2)
-    safe_addstr(stdscr, start_y + logo_height + 2, msg_x, message)
+    msg_x = max(1, w//2 - len(message)//2)
+    stdscr.addstr(start_y + logo_height + 2, msg_x, message)
     stdscr.refresh()
     stdscr.getch()
 
