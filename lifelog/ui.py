@@ -37,11 +37,9 @@ def show_tui_welcome(stdscr):
     stdscr.clear()
     h, w = stdscr.getmaxyx()
 
-    # Use ASCII logo on Windows, block characters on other platforms
+    # Use ASCII logo
     if os.name == 'nt':
-        logo = ASCII_LOGO
-    else:
-        logo = LOGO  # Original block character logo
+        logo = LOGO
 
     logo_height = len(logo)
     start_y = max(1, h//2 - logo_height//2 - 1)  # Ensure at least line 1
