@@ -13,17 +13,25 @@ from lifelog.utils.encrypt import encrypt_data, setup_encryption
 console = Console()
 
 
-LOGO = [
-    r"╦   ╦╔═╗╔═╗╦  ╔═╗╔═╗",
-    r"║   ║╠╣ ║╣ ║  ║ ║║ ╦",
-    r"╩═╝ ╩╚  ╚═╝╩═╝╚═╝╚═╝"
-]
+LOGO = """\
+╦   ╦╔═╗╔═╗╦  ╔═╗╔═╗
+║   ║╠╣ ║╣ ║  ║ ║║ ╦
+╩═╝ ╩╚  ╚═╝╩═╝╚═╝╚═╝
+"""
 
 
 def show_welcome():
     """Display welcome banner and introduction"""
     console.clear()
-    console.print(Panel(LOGO, style="bold cyan", expand=False))
+    console.print(Panel(
+        LOGO,
+        style="bold cyan",
+        expand=False,
+        title="LIFELOG",
+        title_align="center",
+        subtitle="v1.0",
+        subtitle_align="center"
+    ))
     console.print(Panel(
         "[bold]Welcome to Lifelog![/bold]\n"
         "Your personal life tracking companion\n\n"

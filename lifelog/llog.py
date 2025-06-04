@@ -271,7 +271,6 @@ def get_time_of_day():
 # Update greet_user function
 
 
-@app.command("hello")
 def greet_user():
     """Greet user with daily quote"""
     show_daily_banner()
