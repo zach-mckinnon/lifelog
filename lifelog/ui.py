@@ -17,7 +17,7 @@ from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_f
 from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entry_tui, draw_time, edit_time_entry_tui, set_time_period, start_time_tui, status_time_tui, stop_time_tui, stopwatch_tui, summary_time_tui, view_time_entry_tui
 from lifelog.ui_views.trackers_ui import add_or_edit_goal_tui, add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
 import lifelog.config.config_manager as cf
-from lifelog.first_time_run import LOGO, show_welcome
+from lifelog.first_time_run import show_welcome
 from lifelog.utils.shared_utils import log_error
 
 SCREENS = ["H", "TSK", "TM", "TRK", "R"]
