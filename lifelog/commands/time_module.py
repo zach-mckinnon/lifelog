@@ -12,11 +12,11 @@ from datetime import datetime, timedelta
 from rich.console import Console
 from rich.table import Table
 
-from lifelog.commands.utils.db.models import TimeLog
-from lifelog.commands.utils.db import time_repository
-from lifelog.commands.utils.shared_options import category_option, project_option, past_option
+from lifelog.utils.db.models import TimeLog
+from lifelog.utils.db import time_repository
+from lifelog.utils.shared_options import category_option, project_option, past_option
 
-from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, get_available_categories, get_available_projects, parse_date_string, parse_args
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, get_available_categories, get_available_projects, parse_date_string, parse_args
 
 
 app = typer.Typer(help="Track time spent in different life categories.")

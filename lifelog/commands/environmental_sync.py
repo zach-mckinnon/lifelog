@@ -1,13 +1,13 @@
 # lifelog/commands/environmental_sync.py
 
 import json
-from lifelog.commands.utils.environmental import (
+from lifelog.utils.db.environmental import (
     fetch_weather_data,
     fetch_air_quality_data,
     fetch_moon_data,
     fetch_satellite_radiation_data,
 )
-from lifelog.commands.utils.db import environment_repository
+from lifelog.utils.db import environment_repository
 import lifelog.config.config_manager as cf
 from rich import print
 import typer

@@ -7,45 +7,33 @@ This CLI allows users to log their daily activities, manage tasks, and sync envi
 '''
 import curses
 from datetime import datetime
-import json
-from pathlib import Path
+import sqlite3
+import sys
 from typing import Annotated
-from tomlkit import table
 import typer
-import requests  # type: ignore
 
-from lifelog.commands.utils.db import database_manager
-import lifelog.commands.utils.get_quotes as get_quotes
+from lifelog.first_time_run import run_wizard, LOGO
+from lifelog.utils.db import database_manager
 import lifelog.config.config_manager as cf
-from lifelog.config.cron_manager import apply_scheduled_jobs
-from lifelog.commands import report, environmental_sync
-from lifelog.commands.utils import feedback
+from lifelog.commands import task_module, time_module, track_module, report, environmental_sync
 from lifelog.ui import main as ui_main
+from lifelog.utils.get_quotes import get_motivational_quote
+
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 
-import faulthandler
-
-from lifelog.commands import task_module, time_module, track_module
-faulthandler.enable()
-
-# Constants for file paths
-TRACK_FILE = None
-TIME_FILE = None
-TASK_FILE = None
-FC_FILE = None
-FEEDBACK_FILE = None
-DAILY_QUOTE_FILE = None
-ENV_DATA_FILE = None
-
-
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
     help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
 console = Console()
+
+# -------------------------------------------------------------------
+# Core Initialization System
+# -------------------------------------------------------------------
+
 
 # Ensure the app is initialized
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
@@ -64,40 +52,52 @@ app.add_typer(task_module.app, name="task",
               help="Create, track, and complete actionable tasks.")
 app.add_typer(report.app, name="report",
               help="View detailed reports and insights.")
-app.add_typer(environmental_sync.app, name="env",
-              help="Sync and view environmental data.")
+# app.add_typer(environmental_sync.app, name="env",
+#               help="Sync and view environmental data.")
+
+
+def initialize_application():
+    """Full application initialization sequence"""
+    try:
+        console.print(
+            "[bold green]🚀 Starting Lifelog initialization...[/bold green]")
+
+        # 1. Ensure base directory exists
+        cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
+        console.print(f"[dim]• Created base directory: {cf.BASE_DIR}[/dim]")
+
+        # 2. Initialize database schema
+        if not database_manager.is_initialized():
+            database_manager.initialize_schema()
+            console.print("[dim]• Database schema initialized[/dim]")
+
+        # 3. Load or create config
+        config = cf.load_config()
+        console.print("[dim]• Configuration loaded[/dim]")
+
+        # 4. Run first-time wizard if needed
+        if not config.get("meta", {}).get("first_run_complete", False):
+            config = run_wizard(config)
+            cf.save_config(config)
+
+        # 5. Check for first command of the day
+        if check_first_command_of_day():
+            greet_user()
+            save_first_command_flag(str(datetime.now().date()))
+
+        return True
+    except Exception as e:
+        console.print(f"[red]⚠️ Critical initialization error: {e}[/red]")
+        sys.exit(1)
 
 
 @app.command("ui")
 def ui(
     status_bar: Annotated[bool, typer.Option(
         "--no-help", help="Disable the help bar.")] = False
-
 ):
-    """
-    Launch the full-screen Lifelog TUI (like Calcurse).
-    """
-    # Pass the flag into your UI entrypoint
+    """Launch the full-screen Lifelog TUI"""
     curses.wrapper(ui_main, status_bar)
-
-
-@app.command("setup-ai")
-def cli_setup_ai():
-    """Walk the user through entering AI API keys and model."""
-    report.setup_ai_credentials()
-
-
-@app.callback(invoke_without_command=True)
-def _ensure(ctx: typer.Context):
-    """
-    This runs before *any* command.
-    """
-    database_manager.initialize_schema()
-    ensure_initialized()
-
-    # if they typed nothing at all, show help
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
 
 
 @app.command("help")
@@ -112,31 +112,29 @@ def help_command():
 
     # Add actual rows
     table.add_row(
-        "[bold purple]Trackers[/bold purple] 📊",
-        "[bold green]Add[/bold green]: Define a new thing you want to track (like steps, mood, or water intake). You need to give it a [italic]title[/italic] and specify the [italic]type[/italic] of data it will store ([mono]int[/mono], [mono]float[/mono], [mono]bool[/mono], or [mono]str[/mono]). You can also add a category (e.g., [mono]llog track add Steps --type int --category Health[/mono])\n"
-        "[bold blue]Record[/bold blue]: (Use without a subcommand) Log a new value for an existing tracker. Just type the tracker's [italic]title[/italic] followed by the [italic]value[/italic] (e.g., [mono]llog track Water 2.5[/mono] or [mono]llog track Mood Happy[/mono]). If the title matches a command, use that command instead.\n"
-        "[bold yellow]Modify[/bold yellow]: Change the [italic]title[/italic], [italic]category[/italic], [italic]tags[/italic], or [italic]notes[/italic] of an existing tracker using its [italic]ID[/italic] (find the ID with 'list'). (e.g., [mono]llog track modify 3 New Mood --category Wellbeing +positive[/mono])\n"
-        "[bold magenta]List[/bold magenta]: Show all the trackers you have defined, along with their details, type, category, and any goals you've set (e.g., [mono]llog track list[/mono])\n"
+        "[bold purple]llog track[/bold purple] 📊",
+        "Track habits, mood, health metrics\n"
+        "Use --help for all options"
     )
     table.add_row(
-        "[bold blue]Time Tracking[/bold blue] ⏱️",
-        "[bold green]Start[/bold green]: Begin tracking time for an activity. You need to give it a [italic]title[/italic] (use quotes for spaces!). You can also add a category, project, or even a time in the past to start from (e.g., [mono]llog time start \"Working on report\" --project Office[/mono] or [mono]llog time start Reading --past \"30 minutes ago\"[/mono])\n"
-        "[bold red]Stop[/bold red]: End the current time tracking session. You can optionally add tags or notes when you stop (e.g., [mono]llog time stop +interruption Note: Had a coffee break[/mono])\n"
-        "[bold cyan]Status[/bold cyan]: See what activity you are currently tracking and since when (e.g., [mono]llog time status[/mono])\n"
-        "[bold magenta]Summary[/bold magenta]: Get a summary of the time you've tracked, grouped by activity title, category, or project. You can also filter by day, week, or month (e.g., [mono]llog time summary[/mono] or [mono]llog time summary --by category --period week[/mono])\n"
+        "[bold blue]llog time[/bold blue] ⏱️",
+        "Track time spent on activities\n"
+        "Use --help for all options"
     )
     table.add_row(
-        "[bold green]Tasks[/bold green] ✅",
-        "[bold blue]Info[/bold blue]: See details for a task using its [italic]ID[/italic] (e.g., [mono]llog task info 3[/mono])\n"
-        "[bold green]Add[/bold green]: Create a new task (e.g., [mono]llog task add Buy groceries[/mono])\n"
-        "[bold cyan]Start[/bold cyan]: Begin working on a task using its [italic]ID[/italic] (e.g., [mono]llog task start 5[/mono])\n"
-        "[bold magenta]List[/bold magenta]: Show all your current tasks (try adding [mono]--help[/mono] for sorting and filtering!)\n"
-        "[bold yellow]Modify[/bold yellow]: Change details of a task using its [italic]ID[/italic] (e.g., [mono]llog task modify 2 --due tomorrow[/mono])\n"
-        "[bold red]Delete[/bold red]: Remove a task using its [italic]ID[/italic] (e.g., [mono]llog task delete 1[/mono])\n"
-        "[bold purple]Stop[/bold purple]: Pause the task you are currently working on\n"
-        "[bold green]Done[/bold green]: Mark a task as finished using its [italic]ID[/italic] (e.g., [mono]llog task done 4[/mono])\n"
-        "[bold cyan]Agenda[/bold cyan]: Show the top three high priority tasks and a calendar view [italic]ID[/italic] (e.g., [mono]llog task agenda[/mono])\n"
-        "[bold yellow]Burndown[/bold yellow]: Show a burndown chart of the past 3 days and projected 2 days. (e.g., [mono]llog task burndown[/mono])\n"
+        "[bold green]llog task[/bold green] ✅",
+        "Manage and complete tasks\n"
+        "Use --help for all options"
+    )
+    table.add_row(
+        "[bold cyan]llog report[/bold cyan] 📈",
+        "View detailed reports and insights\n"
+        "Use --help for all options"
+    )
+    table.add_row(
+        "[bold magenta]llog ui[/bold magenta] 💻",
+        "Launch full-screen interface\n"
+        "Use --help for all options"
     )
 
     console.print(table)
@@ -147,99 +145,6 @@ def help_command():
             title_align="left"
         )
     )
-
-
-def ensure_initialized():
-    global FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
-    FC_FILE = cf.get_fc_file()
-    FEEDBACK_FILE = cf.get_feedback_file()
-    DAILY_QUOTE_FILE = cf.get_motivational_quote_file()
-    ENV_DATA_FILE = cf.get_env_data_file()
-
-    doc = cf.load_config()
-    if not doc.get("meta", {}).get("initialized", False):
-        init()
-    else:
-        if check_first_command_of_day():
-            greet_user()
-            save_first_command_flag(str(datetime.now().date()))
-
-
-def init():
-    """
-    Initialize default data files and starter entries.
-    """
-    console.print("[bold green]🛠 Initializing Lifelog...[/bold green]")
-
-    import shutil
-    database_manager.initialize_schema()
-
-    llog_path = shutil.which("llog") or "/usr/local/bin/llog"
-
-    global FC_FILE, FC_FILE, FEEDBACK_FILE, DAILY_QUOTE_FILE, ENV_DATA_FILE
-    FC_FILE = cf.get_fc_file()
-    FEEDBACK_FILE = cf.get_feedback_file()
-    DAILY_QUOTE_FILE = cf.get_motivational_quote_file()
-    ENV_DATA_FILE = cf.get_env_data_file()
-
-    files_to_create = {
-        FC_FILE: {
-            "last_executed": None
-        },
-        FEEDBACK_FILE: {
-            "sayings": {}
-        },
-        DAILY_QUOTE_FILE: {
-            "quotes": []
-        },
-        ENV_DATA_FILE: {
-            "weather": {},
-            "air_quality": {},
-            "moon": {},
-            "satellite": {}
-        }
-
-    }
-
-    for path, default_data in files_to_create.items():
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with open(path, "w") as f:
-                json.dump(default_data, f, indent=2)
-            console.print(f"[green]✅ Created[/green] {path}")
-        else:
-            console.print(f"[yellow]⚠️ Already exists[/yellow] {path}")
-    FEEDBACK_FILE = cf.get_feedback_file()
-
-    sayings = feedback.default_feedback_sayings()
-    with open(FEEDBACK_FILE, "w") as f:
-        json.dump(sayings, f, indent=2)
-    console.print("[green]✅ Created default feedback sayings![/green]")
-
-    doc = cf.load_config()
-    cron_section = doc.get("cron", table())
-    if "recur_auto" not in cron_section:
-        cron_section["recur_auto"] = {
-            "schedule": "0 4 * * *",
-            "command": f"{llog_path} task auto_recur"
-        }
-        doc["cron"] = cron_section
-        cf.save_config(doc)
-
-        console.print(
-            "[green]✅ Recurrence system initialized. Auto-recur will run nightly.[/green]")
-    else:
-        apply_scheduled_jobs()
-        console.print(
-            "[yellow]⚡ Auto-recur schedule already exists... applying jobs.[/yellow]")
-
-    get_user_location()
-
-    # mark it done
-    doc = cf.load_config()
-    doc.setdefault("meta", {})
-    doc["meta"]["initialized"] = True
-    cf.save_config(doc)
 
 
 @app.command("config-edit")
@@ -342,97 +247,123 @@ def config_edit():
             print("Invalid selection.")
 
 
-def check_first_command_of_day():
-    today = datetime.now().date()
-    flag_data = {}
-
-    if FC_FILE.exists():
-        try:
-            with open(FC_FILE, "r") as f:
-                flag_data = json.load(f)
-        except json.JSONDecodeError:
-            console.print(
-                "[yellow]⚠️ Warning[/yellow]: Could not read first command flag.")
-
-    last_executed_date = flag_data.get("last_executed")
-
-    if last_executed_date != str(today):
-        save_first_command_flag(str(today))
-        return True
-    return False
+def show_daily_banner():
+    """Show daily welcome banner with logo"""
+    console.print(Panel(LOGO, style="bold cyan", expand=False))
+    console.print(Panel(
+        f"[bold]Good {get_time_of_day()}![/bold] "
+        f"Ready for a productive day?",
+        style="green"
+    ))
 
 
-def save_first_command_flag(date_str):
-    '''Saves the date of the first command executed today.'''
-    FC_FILE.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(FC_FILE, "w") as f:
-            json.dump({"last_executed": date_str}, f)
-    except IOError:
-        console.print(
-            f"[yellow]⚠️ Warning[/yellow]: Could not save first command flag.")
+def get_time_of_day():
+    """Return time-appropriate greeting"""
+    hour = datetime.now().hour
+    if 5 <= hour < 12:
+        return "morning"
+    elif 12 <= hour < 17:
+        return "afternoon"
+    elif 17 <= hour < 21:
+        return "evening"
+    return "night"
 
-# Example integration:
+# Update greet_user function
 
 
 @app.command("hello")
 def greet_user():
-    '''Greets the user with a daily quote if available.'''
-    daily_quote = get_quotes.get_motivational_quote()
-    if daily_quote:
-        console.print(
-            f"[bold green]☀️ Good day![/bold green] Here's your daily inspiration: [italic]{daily_quote}[/italic]")
+    """Greet user with daily quote"""
+    show_daily_banner()
 
-    else:
-        console.print("[bold green]☀️ Good day![/bold green]")
-
-
-def get_user_location():
-    '''
-    Attempts to get the user's location using IP geolocation.   
-    If successful, it prompts the user to confirm the detected ZIP code.
-    If the user declines, it falls back to manual entry.
-    '''
     try:
-        response = requests.get('https://ipinfo.io/json')
-        data = response.json()
-        zip_code = data.get('postal')
-        loc = data.get("loc", "0,0").split(",")
-        latitude, longitude = float(loc[0]), float(loc[1])
+        if quote := get_motivational_quote():
+            console.print(
+                f"\n[bold]Daily Inspiration:[/bold]\n[italic]{quote}[/italic]"
+            )
+    except Exception as e:
+        console.print(f"[red]⚠️ Error fetching quote: {e}[/red]")
+# -------------------------------------------------------------------
+# Helper Functions
+# -------------------------------------------------------------------
 
-        if zip_code:
-            print(f"Detected ZIP code: {zip_code}")
-            consent = input("Use this ZIP code? (Y/n): ").strip().lower()
-            if consent in ("", "y", "yes"):
-                cfg = cf.load_config()
-                cfg["location"] = {
-                    "zip": zip_code,
-                    "latitude": latitude,
-                    "longitude": longitude
-                }
-                cf.save_config(cfg)
-                return
 
-    except Exception:
-        pass
+def check_first_command_of_day() -> bool:
+    today = datetime.now().date()
 
-    # Fallback to manual entry
-    while True:
-        zip_code = input("Enter your ZIP code: ").strip()
-        if zip_code.isdigit() and len(zip_code) == 5:
-            cfg = cf.load_config()
-            cfg["location"] = {"zip": zip_code}
-            cf.save_config(cfg)
-            break
-        else:
-            print("Please enter a valid 5-digit ZIP code.")
+    try:
+        with database_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT last_executed FROM first_command_flags WHERE id = 1"
+            )
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return True
 
-# TODO: Add a command to list different config options and their current values, such as categories, projects, etc.
-# TODO: Add a command to configure user preferences, such as default categories, projects, location, etc.
+            try:
+                last_executed = datetime.strptime(row[0], "%Y-%m-%d").date()
+                return last_executed != today
+            except (ValueError, TypeError):
+                return True
+    except sqlite3.Error as e:
+        console.print(f"[yellow]⚠️ Database warning: {e}[/yellow]")
+        return True
+
+
+def save_first_command_flag(date_str: str):
+    """Save execution date to database"""
+    try:
+        with database_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT OR REPLACE INTO first_command_flags (id, last_executed) "
+                "VALUES (1, ?)",
+                (date_str,)
+            )
+            conn.commit()
+    except sqlite3.Error as e:
+        console.print(f"[red]⚠️ Failed to save command flag: {e}[/red]")
+
+# Add to llog.py
+
+
+@app.command("api-start")
+def start_api(
+    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
+    port: int = typer.Option(5000, help="Port to listen on"),
+    debug: bool = typer.Option(False, help="Enable debug mode")
+):
+    """Start the REST API server"""
+    import os
+    from lifelog.app import app
+
+    # Ensure initialization
+    initialize_application()
+
+    console.print(
+        f"[green]🚀 Starting API server at http://{host}:{port}[/green]")
+    os.environ["FLASK_ENV"] = "development" if debug else "production"
+    app.run(host=host, port=port, debug=debug)
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(ctx: typer.Context):
+    """Global initialization and command routing"""
+    initialize_application()
+
+    if ctx.invoked_subcommand is None:
+        help_command()
 
 
 lifelog_app = app
 
 if __name__ == "__main__":
-    ensure_initialized()
-    lifelog_app()
+    try:
+        app()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]🚪 Exiting...[/yellow]")
+        sys.exit(0)
+    except Exception as e:
+        console.print(f"[red]⚠️ Unhandled error: {e}[/red]")
+        sys.exit(1)

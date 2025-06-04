@@ -2,7 +2,7 @@
 
 import curses
 from datetime import datetime, timedelta
-from lifelog.commands.utils.db import task_repository
+from lifelog.utils.db import task_repository
 from lifelog.commands.report import daily_tracker, show_clinical_insights, show_insights, summary_time, summary_trackers
 from lifelog.ui_views.popups import log_and_popup_error, popup_input, popup_error
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr

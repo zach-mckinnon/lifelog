@@ -3,8 +3,8 @@
 import curses
 import traceback
 
-from lifelog.commands.utils.db import environment_repository
-from lifelog.commands.utils.db import task_repository, time_repository, track_repository
+from lifelog.utils.db import environment_repository
+from lifelog.utils.db import task_repository, time_repository, track_repository
 from lifelog.ui_views.ui_helpers import (
     draw_menu,
     draw_status,
@@ -15,7 +15,9 @@ from lifelog.ui_views.reports_ui import draw_report, run_clinical_insights, run_
 from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_filter, delete_task_tui, done_task_tui, draw_agenda,  edit_notes_tui, edit_recurrence_tui, edit_task_tui, focus_mode_tui, quick_add_task_tui, set_task_reminder_tui, start_task_tui, stop_task_tui, view_task_tui
 from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entry_tui, draw_time, edit_time_entry_tui, set_time_period, start_time_tui, status_time_tui, stop_time_tui, stopwatch_tui, summary_time_tui, view_time_entry_tui
 from lifelog.ui_views.trackers_ui import add_or_edit_goal_tui, add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
-
+import lifelog.config.config_manager as cf
+from lifelog.first_time_run import LOGO
+from lifelog.utils.shared_utils import log_error
 
 SCREENS = ["H", "TSK", "TM", "TRK", "R"]
 
@@ -30,9 +32,47 @@ def create_main_panes(stdscr, h, w, menu_h):
     return panes
 
 
+def show_tui_welcome(stdscr):
+    stdscr.clear()
+    h, w = stdscr.getmaxyx()
+
+    # Choose appropriate logo based on terminal size
+    if h >= 10 and w >= 60:
+        logo = LOGO
+    else:
+        logo = "LIFELOG"
+
+    logo_height = len(logo)
+    start_y = max(0, h//2 - logo_height//2 - 2)
+
+    # Display logo with bounds checking
+    for i, line in enumerate(logo):
+        y_pos = start_y + i
+        if y_pos >= h - 1:  # Don't draw beyond screen bottom
+            break
+
+        # Center text with bounds checking
+        x_pos = max(0, w//2 - len(line)//2)
+        if x_pos + len(line) > w:  # Truncate if too wide
+            line = line[:w - x_pos - 1]
+
+        safe_addstr(stdscr, y_pos, x_pos, line, curses.A_BOLD)
+
+    message = "Press any key to begin"
+    msg_x = max(0, w//2 - len(message)//2)
+    safe_addstr(stdscr, start_y + logo_height + 2, msg_x, message)
+    stdscr.refresh()
+    stdscr.getch()
+
+
 def main(stdscr, show_status: bool = True):
     # --- Color & Cursor Setup ---
     try:
+        config = cf.load_config()
+        if not config.get("meta", {}).get("tui_welcome_shown", False):
+            show_tui_welcome(stdscr)
+            config["meta"]["tui_welcome_shown"] = True
+            cf.save_config(config)
         curses.start_color()
         curses.use_default_colors()
         curses.init_pair(1, curses.COLOR_WHITE,
@@ -251,9 +291,8 @@ def main(stdscr, show_status: bool = True):
                 elif key in (ord("q"), 27):
                     current = 0
     except Exception as e:
-        with open('/tmp/llog-error.log', 'w') as f:
-            f.write(traceback.format_exc())
-        # You may also want to re-raise to exit, or show a final error popup if you can
+        tb = traceback.format_exc()
+        log_error(f"UI Error: {str(e)}", tb)
         popup_error(stdscr, e)
 
 
@@ -292,11 +331,18 @@ def draw_home(pane, h, w):
             if y+1+i < max_h - 1:
                 safe_addstr(pane, y+1+i, 4, f"{t['title'][:max_w-8]}")
         pane.noutrefresh()
-        env = environment_repository.get_latest_environmental_data()
 
-        if env:
-            safe_addstr(
-                pane, y, 2, f"Weather: {env['weather']} AQI: {env['air_quality']} Moon: {env['moon']}")
+        env_weather = environment_repository.get_latest_environment_data(
+            'weather')
+        env_air = environment_repository.get_latest_environment_data(
+            'air_quality')
+        env_moon = environment_repository.get_latest_environment_data('moon')
+
+        if any([env_weather, env_air, env_moon]):
+            env_text = f"Weather: {env_weather.get('summary', 'N/A')} | "
+            env_text += f"AQI: {env_air.get('index', 'N/A')} | "
+            env_text += f"Moon: {env_moon.get('phase', 'N/A')}"
+            safe_addstr(pane, h-3, 2, env_text)
 
     except Exception as e:
         safe_addstr(pane, h-2, 2, f"Home err: {e}", curses.A_BOLD)

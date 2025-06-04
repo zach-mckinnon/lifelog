@@ -6,10 +6,10 @@
 import curses
 from dataclasses import asdict
 from datetime import datetime
-from lifelog.commands.utils.db.models import Task, get_task_fields
+from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.commands.task_module import calculate_priority, create_due_alert
-from lifelog.commands.utils.db import task_repository, time_repository
-from lifelog.commands.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_statuses, get_available_tags, validate_task_inputs
+from lifelog.utils.db import task_repository, time_repository
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_statuses, get_available_tags, validate_task_inputs
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
 
 
@@ -275,7 +275,7 @@ def focus_mode_tui(stdscr, sel):
     """
     import time
     from datetime import datetime
-    from lifelog.commands.utils.db import time_repository
+    from lifelog.utils.db import time_repository
 
     # --- Get task
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")

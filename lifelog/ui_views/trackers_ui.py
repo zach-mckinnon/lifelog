@@ -6,10 +6,10 @@
 import curses
 from datetime import datetime
 from lifelog.commands.report import generate_goal_report
-from lifelog.commands.utils.db.models import Tracker, TrackerEntry
-from lifelog.commands.utils.goal_util import get_description_for_goal_kind
-from lifelog.commands.utils.db import track_repository
-from lifelog.commands.utils.shared_utils import add_category_to_config, get_available_categories, get_available_tags, parse_date_string
+from lifelog.utils.db.models import Tracker, TrackerEntry
+from lifelog.utils.goal_util import get_description_for_goal_kind
+from lifelog.utils.db import track_repository
+from lifelog.utils.shared_utils import add_category_to_config, get_available_categories, get_available_tags, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
 
@@ -76,7 +76,7 @@ def log_entry_tui(stdscr):
     """
     TUI for logging a new tracker entry.
     """
-    from lifelog.commands.utils.shared_utils import (
+    from lifelog.utils.shared_utils import (
         get_available_categories,
         popup_select_option,
         popup_input,
@@ -368,8 +368,8 @@ def create_goal_interactive_tui(stdscr, tracker_type: str):
     TUI (popup-based) wizard for creating a goal.
     Returns a goal dict ready to attach to a tracker.
     """
-    from lifelog.commands.utils.goal_util import GoalKind, get_description_for_goal_kind
-    from lifelog.commands.utils.goal_util import Period
+    from lifelog.utils.goal_util import GoalKind, get_description_for_goal_kind
+    from lifelog.utils.goal_util import Period
 
     # Determine allowed goal kinds
     if tracker_type in ["int", "float"]:

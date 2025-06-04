@@ -11,13 +11,13 @@ import typer
 from typer import prompt
 from datetime import datetime
 
-from lifelog.commands.utils.db import track_repository
+from lifelog.utils.db import track_repository
 from lifelog.commands.report import generate_goal_report
-from lifelog.commands.utils.shared_utils import parse_args, safe_format_notes
+from lifelog.utils.shared_utils import parse_args, safe_format_notes
 import lifelog.config.config_manager as cf
-from lifelog.commands.utils.shared_options import category_option
-from lifelog.commands.utils.goal_util import create_goal_interactive, calculate_goal_progress
-from lifelog.commands.utils.db.models import Tracker
+from lifelog.utils.shared_options import category_option
+from lifelog.utils.goal_util import create_goal_interactive, calculate_goal_progress
+from lifelog.utils.db.models import Tracker
 
 from rich.console import Console
 from rich.prompt import Confirm
@@ -92,18 +92,16 @@ def add(
     goal = None
     if Confirm.ask("Would you like to add a goal to this tracker?"):
         goal = create_goal_interactive(type)
-        track_repository.validate_goal_fields(goal, type)
+        track_repository.validate_goal_fields(goal)
     # Create Tracker dataclass
 
     tracker = Tracker(
-        id=None,
         title=title,
         type=type,
         category=category,
         created=now.isoformat(),
         tags=",".join(tags) if tags else None,
         notes=" ".join(notes) if notes else None,
-        goals=[goal] if goal else None,
     )
 
     # Add to repo

@@ -2,7 +2,7 @@
 import toml
 import json
 from typing import Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 from enum import Enum
 import typer
@@ -10,15 +10,16 @@ import typer
 from rich.table import Table
 from rich.console import Console
 
-from lifelog.commands.utils.reporting.clinical_insight_engine import generate_clinical_insights
-from lifelog.commands.utils.db import environment_repository, task_repository
-from lifelog.commands.utils.db import report_repository
-from lifelog.commands.utils.db import track_repository, time_repository
-from lifelog.commands.utils.reporting.insight_engine import generate_insights
+from lifelog.utils.reporting.clinical_insight_engine import generate_clinical_insights
+from lifelog.utils.db import environment_repository, task_repository
+from lifelog.utils.db import report_repository
+from lifelog.utils.db import track_repository, time_repository
+import lifelog.config.config_manager as cf
+from lifelog.utils.db import track_repository
 
-from lifelog.commands.utils.db import track_repository
 
 app = typer.Typer(help="Generate a report for your goal progress.")
+console = Console()
 
 
 class ReportType(str, Enum):
@@ -460,27 +461,6 @@ def setup_ai_credentials():
         print("AI configuration unchanged.")
 
 
-def get_ai_credentials():
-    """
-    Returns (model_name, api_key) based on config preferences.
-    """
-    try:
-        cfg = toml.load("config.toml")
-        ai_cfg = cfg.get("ai", {})
-        model = ai_cfg.get("preferred_ai_model", "chatgpt").lower()
-        if model == "gemini":
-            key = ai_cfg.get("gemini_api_key")
-        else:
-            model = "chatgpt"  # default
-            key = ai_cfg.get("chatgpt_api_key")
-        if not key or not key.strip():
-            return None, None
-        return model, key
-    except Exception as e:
-        print(f"Config error: {e}")
-        return None, None
-
-
 def gather_all_data():
     return {
         "tasks": task_repository.get_all_tasks(),
@@ -517,7 +497,7 @@ def show_clinical_insights(
     """
 
     # Get model/key from config (unless overridden)
-    config_model, api_key = get_ai_credentials()
+    config_model, api_key = cf.get_ai_credentials()
     model = model or config_model
 
     if use_ai and (not api_key or not model):

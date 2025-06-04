@@ -37,4 +37,4 @@ include-package-data = true
 include = ["lifelog*"]
 
 [tool.setuptools.package-data]
-"lifelog" = ["config/*.toml"]
+"lifelog" = ["config/*.toml", "*.py"] 
