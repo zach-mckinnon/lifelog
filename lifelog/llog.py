@@ -12,19 +12,16 @@ import sys
 from typing import Annotated
 import typer
 
-from lifelog.first_time_run import run_wizard, LOGO
+from lifelog.first_time_run import LOGO_SMALL, run_wizard
 from lifelog.utils.db import database_manager
 import lifelog.config.config_manager as cf
 from lifelog.commands import task_module, time_module, track_module, report, environmental_sync
 from lifelog.ui import main as ui_main
-from lifelog.utils.get_quotes import get_motivational_quote
-
+from lifelog.utils import get_quotes
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-
-from utils.db import feedback_repository
 
 
 # Initialize the config manager and ensure the files exist
@@ -251,7 +248,7 @@ def config_edit():
 
 def show_daily_banner():
     """Show daily welcome banner with logo"""
-    console.print(Panel(LOGO, style="bold cyan", expand=False))
+    console.print(Panel(LOGO_SMALL, style="bold cyan", expand=False))
     console.print(Panel(
         f"[bold]Good {get_time_of_day()}![/bold] "
         f"Ready for a productive day?",
@@ -289,7 +286,7 @@ def greet_user():
 
         # Show quote if available
         try:
-            if quote := feedback_repository.get_motivational_quote():
+            if quote := get_quotes.get_motivational_quote():
                 console.print(
                     f"\n[bold]Daily Inspiration:[/bold]\n[italic]{quote}[/italic]"
                 )
