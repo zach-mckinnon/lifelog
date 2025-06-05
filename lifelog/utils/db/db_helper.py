@@ -3,28 +3,29 @@ import sqlite3
 import requests
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from lifelog.config.config_manager import get_config, get_deployment_mode_and_url
+from typing import Any, Dict, List, Optional, Tuple
+from lifelog.config.config_manager import get_deployment_mode_and_url, get_config, load_config
 
 # Database paths
 LOCAL_DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
 SYNC_QUEUE_PATH = Path.home() / ".lifelog" / "sync_queue.db"
 
 
-def get_deployment_mode() -> str:
-    """Returns current deployment mode: 'local', 'server', or 'client'"""
-    mode, _ = get_deployment_mode_and_url()
-    return mode
+def get_mode() -> Tuple[str, str]:
+    """Returns (mode, server_url)"""
+    return get_deployment_mode_and_url()
 
 
 def is_direct_db_mode() -> bool:
-    """Check if we should write directly to DB"""
-    return get_deployment_mode() in ['local', 'server']
+    """Check if we should write directly to DB (standalone or host)"""
+    mode, _ = get_mode()
+    return mode in ['local', 'server']
 
 
 def should_sync() -> bool:
-    """Check if we need to sync with host"""
-    return get_deployment_mode() == 'client'
+    """Check if we need to sync with host (client mode)"""
+    mode, _ = get_mode()
+    return mode == 'client'
 
 
 def direct_db_execute(query: str, params: tuple = ()) -> sqlite3.Cursor:
@@ -32,7 +33,7 @@ def direct_db_execute(query: str, params: tuple = ()) -> sqlite3.Cursor:
     if not is_direct_db_mode():
         raise RuntimeError("Direct DB access not allowed in client mode")
 
-    conn = sqlite3.connect(LOCAL_DB_PATH)
+    conn = sqlite3.connect(str(LOCAL_DB_PATH))
     cursor = conn.cursor()
     cursor.execute(query, params)
     conn.commit()
@@ -44,7 +45,7 @@ def queue_sync_operation(table: str, operation: str, data: Dict[str, Any]):
     if not should_sync():
         return
 
-    conn = sqlite3.connect(SYNC_QUEUE_PATH)
+    conn = sqlite3.connect(str(SYNC_QUEUE_PATH))
     conn.execute(
         "CREATE TABLE IF NOT EXISTS sync_queue "
         "(id INTEGER PRIMARY KEY, table_name TEXT, operation TEXT, data TEXT, created_at TEXT)"
@@ -63,8 +64,14 @@ def process_sync_queue():
     if not should_sync():
         return
 
-    _, server_url = get_deployment_mode_and_url()
-    conn = sqlite3.connect(SYNC_QUEUE_PATH)
+    _, server_url = get_mode()
+    config = load_config()
+    api_key = config.get('api', {}).get('key', '')
+
+    if not api_key:
+        return
+
+    conn = sqlite3.connect(str(SYNC_QUEUE_PATH))
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM sync_queue ORDER BY created_at ASC")
     queue = cursor.fetchall()
@@ -79,54 +86,57 @@ def process_sync_queue():
                     'operation': operation,
                     'data': json.loads(data)
                 },
-                headers={'X-API-Key': get_config()['api']['key']}
+                headers={'X-API-Key': api_key}
             )
 
             if response.status_code == 200:
                 # Remove successful sync
                 conn.execute("DELETE FROM sync_queue WHERE id = ?", (id,))
                 conn.commit()
-        except Exception:
-            # Retry later
-            pass
+        except Exception as e:
+            # Log error and retry later
+            print(f"Sync error: {e}")
 
     conn.close()
 
-# Example usage in repositories:
+
+def auto_sync():
+    if should_sync():
+        process_sync_queue()
 
 
-def create_task(task_data: Dict) -> Dict:
-    if is_direct_db_mode():
-        # Direct write to DB
-        cursor = direct_db_execute(
-            "INSERT INTO tasks (...) VALUES (...) RETURNING *",
-            (task_data.values())
+def get_local_db_connection() -> sqlite3.Connection:
+    """Get connection to local DB (works for all modes)"""
+    return sqlite3.connect(str(LOCAL_DB_PATH))
+
+
+def get_sync_queue_connection() -> sqlite3.Connection:
+    """Get connection to sync queue DB"""
+    return sqlite3.connect(str(SYNC_QUEUE_PATH))
+
+
+def fetch_from_server(endpoint: str, params: Dict = None) -> List[Dict]:
+    """Fetch data from server in client mode"""
+    if not should_sync():
+        return []
+
+    _, server_url = get_mode()
+    config = load_config()
+    api_key = config.get('api', {}).get('key', '')
+
+    if not api_key:
+        return []
+
+    try:
+        response = requests.get(
+            f"{server_url}/{endpoint}",
+            params=params,
+            headers={'X-API-Key': api_key}
         )
-        return cursor.fetchone()
-    else:
-        # Client mode: write to local cache and queue sync
-        local_cursor = direct_db_execute(
-            "INSERT INTO tasks (...) VALUES (...) RETURNING *",
-            (task_data.values())
-        )
-        result = local_cursor.fetchone()
 
-        # Queue sync operation
-        queue_sync_operation('tasks', 'create', task_data)
-        return result
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"Fetch error: {e}")
 
-
-def update_task(task_id: int, updates: Dict):
-    if is_direct_db_mode():
-        # Direct update
-        direct_db_execute(
-            "UPDATE tasks SET ... WHERE id = ?",
-            (updates.values(), task_id)
-        )
-    else:
-        # Client mode: local update + queue sync
-        direct_db_execute(
-            "UPDATE tasks SET ... WHERE id = ?",
-            (updates.values(), task_id)
-        )
-        queue_sync_operation('tasks', 'update', {'id': task_id, **updates})
+    return []

@@ -49,6 +49,7 @@ def initialize_schema():
         cursor.executescript("""          
         CREATE TABLE IF NOT EXISTS trackers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT UNIQUE,
             title TEXT,
             type TEXT,
             category TEXT,
@@ -57,6 +58,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT UNIQUE,
             title TEXT,
             project TEXT,
             category TEXT,
@@ -78,6 +80,7 @@ def initialize_schema():
         
         CREATE TABLE IF NOT EXISTS goals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT UNIQUE,
             tracker_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             kind TEXT NOT NULL, -- redundant but useful for quick joins or debugging
@@ -158,6 +161,7 @@ def initialize_schema():
             
         CREATE TABLE IF NOT EXISTS task_tracking (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT UNIQUE,
             task_id INTEGER,
             start DATETIME,
             end DATETIME,
@@ -178,6 +182,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS time_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT UNIQUE,
             title TEXT NOT NULL,               
             start DATETIME NOT NULL,
             end DATETIME,                     
@@ -192,6 +197,7 @@ def initialize_schema():
         );
 
         CREATE TABLE IF NOT EXISTS environment_data (
+            uid TEXT UNIQUE,
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME,
             weather TEXT,
@@ -212,6 +218,7 @@ def initialize_schema():
         
         CREATE TABLE IF NOT EXISTS first_command_flags (
             id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            uid TEXT UNIQUE,
             last_executed DATE
         );
         

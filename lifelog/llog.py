@@ -502,6 +502,14 @@ def start_api(
     app.run(host=host, port=port, debug=debug)
 
 
+@app.command("sync")
+def sync_command():
+    """Sync pending changes with the server (client mode only)"""
+    from lifelog.utils.db import process_sync_queue
+    process_sync_queue()
+    console.print("[green]Sync completed![/green]")
+
+
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     ensure_app_initialized()

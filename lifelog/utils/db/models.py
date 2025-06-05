@@ -13,7 +13,8 @@ from typing import Optional
 
 @dataclass
 class Task:
-    id: int = None  # Optional for new tasks
+    id: int = None
+    uid: str = None
     title: str = ""
     project: Optional[str] = None
     category: Optional[str] = None
@@ -59,6 +60,7 @@ def task_from_row(row):
 @dataclass
 class TimeLog:
     id: int = None
+    uid: str = None
     title: str = ""
     start: datetime = None
     end: Optional[datetime] = None
@@ -93,6 +95,7 @@ def time_log_from_row(row):
 @dataclass
 class Tracker:
     id: Optional[int]
+    uid: str = None
     title: str
     type: str
     category: Optional[str]
@@ -105,6 +108,7 @@ class Tracker:
 @dataclass
 class TrackerEntry(BaseModel):
     id: int
+    uid: str = None
     tracker_id: int
     timestamp: str
     value: float
@@ -112,7 +116,8 @@ class TrackerEntry(BaseModel):
 
 @dataclass
 class GoalBase:
-    id: Optional[int]  # Primary key (from the 'goals' table)
+    id: Optional[int]
+    uid: str = None  # Primary key (from the 'goals' table)
     tracker_id: int    # FK to Tracker
     title: str
     kind: str          # sum, count, bool, streak, etc.

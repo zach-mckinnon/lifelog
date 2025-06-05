@@ -1,15 +1,20 @@
 import curses
 import os
 from pathlib import Path
+import platform
+import shutil
+import sys
 import requests
 from rich.console import Console
 from rich.panel import Panel
+from tomlkit import table
 import typer
 import secrets
 import string
 
+from config.schedule_manager import apply_scheduled_jobs
 from lifelog.utils.encrypt import encrypt_data, setup_encryption
-
+import lifelog.config.config_manager as cf
 
 console = Console()
 
@@ -123,6 +128,97 @@ def show_welcome(stdscr=None):
             style="green"
         ))
         typer.confirm("Press Enter to continue", default=True)
+
+
+def setup_scheduled_tasks(config: dict):
+    """
+    Prompt user for times (recur_auto and env_sync), then write absolute paths
+    into config.toml under [cron.recur_auto] and [cron.env_sync], and install jobs.
+    """
+    # 1. Find the absolute path to the `llog` executable/script:
+    llog_cmd = shutil.which("llog")
+    if not llog_cmd:
+        llog_cmd = os.path.abspath(sys.argv[0])
+
+    # 2. Load or create the [cron] section of config.toml
+    doc = cf.load_config()
+    cron_section = doc.get("cron", table())
+
+    # 3. If recur_auto isn’t defined yet, ask the user and write it:
+    if "recur_auto" not in cron_section:
+        console.print(
+            "[bold blue]⏰ When do you want recurring tasks to run? (HH:MM)[/bold blue]")
+        while True:
+            user_time = typer.prompt("Recur‐auto time", default="04:00")
+            try:
+                h, m = user_time.split(":")
+                hour = int(h)
+                minute = int(m)
+                if 0 <= hour < 24 and 0 <= minute < 60:
+                    break
+            except:
+                pass
+            console.print(
+                "[red]Invalid time. Enter in 24h format, e.g. 04:00.[/red]")
+
+        cron_expr_recur = f"{minute} {hour} * * *"
+        cron_section["recur_auto"] = {
+            "schedule": cron_expr_recur,
+            "command": f"{llog_cmd} task auto_recur"
+        }
+        console.print(
+            f"[green]✅ recur_auto scheduled at {hour:02d}:{minute:02d} daily[/green]")
+    else:
+        console.print(
+            "[yellow]⚡ recur_auto already set—skipping creation[/yellow]")
+
+    # 4. If env_sync isn’t defined yet, ask the user and write it:
+    if "env_sync" not in cron_section:
+        console.print(
+            "[bold blue]⏰ When do you want env sync to run? (HH:MM every N hours)[/bold blue]")
+        console.print(
+            "[dim]Example: 02:00 to start at 2 AM, then every 4 hours[/dim]")
+        while True:
+            sync_time = typer.prompt("Env-sync start time", default="02:00")
+            try:
+                h, m = sync_time.split(":")
+                shour = int(h)
+                sminute = int(m)
+                if 0 <= shour < 24 and 0 <= sminute < 60:
+                    break
+            except:
+                pass
+            console.print("[red]Invalid time. Enter HH:MM, e.g. 02:00.[/red]")
+
+        # Let’s assume env_sync should run every 4 hours starting at `sync_time`.
+        # Cron expression: “minute hour/4 * * *”
+        cron_expr_env = f"{sminute} */4 * * *"
+        cron_section["env_sync"] = {
+            "schedule": cron_expr_env,
+            "command": f"{llog_cmd} env sync-all"
+        }
+        console.print(
+            f"[green]✅ env_sync scheduled at {shour:02d}:{sminute:02d}, every 4 hours[/green]")
+    else:
+        console.print(
+            "[yellow]⚡ env_sync already set—skipping creation[/yellow]")
+
+    # 5. Save the updated config.toml
+    doc["cron"] = cron_section
+    cf.save_config(doc)
+
+    # 6. Finally, install into the OS scheduler (cron or Windows Task Scheduler)
+    system = platform.system()
+    if system == "Windows":
+        console.print("[cyan]Setting up Windows Scheduled Tasks...[/cyan]")
+    else:
+        console.print("[cyan]Updating root crontab...[/cyan]")
+
+    try:
+        apply_scheduled_jobs()
+        console.print("[green]✅ Scheduled jobs applied.[/green]")
+    except Exception as e:
+        console.print(f"[red]❌ Failed to apply scheduled jobs: {e}[/red]")
 
 
 def setup_location(config):
