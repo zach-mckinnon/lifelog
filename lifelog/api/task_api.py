@@ -1,7 +1,7 @@
 # api/task_api.py
 from flask import request, jsonify, Blueprint
 from lifelog.utils.db import task_repository
-from api.auth import require_api_key
+from lifelog.api.auth import require_api_key
 
 tasks_bp = Blueprint('tasks', __name__, url_prefix='/tasks')
 

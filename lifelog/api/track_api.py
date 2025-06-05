@@ -1,7 +1,7 @@
 # api/track_api.py
 from flask import request, jsonify, Blueprint
 from lifelog.utils.db import track_repository
-from api.auth import require_api_key
+from lifelog.api.auth import require_api_key
 
 trackers_bp = Blueprint('trackers', __name__, url_prefix='/trackers')
 
