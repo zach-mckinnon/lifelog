@@ -2,8 +2,6 @@
 from rich.console import Console
 import typer
 
-import lifelog.app as app
-
 
 sync_app = typer.Typer(help="Synchronization commands")
 console = Console()
@@ -23,7 +21,3 @@ def sync_from_server():
     console.print("[green]Fetching data from server...[/green]")
     # Implementation would go here
     console.print("[green]✓ Sync complete![/green]")
-
-
-# Add to main app
-app.add_typer(sync_app, name="sync", help="Data synchronization commands")

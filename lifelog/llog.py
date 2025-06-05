@@ -27,6 +27,7 @@ from rich.table import Table
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
     help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
+
 console = Console()
 
 # -------------------------------------------------------------------
@@ -40,6 +41,7 @@ sync_app.command()(environmental_sync.weather)
 sync_app.command()(environmental_sync.air)
 sync_app.command()(environmental_sync.moon)
 sync_app.command()(environmental_sync.satellite)
+
 app.add_typer(sync_app, name="sync", help="Fetch external environmental data")
 
 # Register all modules
