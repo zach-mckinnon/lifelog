@@ -7,7 +7,9 @@ This CLI allows users to log their daily activities, manage tasks, and sync envi
 '''
 import curses
 from datetime import datetime
+from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 from typing import Annotated
 import typer
@@ -33,7 +35,7 @@ console = Console()
 # -------------------------------------------------------------------
 # Core Initialization System
 # -------------------------------------------------------------------
-
+DOCKER_DIR = Path.home() / ".lifelog" / "docker"
 
 # Ensure the app is initialized
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
@@ -101,25 +103,54 @@ def initialize_application():
         sys.exit(1)
 
 
-@app.command("ui")
-def ui(
-    status_bar: Annotated[bool, typer.Option(
-        "--no-help", help="Disable the help bar.")] = False
-):
-    """Launch the full-screen Lifelog TUI"""
-    config = cf.load_config()
+def ensure_app_initialized():
+    """Run setup wizard on first run, never block setup command itself."""
+    try:
+        cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
+        if not database_manager.is_initialized():
+            database_manager.initialize_schema()
 
-    # Block UI if setup not complete
-    if not config.get("meta", {}).get("first_run_complete", False):
-        console.print(Panel(
-            "[bold red]Setup Required[/bold red]\n"
-            "Please complete initial setup before using the UI\n\n"
-            "Run: [bold]llog setup[/bold] in your terminal",
-            style="red"
-        ))
+        config = cf.load_config()
+        if "meta" not in config:
+            config["meta"] = {}
+        if not config["meta"].get("first_run_complete", False):
+            # Only auto-launch the wizard if the command isn't 'setup', 'help', or Typer built-ins
+            is_setup_cmd = any(x in sys.argv for x in [
+                               "setup", "--help", "-h", "help", "config-edit"])
+            if not is_setup_cmd:
+                # Interactive setup on first run for any user command
+                console.print(Panel(
+                    "[bold yellow]Welcome! Lifelog needs initial setup.[/bold yellow]\n"
+                    "You'll only do this once.",
+                    style="yellow"
+                ))
+                config = run_wizard(config)
+                cf.save_config(config)
+                console.print("[green]✓ Setup completed![/green]")
+            elif "setup" in sys.argv:
+                # Let setup command itself run as normal (don't block)
+                pass
+            else:
+                # For help and others, just skip wizard
+                pass
+        return config
+    except Exception as e:
+        console.print(f"[red]⚠️ Initialization error: {e}[/red]")
         sys.exit(1)
 
-    curses.wrapper(ui_main, status_bar)
+
+@app.command("ui")
+def ui(
+    no_help: Annotated[bool, typer.Option(
+        "--no-help", is_flag=True, help="Disable the help bar.")] = False
+):
+    """
+    Launch the full-screen Lifelog TUI
+    """
+    ensure_app_initialized()
+    # By default, status bar is ON, unless user gives --no-help
+    show_status = not no_help
+    curses.wrapper(ui_main, show_status)
 
 
 @app.command("setup")
@@ -402,7 +433,54 @@ def save_first_command_flag(date_str: str):
     except sqlite3.Error as e:
         console.print(f"[red]⚠️ Failed to save command flag: {e}[/red]")
 
-# Add to llog.py
+
+@app.command("docker")
+def docker_cmd(
+    action: Annotated[str, typer.Argument(
+        help="Action: up, down, restart, logs")] = "up"
+):
+    """
+    Manage Lifelog Docker deployment. Actions: up, down, restart, logs.
+    """
+
+    compose_file = DOCKER_DIR / "docker-compose.yml"
+    docker_cmd = cf.find_docker_compose_cmd()
+    if not docker_cmd:
+        console.print(
+            "[red]Neither 'docker compose' nor 'docker-compose' is available on your PATH.[/red]\n"
+            "Please install Docker and Docker Compose first."
+        )
+        raise typer.Exit(1)
+    if not compose_file.exists():
+        console.print(
+            f"[red]No docker-compose.yml found at {compose_file}.[/red]")
+        console.print(
+            "[yellow]You must run setup and create Docker files first.[/yellow]")
+        raise typer.Exit(1)
+    if not cf.is_docker_running():
+        console.print(
+            "[red]Docker engine is not running.[/red]\n"
+            "Please start Docker Desktop (or your Docker daemon) before using this command."
+        )
+        raise typer.Exit(1)
+    # Build docker command
+    docker_args = docker_cmd + ["-f", str(compose_file)]
+    if action == "up":
+        docker_args += ["up", "-d", "--build"]
+    elif action == "down":
+        docker_args += ["down"]
+    elif action == "restart":
+        docker_args += ["restart"]
+    elif action == "logs":
+        docker_args += ["logs", "-f"]
+    else:
+        console.print(
+            "[red]Unknown action. Use up, down, restart, logs.[/red]")
+        raise typer.Exit(1)
+
+    # Run the docker command
+    console.print(f"[blue]Running: {' '.join(docker_args)}[/blue]")
+    subprocess.run(docker_args, cwd=str(DOCKER_DIR))
 
 
 @app.command("api-start")
@@ -426,9 +504,7 @@ def start_api(
 
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
-    """Global initialization and command routing"""
-    initialize_application()
-
+    ensure_app_initialized()
     if ctx.invoked_subcommand is None:
         help_command()
 

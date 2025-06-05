@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from config.config_manager import get_deployment_mode_and_url
 from lifelog.utils.db.models import Task, get_task_fields, task_from_row
 from lifelog.utils.db.database_manager import get_connection, add_record, update_record
 from datetime import datetime
@@ -30,6 +31,7 @@ def add_task(task_data):
     """
     Accepts dict or Task object, handles dataclass conversion, and fills in defaults.
     """
+    mode, server_url = get_deployment_mode_and_url()
     if isinstance(task_data, Task):
         data = asdict(task_data)
     else:

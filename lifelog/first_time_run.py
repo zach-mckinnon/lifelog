@@ -34,6 +34,21 @@ LOGO_MEDIUM = [
 LOGO_SMALL = ["L I F E L O G"]
 
 
+def run_wizard(config):
+    """Main wizard sequence"""
+    show_welcome()
+    setup_location(config)
+    setup_deployment(config)
+    setup_ai(config)
+    if config["deployment"].get("host_server", False):
+        setup_api(config)
+    show_tutorial()
+
+    # Add first-run marker
+    config["meta"]["first_run_complete"] = True
+    return config
+
+
 def show_welcome(stdscr=None):
     """Universal welcome screen that works for both CLI and TUI"""
     if stdscr:  # TUI mode (curses)
@@ -303,44 +318,52 @@ def setup_deployment(config):
     ))
 
     console.print(
-        "1. [green]Standalone[/green]: Everything runs on this device")
+        "1. [green]Local-only[/green]: All data stays on this device")
     console.print(
-        "2. [blue]Client-Server[/blue]: API server runs elsewhere, this device syncs data")
+        "2. [cyan]Server/Host[/cyan]: This device will host the API server")
+    console.print("3. [yellow]Client[/yellow]: Connect to an existing server")
 
-    choice = typer.prompt("Select deployment mode (1-2)", type=int)
+    choice = typer.prompt("Select deployment mode (1-3)", type=int)
 
     if choice == 1:
         config["deployment"] = {
-            "mode": "standalone",
-            "server_url": "http://localhost:5000"
+            "mode": "local",
+            "server_url": None,
+            "host_server": False
         }
-        console.print("[green]✓ Standalone mode selected[/green]")
+        console.print("[green]✓ Local-only mode selected[/green]")
+
     elif choice == 2:
+        config["deployment"] = {
+            "mode": "server",
+            "server_url": "http://localhost:5000",
+            "host_server": True
+        }
+        console.print("[cyan]✓ Server/Host mode selected[/cyan]")
+
+    elif choice == 3:
         server_url = typer.prompt(
             "Enter server URL (e.g., http://192.168.1.100:5000)")
         config["deployment"] = {
             "mode": "client",
-            "server_url": server_url
+            "server_url": server_url,
+            "host_server": False
         }
         console.print(
-            f"[green]✓ Client mode selected. Server: {server_url}[/green]")
+            f"[yellow]✓ Client mode selected. Server: {server_url}[/yellow]")
+
     else:
-        console.print("[red]Invalid choice. Using standalone mode.[/red]")
+        console.print(
+            "[red]Invalid choice. Defaulting to Local-only mode.[/red]")
         config["deployment"] = {
-            "mode": "standalone",
-            "server_url": "http://localhost:5000"
+            "mode": "local",
+            "server_url": None,
+            "host_server": False
         }
 
-    # Ask about hosting if they chose standalone
-    if config["deployment"]["mode"] == "standalone":
-        if typer.confirm("\nDo you want to host the API server on this device?", default=True):
-            config["deployment"]["host_server"] = True
-            console.print(
-                "[green]✓ This device will host the API server[/green]")
-        else:
-            config["deployment"]["host_server"] = False
-            console.print(
-                "[yellow]⚠️ API server will not run on this device[/yellow]")
+    # If hosting the server, proceed with API setup
+    if config["deployment"]["host_server"]:
+        setup_api(config)
 
 
 def show_tutorial():
@@ -365,18 +388,3 @@ def show_tutorial():
     console.print("3. Add a task: [cyan]llog task add 'Write report'[/cyan]")
 
     typer.confirm("\nPress Enter to finish setup", default=True)
-
-
-def run_wizard(config):
-    """Main wizard sequence"""
-    show_welcome()
-    setup_location(config)
-    setup_deployment(config)
-    setup_ai(config)
-    if config["deployment"].get("host_server", False):
-        setup_api(config)
-    show_tutorial()
-
-    # Add first-run marker
-    config["meta"]["first_run_complete"] = True
-    return config

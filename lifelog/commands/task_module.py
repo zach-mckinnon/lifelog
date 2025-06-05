@@ -884,9 +884,6 @@ def clone_task_for_db(task, now):
     )
 
 
-# Load the task from the json file storing them.
-
-
 def get_due_color(due_str: str, now: datetime) -> str:
     """
     Returns a color string based on how close the due time is to 'now'.

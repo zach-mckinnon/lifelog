@@ -5,6 +5,7 @@ config_manager.py - Configuration management for lifelog
 from importlib.resources import files
 import os
 from pathlib import Path
+import subprocess
 from typing import Any, Dict, Optional
 import toml
 from rich.console import Console
@@ -40,9 +41,56 @@ def save_config(doc: dict):
         f.write(toml.dumps(doc))
 
 
+def get_deployment_mode_and_url():
+    config = load_config()
+    deployment = config.get("deployment", {})
+    mode = deployment.get("mode", "standalone")
+    server_url = deployment.get("server_url", "http://localhost:5000")
+    return mode, server_url
+
+
 def get_config_value(section: str, key: str, default=None) -> Any:
     config = load_config()
     return config.get(section, {}).get(key, default)
+
+
+def get_deployment_mode() -> str:
+    config = load_config()
+    return config.get("deployment", {}).get("mode", "local")
+
+
+def get_server_url() -> str:
+    config = load_config()
+    return config.get("deployment", {}).get("server_url", "")
+
+
+def is_host_server() -> bool:
+    config = load_config()
+    return config.get("deployment", {}).get("host_server", False)
+
+
+def set_deployment_mode(mode):
+    set_config_value("deployment", "mode", mode)
+
+
+def find_docker_compose_cmd():
+    import shutil
+    # Try 'docker compose' (newer) and 'docker-compose' (legacy)
+    if shutil.which("docker-compose"):
+        return ["docker-compose"]
+    if shutil.which("docker") and subprocess.run(["docker", "compose", "version"], capture_output=True).returncode == 0:
+        return ["docker", "compose"]
+    return None
+
+
+def is_docker_running():
+    try:
+        result = subprocess.run(
+            ["docker", "info"], capture_output=True, text=True, timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def get_category_importance(category: str) -> float:
