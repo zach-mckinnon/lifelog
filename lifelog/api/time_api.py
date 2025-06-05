@@ -1,7 +1,7 @@
 # api/time_api.py
 from flask import request, jsonify, Blueprint
 from lifelog.utils.db import time_repository
-from api.auth import require_api_key
+from lifelog.api.auth import require_api_key
 
 time_bp = Blueprint('time', __name__, url_prefix='/time')
 
