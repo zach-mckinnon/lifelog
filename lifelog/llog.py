@@ -51,6 +51,7 @@ app.add_typer(task_module.app, name="task",
               help="Create, track, and complete actionable tasks.")
 app.add_typer(report.app, name="report",
               help="View detailed reports and insights.")
+app.add_typer(sync_app, name="sync", help="Data synchronization commands")
 # app.add_typer(environmental_sync.app, name="env",
 #               help="Sync and view environmental data.")
 
@@ -74,12 +75,20 @@ def initialize_application():
         config = cf.load_config()
         console.print("[dim]• Configuration loaded[/dim]")
 
-        # 4. Run first-time wizard if needed
-        if not config.get("meta", {}).get("first_run_complete", False):
-            config = run_wizard(config)
-            cf.save_config(config)
+        # 4. Skip wizard for UI command - handled separately
+        if "ui" in sys.argv:
+            return True
 
-        # 5. Check for first command of the day
+        # 5. Run first-time wizard if needed
+        if not config.get("meta", {}).get("first_run_complete", False):
+            console.print(Panel(
+                "[bold yellow]Initial Setup Required[/bold yellow]\n"
+                "Please run: [bold cyan]llog setup[/bold cyan] to configure Lifelog",
+                style="yellow"
+            ))
+            sys.exit(1)
+
+        # 6. Check for first command of the day
         if check_first_command_of_day():
             greet_user()
             save_first_command_flag(str(datetime.now().date()))
@@ -96,7 +105,46 @@ def ui(
         "--no-help", help="Disable the help bar.")] = False
 ):
     """Launch the full-screen Lifelog TUI"""
+    config = cf.load_config()
+
+    # Block UI if setup not complete
+    if not config.get("meta", {}).get("first_run_complete", False):
+        console.print(Panel(
+            "[bold red]Setup Required[/bold red]\n"
+            "Please complete initial setup before using the UI\n\n"
+            "Run: [bold]llog setup[/bold] in your terminal",
+            style="red"
+        ))
+        sys.exit(1)
+
     curses.wrapper(ui_main, status_bar)
+
+
+@app.command("setup")
+def setup_command():
+    """Run initial setup wizard"""
+    try:
+        # Ensure base directory exists
+        cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Load or create config
+        config = cf.load_config()
+
+        # Run wizard if not complete
+        if not config.get("meta", {}).get("first_run_complete", False):
+            config = run_wizard(config)
+            cf.save_config(config)
+            console.print("[green]✓ Setup completed successfully![/green]")
+        else:
+            if typer.confirm("Setup already completed. Run again?", default=False):
+                config = run_wizard(config)
+                cf.save_config(config)
+                console.print("[green]✓ Setup re-configured![/green]")
+            else:
+                console.print("[yellow]Setup aborted[/yellow]")
+    except Exception as e:
+        console.print(f"[red]⚠️ Setup failed: {e}[/red]")
+        sys.exit(1)
 
 
 @app.command("help")
@@ -272,6 +320,12 @@ def get_time_of_day():
 
 def greet_user():
     """Greet user with daily quote"""
+    config = cf.load_config()
+
+    # Skip banner in UI mode
+    if "curses" in sys.modules:
+        return
+
     try:
         # Show daily banner
         console.print(Panel(

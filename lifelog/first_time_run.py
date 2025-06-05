@@ -294,6 +294,55 @@ services:
     print("\nTo build and run:\n  cd docker && docker-compose up -d --build\n")
 
 
+def setup_deployment(config):
+    """Guide user through deployment mode selection"""
+    console.print(Panel(
+        "[bold]🏢 Deployment Setup[/bold]\n"
+        "Choose how you want to run Lifelog",
+        style="blue"
+    ))
+
+    console.print(
+        "1. [green]Standalone[/green]: Everything runs on this device")
+    console.print(
+        "2. [blue]Client-Server[/blue]: API server runs elsewhere, this device syncs data")
+
+    choice = typer.prompt("Select deployment mode (1-2)", type=int)
+
+    if choice == 1:
+        config["deployment"] = {
+            "mode": "standalone",
+            "server_url": "http://localhost:5000"
+        }
+        console.print("[green]✓ Standalone mode selected[/green]")
+    elif choice == 2:
+        server_url = typer.prompt(
+            "Enter server URL (e.g., http://192.168.1.100:5000)")
+        config["deployment"] = {
+            "mode": "client",
+            "server_url": server_url
+        }
+        console.print(
+            f"[green]✓ Client mode selected. Server: {server_url}[/green]")
+    else:
+        console.print("[red]Invalid choice. Using standalone mode.[/red]")
+        config["deployment"] = {
+            "mode": "standalone",
+            "server_url": "http://localhost:5000"
+        }
+
+    # Ask about hosting if they chose standalone
+    if config["deployment"]["mode"] == "standalone":
+        if typer.confirm("\nDo you want to host the API server on this device?", default=True):
+            config["deployment"]["host_server"] = True
+            console.print(
+                "[green]✓ This device will host the API server[/green]")
+        else:
+            config["deployment"]["host_server"] = False
+            console.print(
+                "[yellow]⚠️ API server will not run on this device[/yellow]")
+
+
 def show_tutorial():
     """Show quick start tutorial"""
     console.print(Panel(
@@ -322,8 +371,10 @@ def run_wizard(config):
     """Main wizard sequence"""
     show_welcome()
     setup_location(config)
+    setup_deployment(config)
     setup_ai(config)
-    setup_api(config)
+    if config["deployment"].get("host_server", False):
+        setup_api(config)
     show_tutorial()
 
     # Add first-run marker
