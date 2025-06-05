@@ -1,9 +1,9 @@
 # app.py
 from flask import Flask
-from api.task_api import tasks_bp
-from api.time_api import time_bp
-from api.track_api import trackers_bp
-from api.errors import register_error_handlers
+from lifelog.api.task_api import tasks_bp
+from lifelog.api.time_api import time_bp
+from lifelog.api.track_api import trackers_bp
+from lifelog.api.errors import register_error_handlers
 
 app = Flask(__name__)
 
