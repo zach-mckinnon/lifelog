@@ -222,6 +222,11 @@ def initialize_schema():
             last_executed DATE
         );
         
+        CREATE TABLE IF NOT EXISTS sync_state (
+            table_name TEXT PRIMARY KEY,
+            last_synced_at TEXT  -- ISO‐8601 timestamp of last successful pull
+        );
+        
         """)
         cursor.executescript("""
             CREATE INDEX IF NOT EXISTS idx_tracker_entries_tracker_id ON tracker_entries(tracker_id);

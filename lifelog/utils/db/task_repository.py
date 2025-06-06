@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from typing import Any, Dict
 import uuid
 from lifelog.config.config_manager import is_host_server
 from lifelog.utils.db.models import Task, get_task_fields, task_from_row
@@ -11,7 +12,7 @@ from lifelog.utils.db import (
     should_sync,
     queue_sync_operation,
 )
-from lifelog.utils.db.db_helper import fetch_from_server, process_sync_queue
+from lifelog.utils.db.db_helper import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced
 
 
 def get_all_tasks():
@@ -22,10 +23,7 @@ def get_all_tasks():
     # 1. If client‐mode, pull remote tasks before returning
     if should_sync():
         # Fetch all remote tasks (no filters)
-        process_sync_queue()
-        remote_list = fetch_from_server("tasks", params={})
-        for remote_item in remote_list:
-            upsert_local_task(remote_item)
+        _pull_changed_tasks_from_host()
 
     # 2. Now run the local SELECT
     conn = get_connection()
@@ -38,6 +36,32 @@ def get_all_tasks():
     return [task_from_row(dict(row)) for row in rows]
 
 
+def _pull_changed_tasks_from_host() -> None:
+    """
+    If we are in client mode, fetch only tasks changed on the host since last sync,
+    upsert them locally, and update sync_state.
+    """
+    if not should_sync():
+        return
+
+    # 1) Push any pending local changes first
+    process_sync_queue()
+
+    # 2) Ask the host for only the tasks changed since `last_synced_at`
+    last_ts = get_last_synced("tasks")  # e.g. "2025-06-03T22:15:00"
+    params: Dict[str, Any] = {}
+    if last_ts:
+        params["since"] = last_ts
+
+    remote_list = fetch_from_server("tasks", params=params)
+    for remote in remote_list:
+        upsert_local_task(remote)
+
+    # 3) Update our last‐sync time to right now (UTC ISO format)
+    now_iso = datetime.utcnow().isoformat()
+    set_last_synced("tasks", now_iso)
+
+
 def get_task_by_id(task_id):
     """
     Return a single task by numeric ID from the local DB.
@@ -47,7 +71,7 @@ def get_task_by_id(task_id):
     """
     # 1) If client mode, push queued changes first
     if should_sync():
-        process_sync_queue()
+        _pull_changed_tasks_from_host()
 
         # 2) Look up the task’s UID locally, so we can fetch the latest from host
         conn_tmp = get_connection()
@@ -257,23 +281,7 @@ def query_tasks(
     if is_direct_db_mode() or should_sync():
         # —––––––––––— Step A: In client mode, “pull” new/updated rows from the host first —––––––––––—
         if should_sync():
-            params = {
-                "title_contains": title_contains,
-                "category": category,
-                "project": project,
-                "importance": importance,
-                "due_contains": due_contains,
-                "status": status,
-                "show_completed": "true" if show_completed else "false",
-                "sort": sort
-            }
-            params.update(kwargs)
-            params = {k: v for k, v in params.items() if v is not None}
-
-            remote_list = fetch_from_server("tasks", params=params)
-            for remote_item in remote_list:
-                upsert_local_task(remote_item)
-        # —––––––––––— End Pull —––––––––––—
+            _pull_changed_tasks_from_host()
 
         # —––––––––––— Step B: Now run the local SELECT exactly as before —––––––––––—
         query = "SELECT * FROM tasks WHERE 1=1"

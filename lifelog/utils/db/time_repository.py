@@ -5,7 +5,9 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from lifelog.utils.db.db_helper import (
+    get_last_synced,
     is_direct_db_mode,
+    set_last_synced,
     should_sync,
     queue_sync_operation,
     process_sync_queue,
@@ -13,6 +15,33 @@ from lifelog.utils.db.db_helper import (
 )
 from lifelog.utils.db.database_manager import get_connection, add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as time_fields
+
+
+def _pull_changed_time_logs_from_host() -> None:
+    """
+    If in client mode, fetch only the time-history rows changed on the host
+    since our last sync, upsert them locally, and update sync_state.
+    """
+    if not should_sync():
+        return
+
+    # 1) Push any queued local changes first
+    process_sync_queue()
+
+    # 2) Read our last‐sync timestamp for "time_history"
+    last_ts = get_last_synced("time_history")
+    params: Dict[str, Any] = {}
+    if last_ts:
+        params["since"] = last_ts
+
+    # 3) Fetch all changed logs from host
+    remote_list = fetch_from_server("time/entries", params=params)
+    for remote in remote_list:
+        upsert_local_time_log(remote)
+
+    # 4) Update sync_state to now
+    now_iso = datetime.utcnow().isoformat()
+    set_last_synced("time_history", now_iso)
 
 
 def _get_all_time_field_names() -> List[str]:
@@ -68,12 +97,7 @@ def get_all_time_logs(since: Optional[str] = None) -> List[TimeLog]:
 
     # 1) If client‐mode, pull remote logs before returning
     if should_sync():
-        params: Dict[str, Any] = {}
-        if since:
-            params["since"] = since
-        remote_list = fetch_from_server("time/entries", params=params)
-        for remote_item in remote_list:
-            upsert_local_time_log(remote_item)
+        _pull_changed_time_logs_from_host()
 
     # 2) Now run the local SELECT
     conn = get_connection()
@@ -103,14 +127,7 @@ def get_time_log_by_uid(uid_val: str) -> Optional[TimeLog]:
     """
     # 1) (Client) push first, then pull that one record
     if should_sync():
-        # 1a) Push pending local changes
-        process_sync_queue()
-
-        # 1b) Fetch exactly that one TimeLog from host by uid
-        remote_list = fetch_from_server(
-            "time/entries", params={"uid": uid_val})
-        if remote_list:
-            upsert_local_time_log(remote_list[0])
+        _pull_changed_time_logs_from_host()
 
     # 2) Now select from local SQLite
     conn = get_connection()

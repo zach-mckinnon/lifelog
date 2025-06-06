@@ -1,7 +1,7 @@
 from flask import request, jsonify, Blueprint
 from lifelog.api.auth import require_api_key
 from lifelog.utils.db import task_repository, time_repository, track_repository
-from utils.db.database_manager import update_record
+from lifelog.utils.db.database_manager import update_record
 
 sync_bp = Blueprint('sync', __name__, url_prefix='/sync')
 

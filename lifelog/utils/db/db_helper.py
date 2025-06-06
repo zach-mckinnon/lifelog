@@ -4,7 +4,9 @@ import requests
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from lifelog.config.config_manager import get_deployment_mode_and_url, get_config, load_config
+from lifelog.config.config_manager import get_deployment_mode_and_url, load_config
+from lifelog.utils.db.database_manager import get_connection
+from lifelog.utils.db.task_repository import _pull_changed_tasks_from_host
 
 # Database paths
 LOCAL_DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
@@ -102,7 +104,7 @@ def process_sync_queue():
 
 def auto_sync():
     if should_sync():
-        process_sync_queue()
+        _pull_changed_tasks_from_host()
 
 
 def get_local_db_connection() -> sqlite3.Connection:
@@ -140,3 +142,43 @@ def fetch_from_server(endpoint: str, params: Dict = None) -> List[Dict]:
         print(f"Fetch error: {e}")
 
     return []
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Helpers for tracking the last‐sync timestamp per table
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+def get_last_synced(table_name: str) -> Optional[str]:
+    """
+    Return the ISO‐8601 timestamp (string) for when we last synced `table_name`.
+    If no entry exists, returns None.
+    """
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT last_synced_at FROM sync_state WHERE table_name = ?", (table_name,))
+    row = cur.fetchone()
+    conn.close()
+    return row["last_synced_at"] if row else None
+
+
+def set_last_synced(table_name: str, iso_ts: str) -> None:
+    """
+    Upsert `sync_state(table_name, last_synced_at = iso_ts)`.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    # Try an update first
+    cur.execute(
+        "UPDATE sync_state SET last_synced_at = ? WHERE table_name = ?",
+        (iso_ts, table_name)
+    )
+    if cur.rowcount == 0:
+        # no existing row → insert
+        cur.execute(
+            "INSERT INTO sync_state (table_name, last_synced_at) VALUES (?, ?)",
+            (table_name, iso_ts)
+        )
+    conn.commit()
+    conn.close()

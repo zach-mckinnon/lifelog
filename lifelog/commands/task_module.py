@@ -28,7 +28,7 @@ from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
 from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, parse_args, validate_task_inputs
 import lifelog.config.config_manager as cf
-from config.schedule_manager import apply_scheduled_jobs, save_config
+from lifelog.config.schedule_manager import apply_scheduled_jobs, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
 from lifelog.utils.get_quotes import get_motivational_quote
 

@@ -1,20 +1,13 @@
 # lifelog/models.py
+from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass, fields
 from pydantic import BaseModel
-from typing import Optional,  Union
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
-
-
-from dataclasses import dataclass, asdict, fields
-from datetime import datetime
-from typing import Optional
 
 
 @dataclass
 class Task:
     id: int = None
-    uid: str = None
     title: str = ""
     project: Optional[str] = None
     category: Optional[str] = None
@@ -31,6 +24,7 @@ class Task:
     recur_base: Optional[datetime] = None
     tags: Optional[str] = None
     notes: Optional[str] = None
+    uid: str = None
 
 
 def get_task_fields():
@@ -60,7 +54,6 @@ def task_from_row(row):
 @dataclass
 class TimeLog:
     id: int = None
-    uid: str = None
     title: str = ""
     start: datetime = None
     end: Optional[datetime] = None
@@ -71,6 +64,7 @@ class TimeLog:
     tags: Optional[str] = None
     notes: Optional[str] = None
     distracted_minutes: Optional[float] = 0
+    uid: str = None
 
 
 def time_log_from_row(row):
@@ -95,7 +89,6 @@ def time_log_from_row(row):
 @dataclass
 class Tracker:
     id: Optional[int]
-    uid: str = None
     title: str
     type: str
     category: Optional[str]
@@ -103,21 +96,21 @@ class Tracker:
     tags: Optional[str] = None
     notes: Optional[str] = None
     goals: Optional[list] = None
+    uid: str = None
 
 
 @dataclass
 class TrackerEntry(BaseModel):
     id: int
-    uid: str = None
     tracker_id: int
     timestamp: str
     value: float
+    uid: str = None
 
 
 @dataclass
 class GoalBase:
     id: Optional[int]
-    uid: str = None  # Primary key (from the 'goals' table)
     tracker_id: int    # FK to Tracker
     title: str
     kind: str          # sum, count, bool, streak, etc.
@@ -128,6 +121,7 @@ class GoalSum(GoalBase):
     amount: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
@@ -135,17 +129,20 @@ class GoalCount(GoalBase):
     amount: int
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
 class GoalBool(GoalBase):
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
 class GoalStreak(GoalBase):
     target_streak: int
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
@@ -153,6 +150,7 @@ class GoalDuration(GoalBase):
     amount: float
     unit: str = "minutes"
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
@@ -160,6 +158,7 @@ class GoalMilestone(GoalBase):
     target: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
@@ -167,6 +166,7 @@ class GoalReduction(GoalBase):
     amount: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
@@ -176,6 +176,7 @@ class GoalRange(GoalBase):
     unit: Optional[str] = None
     mode: str = "goal"  # could also be "tracker"
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
@@ -183,6 +184,7 @@ class GoalPercentage(GoalBase):
     target_percentage: float
     current_percentage: float = 0
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 @dataclass
@@ -190,12 +192,166 @@ class GoalReplacement(GoalBase):
     old_behavior: str
     new_behavior: str
     period: str = "day"  # day/week/month
+    uid: str = None
 
 
 Goal = Union[
     GoalSum, GoalCount, GoalBool, GoalStreak, GoalDuration, GoalMilestone,
     GoalReduction, GoalRange, GoalPercentage, GoalReplacement
 ]
+
+# lifelog/utils/db/models.py
+# (add these imports at the top of the file if they’re not already present)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 1) get_tracker_fields()
+#    Return a list of column names in the "trackers" table, excluding 'id'.
+#    We assume your SQLite schema is:
+#      CREATE TABLE IF NOT EXISTS trackers (
+#          id INTEGER PRIMARY KEY AUTOINCREMENT,
+#          uid TEXT UNIQUE,
+#          title TEXT,
+#          type TEXT,
+#          category TEXT,
+#          created DATETIME
+#      );
+#
+#    (If you have additional columns—e.g. 'tags' or 'notes'—you can add them here.)
+# ───────────────────────────────────────────────────────────────────────────────
+
+def get_tracker_fields() -> List[str]:
+    """
+    Return all Tracker‐table columns except 'id'.  
+    If your schema has: (id, uid, title, type, category, created),
+    this will return ['uid','title','type','category','created'].
+    """
+    return ["uid", "title", "type", "category", "created"]
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 2) get_goal_fields()
+#    Return a list of column names in the "goals" table (core columns), excluding 'id'.
+#    According to your schema:
+#      CREATE TABLE IF NOT EXISTS goals (
+#          id INTEGER PRIMARY KEY AUTOINCREMENT,
+#          uid TEXT UNIQUE,
+#          tracker_id INTEGER NOT NULL,
+#          title TEXT NOT NULL,
+#          kind TEXT NOT NULL,
+#          period TEXT DEFAULT 'day',
+#          FOREIGN KEY (tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
+#      );
+#
+#    We only insert those five columns into the “goals” table.  (Detail columns live in subtype tables.)
+# ───────────────────────────────────────────────────────────────────────────────
+
+def get_goal_fields() -> List[str]:
+    """
+    Return all core columns of the 'goals' table except 'id'.  
+    As defined, that is ['uid','tracker_id','title','kind','period'].
+    """
+    return ["uid", "tracker_id", "title", "kind", "period"]
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 3) tracker_from_row(row: Dict[str,Any]) → Tracker
+#
+#    Accepts a dictionary (or sqlite3.Row converted to dict) with at least
+#    the columns (id, uid, title, type, category, created).  It returns a Tracker dataclass.
+#
+#    Your Tracker model is defined as:
+#      @dataclass
+#      class Tracker:
+#          id: Optional[int]
+#          title: str
+#          type: str
+#          category: Optional[str]
+#          created: str
+#          tags: Optional[str] = None
+#          notes: Optional[str] = None
+#          goals: Optional[list] = None
+#          uid: str = None
+#
+#    In many tables, you may not store 'tags' or 'notes'; they can default to None.
+# ───────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class Tracker:
+    id: Optional[int]
+    title: str
+    type: str
+    category: Optional[str]
+    created: str
+    tags: Optional[str] = None
+    notes: Optional[str] = None
+    goals: Optional[list] = None
+    uid: str = None
+
+
+def tracker_from_row(row: Dict[str, Any]) -> Tracker:
+    """
+    Convert a sqlite3‐row (or dict) into a Tracker dataclass.  
+    Any missing keys default to None.  
+    """
+    return Tracker(
+        id=row.get("id"),
+        title=row.get("title", ""),
+        type=row.get("type", ""),
+        category=row.get("category"),
+        created=row.get("created", ""),
+        tags=row.get("tags"),      # if your schema never writes tags→None
+        notes=row.get("notes"),    # if your schema never writes notes→None
+        goals=None,                # we do not fetch embedded goals here
+        uid=row.get("uid"),
+    )
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 4) entry_from_row(row: Dict[str,Any]) → TrackerEntry
+#
+#    The “tracker_entries” schema is:
+#      CREATE TABLE IF NOT EXISTS tracker_entries (
+#          id INTEGER PRIMARY KEY AUTOINCREMENT,
+#          tracker_id INTEGER,
+#          timestamp DATETIME,
+#          value FLOAT,
+#          FOREIGN KEY(tracker_id) REFERENCES trackers(id)
+#      );
+#
+#    Your TrackerEntry model in models.py is:
+#      @dataclass
+#      class TrackerEntry(BaseModel):
+#          id: int
+#          tracker_id: int
+#          timestamp: str
+#          value: float
+#          uid: str = None
+#
+#    We simply pull the four stored columns; uid isn’t stored locally, so it stays None.
+# ───────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class TrackerEntry(BaseModel):
+    id: int
+    tracker_id: int
+    timestamp: str
+    value: float
+    uid: str = None
+
+
+def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
+    """
+    Convert a sqlite3‐row (or dict) into a TrackerEntry object.
+    The 'uid' field is not stored in the 'tracker_entries' table, so it will be None.
+    """
+    return TrackerEntry(
+        id=row.get("id"),
+        tracker_id=row.get("tracker_id"),
+        timestamp=row.get("timestamp"),
+        value=row.get("value"),
+        uid=None,
+    )
 
 
 def goal_from_row(row):

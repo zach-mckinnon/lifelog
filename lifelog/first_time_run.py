@@ -12,7 +12,7 @@ import typer
 import secrets
 import string
 
-from config.schedule_manager import apply_scheduled_jobs
+from lifelog.config.schedule_manager import apply_scheduled_jobs
 from lifelog.utils.encrypt import encrypt_data, setup_encryption
 import lifelog.config.config_manager as cf
 

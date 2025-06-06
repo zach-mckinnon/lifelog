@@ -10,14 +10,16 @@ from lifelog.utils.db.models import (
     Tracker,
     TrackerEntry,
     Goal,
-    tracker_from_row,
-    entry_from_row,
     goal_from_row,
     get_tracker_fields,
-    get_goal_fields
+    get_goal_fields,
+    tracker_from_row,
+    entry_from_row,
 )
 from lifelog.utils.db.db_helper import (
+    get_last_synced,
     is_direct_db_mode,
+    set_last_synced,
     should_sync,
     queue_sync_operation,
     process_sync_queue,
@@ -65,6 +67,60 @@ from lifelog.utils.db.db_helper import (
 #
 # Make sure you’ve run migrations so that `trackers.uid` and `goals.uid` exist.
 # ───────────────────────────────────────────────────────────────────────────────
+
+
+def _pull_changed_trackers_from_host() -> None:
+    """
+    If in client mode, fetch only trackers changed on the host
+    since our last sync, upsert them locally, and update sync_state.
+    """
+    if not should_sync():
+        return
+
+    # 1) Push any queued tracker‐create/update/delete operations
+    process_sync_queue()
+
+    # 2) Read last sync timestamp for "trackers"
+    last_ts = get_last_synced("trackers")
+    params: Dict[str, Any] = {}
+    if last_ts:
+        params["since"] = last_ts
+
+    # 3) Fetch changed trackers from host
+    remote_list = fetch_from_server("trackers", params=params)
+    for remote in remote_list:
+        upsert_local_tracker(remote)
+
+    # 4) Update sync_state to now
+    now_iso = datetime.utcnow().isoformat()
+    set_last_synced("trackers", now_iso)
+
+
+def _pull_changed_goals_from_host() -> None:
+    """
+    If in client mode, fetch only goals changed on the host
+    since our last sync, upsert them locally, and update sync_state.
+    """
+    if not should_sync():
+        return
+
+    # 1) Push any queued goal‐create/update/delete
+    process_sync_queue()
+
+    # 2) Read last sync timestamp for "goals"
+    last_ts = get_last_synced("goals")
+    params: Dict[str, Any] = {}
+    if last_ts:
+        params["since"] = last_ts
+
+    # 3) Fetch changed goals from host
+    remote_list = fetch_from_server("goals", params=params)
+    for remote in remote_list:
+        upsert_local_goal(remote)
+
+    # 4) Update sync_state to now
+    now_iso = datetime.utcnow().isoformat()
+    set_last_synced("goals", now_iso)
 
 
 def _get_all_tracker_field_names() -> List[str]:
@@ -156,19 +212,7 @@ def get_all_trackers(
     In CLIENT mode, first push local changes & pull remote, upsert locally, then SELECT.
     """
     if should_sync():
-        # 1) Push any queued changes
-        process_sync_queue()
-
-        # 2) Fetch remote (with same filters) and upsert
-        params: Dict[str, Any] = {}
-        if title_contains:
-            params["title_contains"] = title_contains
-        if category:
-            params["category"] = category
-
-        remote_list = fetch_from_server("trackers", params=params)
-        for remote in remote_list:
-            upsert_local_tracker(remote)
+        _pull_changed_trackers_from_host()
 
     # 3) Now read from local SQLite
     conn = get_connection()
@@ -198,24 +242,7 @@ def get_tracker_by_id(tracker_id: int) -> Optional[Tracker]:
     Return one Tracker by numeric ID. In CLIENT mode, push → pull by uid → upsert → return.
     """
     if should_sync():
-        # 1) Push pending
-        process_sync_queue()
-
-        # 2) Find the uid of that local ID
-        conn_tmp = get_connection()
-        conn_tmp.row_factory = sqlite3.Row
-        cursor_tmp = conn_tmp.cursor()
-        cursor_tmp.execute(
-            "SELECT uid FROM trackers WHERE id = ?", (tracker_id,))
-        row_tmp = cursor_tmp.fetchone()
-        conn_tmp.close()
-
-        if row_tmp and row_tmp["uid"]:
-            uid_val = row_tmp["uid"]
-            remote_list = fetch_from_server(
-                "trackers", params={"uid": uid_val})
-            if remote_list:
-                upsert_local_tracker(remote_list[0])
+        _pull_changed_trackers_from_host()
 
     # 3) Read local
     conn = get_connection()
@@ -233,10 +260,7 @@ def get_tracker_by_uid(uid_val: str) -> Optional[Tracker]:
     Return one Tracker by its global UID. In CLIENT mode, push → pull by uid → upsert → return.
     """
     if should_sync():
-        process_sync_queue()
-        remote_list = fetch_from_server("trackers", params={"uid": uid_val})
-        if remote_list:
-            upsert_local_tracker(remote_list[0])
+        _pull_changed_trackers_from_host()
 
     conn = get_connection()
     conn.row_factory = sqlite3.Row
@@ -418,14 +442,7 @@ def get_goals_for_tracker(tracker_id: int) -> List[Goal]:
     we will pull remote goals first).
     """
     if should_sync():
-        # 1) Push pending changes
-        process_sync_queue()
-
-        # 2) Fetch all remote goals for this tracker_id
-        remote_list = fetch_from_server(
-            "goals", params={"tracker_id": tracker_id})
-        for remote_goal in remote_list:
-            upsert_local_goal(remote_goal)
+        _pull_changed_goals_from_host()
 
     conn = get_connection()
     conn.row_factory = sqlite3.Row
@@ -754,12 +771,7 @@ def get_goals_for_tracker(tracker_id: int) -> List[Goal]:
     upsert them locally, then read local.
     """
     if should_sync():
-        process_sync_queue()
-        remote_list = fetch_from_server(
-            "goals", params={"tracker_id": tracker_id})
-        for remote_goal in remote_list:
-            # remote_goal is a dict that contains all core fields + detail fields
-            upsert_local_goal(remote_goal)
+        _pull_changed_goals_from_host()
 
     conn = get_connection()
     conn.row_factory = sqlite3.Row
@@ -783,10 +795,7 @@ def get_goal_by_uid(uid_val: str) -> Optional[Goal]:
     In CLIENT mode: push, pull by uid, upsert, then return local.
     """
     if should_sync():
-        process_sync_queue()
-        remote_list = fetch_from_server("goals", params={"uid": uid_val})
-        if remote_list:
-            upsert_local_goal(remote_list[0])
+        _pull_changed_goals_from_host()
 
     conn = get_connection()
     conn.row_factory = sqlite3.Row
