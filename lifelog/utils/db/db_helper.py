@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from lifelog.config.config_manager import get_deployment_mode_and_url, load_config
 from lifelog.utils.db.database_manager import get_connection
-from lifelog.utils.db.task_repository import _pull_changed_tasks_from_host
+
 
 # Database paths
 LOCAL_DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
@@ -104,7 +104,13 @@ def process_sync_queue():
 
 def auto_sync():
     if should_sync():
+        from lifelog.utils.db.task_repository import _pull_changed_tasks_from_host
+        from lifelog.utils.db.time_repository import _pull_changed_time_logs_from_host
+        from lifelog.utils.db.track_repository import _pull_changed_trackers_from_host, _pull_changed_goals_from_host
         _pull_changed_tasks_from_host()
+        _pull_changed_time_logs_from_host()
+        _pull_changed_trackers_from_host
+        _pull_changed_goals_from_host
 
 
 def get_local_db_connection() -> sqlite3.Connection:

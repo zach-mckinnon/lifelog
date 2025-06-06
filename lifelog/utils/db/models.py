@@ -248,12 +248,11 @@ def get_tracker_fields() -> List[str]:
 
 def get_goal_fields() -> List[str]:
     """
-    Return all core columns of the 'goals' table except 'id'.  
-    As defined, that is ['uid','tracker_id','title','kind','period'].
+    Return all core columns of the 'goals' table except 'id'.
+    According to your schema, that is 
+      ['uid', 'tracker_id', 'title', 'kind', 'period'].
     """
     return ["uid", "tracker_id", "title", "kind", "period"]
-
-
 # ───────────────────────────────────────────────────────────────────────────────
 # 3) tracker_from_row(row: Dict[str,Any]) → Tracker
 #
@@ -275,6 +274,7 @@ def get_goal_fields() -> List[str]:
 #
 #    In many tables, you may not store 'tags' or 'notes'; they can default to None.
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class Tracker:

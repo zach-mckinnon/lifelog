@@ -25,6 +25,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from lifelog.utils.db.db_helper import auto_sync, should_sync
+
 
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
@@ -150,6 +152,18 @@ def ui(
     ensure_app_initialized()
     # By default, status bar is ON, unless user gives --no-help
     show_status = not no_help
+
+    if should_sync():
+        try:
+            auto_sync()
+        except Exception as e:
+            # We print a non‐fatal warning in the TUI mode:
+            console = curses.initscr()
+            console.addstr(0, 0, f"⚠️ Auto‐sync failed: {e}")
+            console.refresh()
+            curses.napms(1500)  # pause 1.5s so user can see it
+            curses.endwin()
+
     curses.wrapper(ui_main, show_status)
 
 
@@ -513,6 +527,11 @@ def sync_command():
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     ensure_app_initialized()
+    if should_sync():
+        try:
+            auto_sync()
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Auto‐sync failed: {e}[/yellow]")
     if ctx.invoked_subcommand is None:
         help_command()
 

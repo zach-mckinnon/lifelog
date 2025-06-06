@@ -133,16 +133,15 @@ def _get_all_tracker_field_names() -> List[str]:
 
 def _get_all_goal_field_names() -> List[str]:
     """
-    Return all Goal table columns except 'id', to be used in INSERT/UPDATE:
-    ['uid','tracker_id','title','kind','period','min_amount','max_amount',
-     'amount','unit','target_streak','target','mode','old_behavior','new_behavior']
+    Return only the five core 'goals' columns, excluding 'id':
+      ['uid','tracker_id','title','kind','period'].
     """
     return [f for f in get_goal_fields() if f != "id"]
-
 
 # ───────────────────────────────────────────────────────────────────────────────
 # UPsert Helpers (used during “pull” from host in client mode)
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def upsert_local_tracker(data: Dict[str, Any]) -> None:
     """
@@ -235,6 +234,23 @@ def get_all_trackers(
     conn.close()
 
     return [tracker_from_row(dict(r)) for r in rows]
+
+
+def get_tracker_by_title(title: str) -> Optional[Tracker]:
+    """
+    Return one Tracker (as a dataclass) whose `title` exactly matches the given string.
+    If in CLIENT mode, first pull any changed trackers before doing the local SELECT.
+    """
+    if should_sync():
+        _pull_changed_trackers_from_host()
+
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM trackers WHERE title = ? LIMIT 1", (title,))
+    row = cur.fetchone()
+    conn.close()
+    return tracker_from_row(dict(row)) if row else None
 
 
 def get_tracker_by_id(tracker_id: int) -> Optional[Tracker]:
@@ -767,138 +783,308 @@ def _select_goal_detail(goal_id: int, kind: str) -> Dict[str, Any]:
 def get_goals_for_tracker(tracker_id: int) -> List[Goal]:
     """
     Return all fully‐populated Goal objects for a given tracker_id.
-    In CLIENT mode: push local changes, pull remote goals (by tracker_id),
-    upsert them locally, then read local.
+    In CLIENT mode, pull only changed goals since last sync first.
     """
     if should_sync():
         _pull_changed_goals_from_host()
 
     conn = get_connection()
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM goals WHERE tracker_id = ?", (tracker_id,))
-    raw_rows = cur.fetchall()
-    conn.close()
+    cursor = conn.cursor()
 
-    result: List[Goal] = []
-    for row in raw_rows:
-        row_dict = dict(row)
-        detail = _select_goal_detail(row_dict["id"], row_dict["kind"])
-        combined = {**row_dict, **detail}
-        result.append(goal_from_row(combined))
-    return result
+    # 1) Select core rows
+    cursor.execute("SELECT * FROM goals WHERE tracker_id = ?", (tracker_id,))
+    core_rows = cursor.fetchall()
+
+    results: List[Goal] = []
+    for core in core_rows:
+        row_dict = dict(core)
+        goal_id = row_dict["id"]
+        kind = row_dict["kind"]
+
+        # 2) Fetch the detail columns from the correct subtype table:
+        if kind == "sum":
+            cursor.execute(
+                "SELECT amount, unit FROM goal_sum WHERE goal_id = ?", (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["amount"] = det["amount"]
+                row_dict["unit"] = det["unit"]
+
+        elif kind == "count":
+            cursor.execute(
+                "SELECT amount, unit FROM goal_count WHERE goal_id = ?", (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["amount"] = det["amount"]
+                row_dict["unit"] = det["unit"]
+
+        elif kind == "bool":
+            # no extra fields
+            pass
+
+        elif kind == "streak":
+            cursor.execute(
+                "SELECT target_streak FROM goal_streak WHERE goal_id = ?", (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["target_streak"] = det["target_streak"]
+
+        elif kind == "duration":
+            cursor.execute(
+                "SELECT amount, unit FROM goal_duration WHERE goal_id = ?", (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["amount"] = det["amount"]
+                row_dict["unit"] = det["unit"]
+
+        elif kind == "milestone":
+            cursor.execute(
+                "SELECT target, unit FROM goal_milestone WHERE goal_id = ?", (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["target"] = det["target"]
+                row_dict["unit"] = det["unit"]
+
+        elif kind == "reduction":
+            cursor.execute(
+                "SELECT amount, unit FROM goal_reduction WHERE goal_id = ?", (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["amount"] = det["amount"]
+                row_dict["unit"] = det["unit"]
+
+        elif kind == "range":
+            cursor.execute(
+                "SELECT min_amount, max_amount, unit, mode FROM goal_range WHERE goal_id = ?",
+                (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["min_amount"] = det["min_amount"]
+                row_dict["max_amount"] = det["max_amount"]
+                row_dict["unit"] = det["unit"]
+                row_dict["mode"] = det["mode"]
+
+        elif kind == "percentage":
+            cursor.execute(
+                "SELECT target_percentage, current_percentage FROM goal_percentage WHERE goal_id = ?",
+                (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["target_percentage"] = det["target_percentage"]
+                row_dict["current_percentage"] = det["current_percentage"]
+
+        elif kind == "replacement":
+            cursor.execute(
+                "SELECT old_behavior, new_behavior FROM goal_replacement WHERE goal_id = ?",
+                (goal_id,))
+            det = cursor.fetchone()
+            if det:
+                row_dict["old_behavior"] = det["old_behavior"]
+                row_dict["new_behavior"] = det["new_behavior"]
+
+        # 3) Now that `row_dict` has both core + detail columns, convert to dataclass
+        results.append(goal_from_row(row_dict))
+
+    conn.close()
+    return results
 
 
 def get_goal_by_uid(uid_val: str) -> Optional[Goal]:
-    """
-    Return a single fully‐populated Goal by its global UID.
-    In CLIENT mode: push, pull by uid, upsert, then return local.
-    """
     if should_sync():
         _pull_changed_goals_from_host()
 
     conn = get_connection()
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM goals WHERE uid = ?", (uid_val,))
-    row = cur.fetchone()
-    conn.close()
-
-    if not row:
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM goals WHERE uid = ?", (uid_val,))
+    core = cursor.fetchone()
+    if not core:
+        conn.close()
         return None
 
-    row_dict = dict(row)
-    detail = _select_goal_detail(row_dict["id"], row_dict["kind"])
-    combined = {**row_dict, **detail}
-    return goal_from_row(combined)
+    row_dict = dict(core)
+    goal_id = row_dict["id"]
+    kind = row_dict["kind"]
+
+    # Fetch detail columns exactly as in get_goals_for_tracker
+    if kind == "sum":
+        cursor.execute(
+            "SELECT amount, unit FROM goal_sum WHERE goal_id = ?", (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["amount"] = det["amount"]
+            row_dict["unit"] = det["unit"]
+
+    elif kind == "count":
+        cursor.execute(
+            "SELECT amount, unit FROM goal_count WHERE goal_id = ?", (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["amount"] = det["amount"]
+            row_dict["unit"] = det["unit"]
+
+    elif kind == "bool":
+        pass
+
+    elif kind == "streak":
+        cursor.execute(
+            "SELECT target_streak FROM goal_streak WHERE goal_id = ?", (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["target_streak"] = det["target_streak"]
+
+    elif kind == "duration":
+        cursor.execute(
+            "SELECT amount, unit FROM goal_duration WHERE goal_id = ?", (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["amount"] = det["amount"]
+            row_dict["unit"] = det["unit"]
+
+    elif kind == "milestone":
+        cursor.execute(
+            "SELECT target, unit FROM goal_milestone WHERE goal_id = ?", (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["target"] = det["target"]
+            row_dict["unit"] = det["unit"]
+
+    elif kind == "reduction":
+        cursor.execute(
+            "SELECT amount, unit FROM goal_reduction WHERE goal_id = ?", (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["amount"] = det["amount"]
+            row_dict["unit"] = det["unit"]
+
+    elif kind == "range":
+        cursor.execute(
+            "SELECT min_amount, max_amount, unit, mode FROM goal_range WHERE goal_id = ?",
+            (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["min_amount"] = det["min_amount"]
+            row_dict["max_amount"] = det["max_amount"]
+            row_dict["unit"] = det["unit"]
+            row_dict["mode"] = det["mode"]
+
+    elif kind == "percentage":
+        cursor.execute(
+            "SELECT target_percentage, current_percentage FROM goal_percentage WHERE goal_id = ?",
+            (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["target_percentage"] = det["target_percentage"]
+            row_dict["current_percentage"] = det["current_percentage"]
+
+    elif kind == "replacement":
+        cursor.execute(
+            "SELECT old_behavior, new_behavior FROM goal_replacement WHERE goal_id = ?",
+            (goal_id,))
+        det = cursor.fetchone()
+        if det:
+            row_dict["old_behavior"] = det["old_behavior"]
+            row_dict["new_behavior"] = det["new_behavior"]
+
+    conn.close()
+    return goal_from_row(row_dict)
 
 
 def add_goal(tracker_id: int, goal_data: Dict[str, Any]) -> Goal:
     """
-    Insert a new goal under tracker_id.
-    • Validate fields → insert core row → insert subtype-table row → queue sync if CLIENT.
-    Returns the newly created Goal object.
+    1) Insert only core columns into 'goals'
+    2) Then insert into the correct subtype table (via _insert_goal_detail)
+    3) If CLIENT, queue a sync‐create with the full payload
+    4) Return the fully‐populated Goal dataclass
     """
     data = goal_data.copy()
     data["tracker_id"] = tracker_id
 
-    # 1) (Optional) Validate your fields here (you already have validate_goal_fields)
-    from lifelog.utils.db.track_repository import validate_goal_fields
-    try:
-        validate_goal_fields(data)
-    except ValueError:
-        raise
+    # 1) UID (same as before)
+    if not is_direct_db_mode():
+        data.setdefault("uid", str(uuid.uuid4()))
+    else:
+        data.setdefault("uid", data.get("uid") or str(uuid.uuid4()))
 
-    # 2) Assign a global UID (if missing)
-    data.setdefault("uid", str(uuid.uuid4()))
+    # 2) IDEMPOTENT VALIDATION (optional):
+    validate_goal_fields(data)
 
-    # 3) Insert core into "goals" table
-    # ['uid','tracker_id','title','kind','period']
-    core_fields = _get_core_goal_fields()
+    # 3) Insert only the FIVE core fields into "goals"
+    # now = ['uid','tracker_id','title','kind','period']
+    core_fields = _get_all_goal_field_names()
     add_record("goals", data, core_fields)
 
-    # 4) Get the newly inserted numeric ID
+    # 4) Immediately fetch the newly‐created numeric ID
     conn = get_connection()
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM goals WHERE uid = ?", (data["uid"],))
-    inserted = cur.fetchone()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM goals WHERE uid = ?", (data["uid"],))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        raise RuntimeError("Failed to insert into core table")
+    new_id = row["id"]
+
+    # 5) Insert into the appropriate detail table
+    _insert_goal_detail(new_id, data)
     conn.close()
 
-    goal_id = inserted["id"]
-    # 5) Insert detail into the appropriate subtype table
-    _insert_goal_detail(goal_id, data)
-
-    # 6) Re‐fetch the fully merged row and build a Goal dataclass
-    return get_goal_by_uid(data["uid"])
-
-
-def update_goal(goal_id: int, updates: Dict[str, Any]) -> Optional[Goal]:
-    """
-    Update an existing goal by numeric ID:
-    • Validate merged dict → update core → update (or insert) subtype row → queue sync if CLIENT.
-    Returns the updated Goal object.
-    """
-    # 0) Fetch existing core row
-    conn0 = get_connection()
-    conn0.row_factory = sqlite3.Row
-    cur0 = conn0.cursor()
-    cur0.execute("SELECT * FROM goals WHERE id = ?", (goal_id,))
-    existing = cur0.fetchone()
-    conn0.close()
-    if not existing:
-        return None
-
-    existing_dict = dict(existing)
-    merged = {**existing_dict, **updates}
-
-    # 1) Validate the merged goal (so we know detail fields are present)
-    from lifelog.utils.db.track_repository import validate_goal_fields
-    try:
-        validate_goal_fields(merged)
-    except ValueError:
-        raise
-
-    # 2) Update core “goals” table
-    update_record("goals", goal_id, updates)
-
-    # 3) If the kind changed, delete old detail and insert new; otherwise update existing detail
-    old_kind = existing_dict["kind"]
-    new_kind = merged["kind"]
-    if new_kind != old_kind:
-        _delete_goal_detail(goal_id, old_kind)
-        _insert_goal_detail(goal_id, merged)
-    else:
-        _update_goal_detail(goal_id, merged)
-
-    # 4) If CLIENT mode, queue a sync operation
+    # 6) If CLIENT mode, queue a “create” (full payload includes detail keys)
     if not is_direct_db_mode():
-        full_payload = merged.copy()
-        full_payload.pop("id", None)   # host only needs uid as key
-        queue_sync_operation("goals", "update", full_payload)
+        queue_sync_operation("goals", "create", data)
         process_sync_queue()
 
-    return get_goal_by_uid(merged["uid"])
+    # 7) Finally return the fully populated Goal
+    return get_goal_by_id(new_id)
+
+
+def add_goal(tracker_id: int, goal_data: Dict[str, Any]) -> Goal:
+    """
+    1) Insert only core columns into 'goals'
+    2) Then insert into the correct subtype table (via _insert_goal_detail)
+    3) If CLIENT, queue a sync‐create with the full payload
+    4) Return the fully‐populated Goal dataclass
+    """
+    data = goal_data.copy()
+    data["tracker_id"] = tracker_id
+
+    # 1) UID (same as before)
+    if not is_direct_db_mode():
+        data.setdefault("uid", str(uuid.uuid4()))
+    else:
+        data.setdefault("uid", data.get("uid") or str(uuid.uuid4()))
+
+    # 2) IDEMPOTENT VALIDATION (optional):
+    validate_goal_fields(data)
+
+    # 3) Insert only the FIVE core fields into "goals"
+    # now = ['uid','tracker_id','title','kind','period']
+    core_fields = _get_all_goal_field_names()
+    add_record("goals", data, core_fields)
+
+    # 4) Immediately fetch the newly‐created numeric ID
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM goals WHERE uid = ?", (data["uid"],))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        raise RuntimeError("Failed to insert into core table")
+    new_id = row["id"]
+
+    # 5) Insert into the appropriate detail table
+    _insert_goal_detail(new_id, data)
+    conn.close()
+
+    # 6) If CLIENT mode, queue a “create” (full payload includes detail keys)
+    if not is_direct_db_mode():
+        queue_sync_operation("goals", "create", data)
+        process_sync_queue()
+
+    # 7) Finally return the fully populated Goal
+    return get_goal_by_id(new_id)
 
 
 def delete_goal(goal_id: int) -> bool:
