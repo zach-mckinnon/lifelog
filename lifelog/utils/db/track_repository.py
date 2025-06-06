@@ -1087,6 +1087,71 @@ def add_goal(tracker_id: int, goal_data: Dict[str, Any]) -> Goal:
     return get_goal_by_id(new_id)
 
 
+def update_goal(goal_id: int, updates: Dict[str, Any]) -> Optional[Goal]:
+    """
+    Update a goal by numeric ID.
+
+    • HOST/DIRECT mode:
+        1) Update the core 'goals' table (only the 5 core columns) via update_record(...)
+        2) Update the detail row in the appropriate subtype table (via _update_goal_detail)
+        3) Return the fully populated Goal dataclass (via get_goal_by_id)
+
+    • CLIENT mode:
+        1) Update local core columns (goals table) via update_record(...)
+        2) Update the detail row locally (_update_goal_detail)
+        3) Fetch the entire updated goal row from local DB
+        4) Pop off the numeric "id" and queue a sync‐"update" by UID (full payload dict)
+        5) process_sync_queue()
+        6) Return the updated Goal dataclass
+    """
+
+    # 1) If we are running in direct/host mode, just update and return
+    if is_direct_db_mode():
+        # a) Only update the core columns in 'goals' table
+        core_fields = [f for f in get_goal_fields() if f != "id"]
+        core_updates = {k: updates[k] for k in core_fields if k in updates}
+        if core_updates:
+            update_record("goals", goal_id, core_updates)
+
+        # b) Now update the detail row (in whichever subtype table) if any detail fields are present
+        _update_goal_detail(goal_id, updates)
+
+        # c) Return the fully populated Goal dataclass
+        return get_goal_by_id(goal_id)
+
+    # 2) CLIENT mode: update locally, then queue a full‐payload sync by UID
+    else:
+        # a) Update core columns locally
+        core_fields = [f for f in get_goal_fields() if f != "id"]
+        core_updates = {k: updates[k] for k in core_fields if k in updates}
+        if core_updates:
+            update_record("goals", goal_id, core_updates)
+
+        # b) Update the detail row locally
+        _update_goal_detail(goal_id, updates)
+
+        # c) Fetch the complete local row now (so we know its UID + all fields)
+        conn = get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM goals WHERE id = ?", (goal_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        # d) Convert to dict, drop the numeric "id", then queue a sync‐update by UID
+        full_payload = dict(row)
+        full_payload.pop("id", None)
+
+        queue_sync_operation("goals", "update", full_payload)
+        process_sync_queue()
+
+        # e) Return the updated Goal dataclass
+        return goal_from_row(row)
+
+
 def delete_goal(goal_id: int) -> bool:
     """
     Delete a goal by numeric ID. ON DELETE CASCADE takes care of subtype rows.

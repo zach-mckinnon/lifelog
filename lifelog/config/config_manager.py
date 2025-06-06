@@ -49,6 +49,15 @@ def get_deployment_mode_and_url():
     return mode, server_url
 
 
+def is_client_mode() -> bool:
+    """
+    Return True if the deployment mode is set to 'client' (or whatever you’ve chosen).
+    """
+    config = load_config()
+    mode = config.get("deployment", {}).get("mode", "standalone")
+    return mode == "client"
+
+
 def get_config_value(section: str, key: str, default=None) -> Any:
     config = load_config()
     return config.get(section, {}).get(key, default)

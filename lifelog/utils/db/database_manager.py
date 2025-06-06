@@ -1,8 +1,13 @@
+import os
 from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
-DB_PATH = BASE_DIR / "lifelog.db"
+_ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
+if _ENV_DB:
+    DB_PATH = Path(_ENV_DB).expanduser().resolve()
+else:
+    DB_PATH = BASE_DIR / "lifelog.db"
 
 
 class DBConnection:
