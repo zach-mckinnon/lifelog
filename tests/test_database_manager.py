@@ -20,8 +20,8 @@ def test_db_path_respects_env(monkeypatch, tmp_path):
 
     # 2) Reload the module so DB_PATH is recalculated
     importlib.reload(dbman)
-
-    assert dbman.DB_PATH == temp_db.resolve()
+    db_path = dbman._resolve_db_path()
+    assert db_path == temp_db.resolve()
 
     # 3) Ensure underlying parent directory is created when get_connection is called
     conn = dbman.get_connection()

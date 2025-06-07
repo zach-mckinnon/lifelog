@@ -56,7 +56,7 @@ def test_get_tracker_fields_and_tracker_from_row():
     get_tracker_fields() must match the columns in the 'trackers' schema (excluding 'id'),
     and tracker_from_row() should map a row dict into a Tracker dataclass.
     """
-    expected = ["uid", "title", "type", "category", "created"]
+    expected = ["uid", "title", "type", "category", "created", "tags", "notes"]
     assert m.get_tracker_fields() == expected
 
     row = {
@@ -66,7 +66,8 @@ def test_get_tracker_fields_and_tracker_from_row():
         "type": "sum",
         "category": "Wellness",
         "created": "2025-06-10T00:00:00",
-        # extra keys should be ignored
+        "notes": "Track health metrics",
+        "tags": "health,wellness",
         "extra": "ignored"
     }
     tracker = m.tracker_from_row(row)

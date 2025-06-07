@@ -12,7 +12,7 @@ import typer
 import secrets
 import string
 
-from lifelog.config.schedule_manager import apply_scheduled_jobs
+from lifelog.config import schedule_manager as sm
 from lifelog.utils.encrypt import encrypt_data, setup_encryption
 import lifelog.config.config_manager as cf
 
@@ -215,8 +215,9 @@ def setup_scheduled_tasks(config: dict):
         console.print("[cyan]Updating root crontab...[/cyan]")
 
     try:
-        apply_scheduled_jobs()
+        sm.apply_scheduled_jobs()
         console.print("[green]✅ Scheduled jobs applied.[/green]")
+        return doc
     except Exception as e:
         console.print(f"[red]❌ Failed to apply scheduled jobs: {e}[/red]")
 

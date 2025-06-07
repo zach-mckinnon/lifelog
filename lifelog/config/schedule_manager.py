@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # lifelog/config/cron_manager.py
 '''
 cron_manager.py - Manage cron jobs for lifelog
@@ -10,8 +12,20 @@ import sys
 from tomlkit import dumps
 import lifelog.config.config_manager as cf
 
-CRON_D_DIR = Path("/etc/cron.d")
-CRON_FILE = CRON_D_DIR / "lifelog_recur_auto"
+
+# ── NEW: single switch -----------------------------------------------------------------
+IS_POSIX = os.name == "posix"                      # ← UPDATED
+# ---------------------------------------------------------------------------------------
+
+# ── POSIX-only constants (safe to be None on Windows) ----------------------------------
+if IS_POSIX:
+    CRON_D_DIR: Path = Path("/etc/cron.d")
+    CRON_FILE: Path = CRON_D_DIR / "lifelog_recur_auto"
+else:
+    CRON_D_DIR: Optional[Path] = None          # ← type Optional[Path]
+    CRON_FILE: Optional[Path] = None
+# ---------------------------------------------------------------------------------------
+
 CONFIG_PATH = cf.USER_CONFIG
 
 # ----- LINUX Cron Jobs -----
@@ -36,8 +50,15 @@ def build_cron_jobs():
 
 
 def apply_scheduled_jobs():
+    """
+    Entry-point called by first-time setup & CLI.
+
+    * POSIX → write /etc/cron.d file
+    * Windows → use schtasks.exe
+    * Anything else → friendly warning
+    """
     system = platform.system()
-    if system in ["Linux", "Darwin"]:
+    if system in ("Linux", "Darwin"):
         apply_cron_jobs()
     elif system == "Windows":
         apply_windows_tasks()
@@ -46,61 +67,64 @@ def apply_scheduled_jobs():
 
 
 def apply_cron_jobs():
-    jobs = build_cron_jobs()  # list of (name, schedule, command)
-    lines = []
+    """
+    Write /etc/cron.d/lifelog_recur_auto with one line per job.
+    No-ops on Windows so tests can run there.
+    """
+    if not IS_POSIX:                                      # ← UPDATED
+        print("⚠️ Cron jobs skipped: non-POSIX OS")       # ← UPDATED
+        return                                            # ← UPDATED
 
-    for name, schedule, command in jobs:
-        # schedule is “M H * * *”; we append “root <command>”
-        lines.append(f"{schedule} root {command}")
-
+    jobs = build_cron_jobs()
+    lines = [f"{schedule} root {command}"                 # unchanged logic
+             for _, schedule, command in jobs]
     final_content = "\n".join(lines) + "\n"
 
     try:
-        # 1) Ensure /etc/cron.d exists; if it does not, create it (rare on some distros)
-        CRON_D_DIR.mkdir(parents=True, exist_ok=True)
+        CRON_D_DIR.mkdir(parents=True, exist_ok=True)     # POSIX-only path
 
-        # 2) Write the file as root
-        with open(str(CRON_FILE), "w", encoding="utf-8") as f:
+        with CRON_FILE.open("w", encoding="utf-8") as f:
             f.write(final_content)
 
-        # 3) Ensure file has correct permissions (0644) so cron can read it
-        os.chmod(str(CRON_FILE), 0o644)
+        # Ensure readable by cron (rw-r--r--).
+        # Only effective on real POSIX filesystems:
+        if hasattr(os, "chmod") and IS_POSIX:             # ← UPDATED
+            os.chmod(CRON_FILE, 0o644)                    # ← UPDATED
 
-        print(f"[green]✅ /etc/cron.d/lifelog_recur_auto updated.[/green]")
+        print("[green]✅ /etc/cron.d/lifelog_recur_auto updated.[/green]")
 
     except PermissionError:
-        print(
-            "[red]❌ Permission denied: Please run as root to write /etc/cron.d files.[/red]")
+        print("[red]❌ Permission denied: run as root to edit /etc/cron.d.[/red]")
     except Exception as e:
-        print(f"[red]❌ Unexpected error writing /etc/cron.d file: {e}[/red]")
+        print(f"[red]❌ Unexpected error writing cron file: {e}[/red]")
 
 
-# -- Windows Scheduled Tasks (WIP) -----
+# ────────────────────────────────────────────────────────────────────────────────────────
+#  Windows helper (still WIP but now never called on POSIX)
+# ────────────────────────────────────────────────────────────────────────────────────────
 
 
 def apply_windows_tasks():
     """
-    Translate each (name, schedule, command) into a Windows Scheduled Task
-    via schtasks.exe or the Win32 COM API. Example below uses `schtasks`.
+    Create or update Windows Scheduled Tasks via schtasks.exe.
+    Safe to call on POSIX – function is simply never reached.
     """
-    jobs = build_cron_jobs()  # list of (name, schedule, command)
+    jobs = build_cron_jobs()
     for name, schedule, command in jobs:
-        # Expect schedule in cron form “M H * * *” → parse hour and minute
         fields = schedule.split()
         if len(fields) != 5:
             print(f"⚠️ Cannot parse schedule '{schedule}' for Windows")
             continue
 
-        minute, hour, day, month, dow = fields
-        # Windows’ schtasks needs a time string “HH:MM”
+        minute, hour, *_ = fields
         time_str = f"{int(hour):02d}:{int(minute):02d}"
 
-        # Example: create or delete old same‐name task, then create a new one
-        # 1) Delete existing task
+        # Delete any existing task (ignore errors)
         subprocess.run(["schtasks", "/Delete", "/TN",
-                       f"Lifelog_{name}", "/F"], stderr=subprocess.DEVNULL)
+                       f"Lifelog_{name}", "/F"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # 2) Create scheduled task to run daily at time_str
+        # Create the task
         subprocess.run([
             "schtasks",
             "/Create",
@@ -108,7 +132,7 @@ def apply_windows_tasks():
             "/TN", f"Lifelog_{name}",
             "/TR", command,
             "/ST", time_str,
-            "/RI", "1440",  # repetition interval: 1440 minutes = 24 hours
+            "/RI", "1440",
             "/F"
         ], check=True)
 

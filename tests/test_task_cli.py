@@ -4,6 +4,7 @@ import os
 import uuid
 import pytest
 from datetime import datetime, timedelta
+import typer
 from typer.testing import CliRunner
 
 # Adjust these imports to match your package structure:
@@ -19,32 +20,53 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def isolate_db(tmp_path, monkeypatch):
     """
-    Create a temp SQLite file; point LIFELOG_DB_PATH to it; force direct (host) mode.
+    Give every test a brand-new SQLite file **and**
+    stub out anything that would ask the user or touch the real config.
     """
-    db_file = tmp_path / "test_lifelog_task_cli.db"
+    # ── 1. point LIFELOG_DB_PATH at a temp file ─────────────────────────────
+    db_file = tmp_path / "cli_tasks.db"
     monkeypatch.setenv("LIFELOG_DB_PATH", str(db_file))
 
-    # Monkey‐patch load_config() so that host_server=True and API key (if needed) is valid
-    monkeypatch.setattr(
-        cfg,
-        "load_config",
-        lambda: {"deployment": {"mode": "host",
-                                "host_server": True}, "api": {"key": "dummy"}}
-    )
-    monkeypatch.setattr(cfg, "is_host_server", lambda: True)
+    # fresh schema
+    from lifelog.utils.db.database_manager import initialize_schema, get_connection
+    get_connection().close()
+    initialize_schema()
 
-    # Force direct DB mode by patching should_sync() and is_direct_db_mode()
+    # ── 2. always behave like “host / direct DB” mode ───────────────────────
     monkeypatch.setattr(
         "lifelog.utils.db.db_helper.should_sync", lambda: False)
     monkeypatch.setattr(
         "lifelog.utils.db.db_helper.is_direct_db_mode", lambda: True)
 
-    # Initialize a fresh schema
-    conn = get_connection()
-    conn.close()
-    initialize_schema()
+    # ── 3. kill every interactive question ─────────────────────────────────
+    import typer
+    from rich.prompt import Confirm
+    monkeypatch.setattr(typer, "confirm", lambda *_,
+                        **__: True)   # auto-approve
+    monkeypatch.setattr(Confirm, "ask", lambda *_, **__: True)
+    monkeypatch.setattr(typer, "prompt", lambda *_, **
+                        __: "")      # empty text answer
+
+    # ── 4. make the test category/project/tag “just exist” so no config writes
+    monkeypatch.setattr(
+        "lifelog.utils.shared_utils.get_available_categories",
+        lambda: ["CatX"]                      # whatever the tests need
+    )
+    monkeypatch.setattr(
+        "lifelog.utils.shared_utils.add_category_to_config",
+        lambda *_: None                       # no-op
+    )
+
+    monkeypatch.setattr(
+        "lifelog.utils.shared_utils.get_available_projects",
+        lambda: []
+    )
+    monkeypatch.setattr(
+        "lifelog.utils.shared_utils.add_project_to_config",
+        lambda *_: None
+    )
+
     yield
-    # (tmp_path auto‐cleans up; no teardown necessary)
 
 
 def test_add_task_minimal_title():

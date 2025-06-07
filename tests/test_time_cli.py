@@ -3,6 +3,7 @@
 import uuid
 import pytest
 from datetime import datetime, timedelta
+import typer
 from typer.testing import CliRunner
 
 from lifelog.commands import time_module
@@ -33,7 +34,8 @@ def isolate_db(tmp_path, monkeypatch):
         "lifelog.utils.db.db_helper.should_sync", lambda: False)
     monkeypatch.setattr(
         "lifelog.utils.db.db_helper.is_direct_db_mode", lambda: True)
-
+    monkeypatch.setattr(typer, "confirm", lambda *a, **k: True)          # NEW
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: True)
     conn = get_connection()
     conn.close()
     initialize_schema()

@@ -15,7 +15,8 @@ def test_db_path_uses_env(tmp_path, monkeypatch):
     import importlib
     import lifelog.utils.db.database_manager as _dbman
     importlib.reload(_dbman)
-    assert _dbman.DB_PATH == Path(tmp_path / "foo.db")
+    db_path = _dbman._resolve_db_path()
+    assert db_path == Path(tmp_path / "foo.db")
 
 
 def test_initialize_schema_creates_tables(test_db_file):

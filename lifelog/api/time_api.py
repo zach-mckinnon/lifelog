@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from flask import request, jsonify, Blueprint
+from lifelog.api.errors import debug_api
 from lifelog.api.auth import require_api_key
 from lifelog.utils.db import time_repository
 from lifelog.config.config_manager import is_host_server
@@ -11,6 +12,7 @@ time_bp = Blueprint('time', __name__, url_prefix='/time')
 
 @time_bp.route('/entries', methods=['GET'])
 @require_api_key
+@debug_api
 def list_time_entries():
     """
     GET /time/entries?since=<ISO>
@@ -27,6 +29,7 @@ def list_time_entries():
 
 @time_bp.route('/entries', methods=['POST'])
 @require_api_key
+@debug_api
 def create_time_entry():
     """
     POST /time/entries
@@ -55,6 +58,7 @@ def create_time_entry():
 
 @time_bp.route('/entries/current', methods=['PUT'])
 @require_api_key
+@debug_api
 def stop_time_entry():
     """
     PUT /time/entries/current
@@ -88,6 +92,7 @@ def stop_time_entry():
 
 @time_bp.route('/entries/uid/<string:uid_val>', methods=['GET'])
 @require_api_key
+@debug_api
 def get_time_entry_by_uid(uid_val):
     """
     GET /time/entries/uid/<uid>
@@ -109,6 +114,7 @@ def get_time_entry_by_uid(uid_val):
 
 @time_bp.route('/entries/<string:uid_val>', methods=['PUT'])
 @require_api_key
+@debug_api
 def update_time_entry_by_uid(uid_val):
     """
     PUT /time/entries/<uid>
@@ -134,6 +140,7 @@ def update_time_entry_by_uid(uid_val):
 
 @time_bp.route('/entries/<string:uid_val>', methods=['DELETE'])
 @require_api_key
+@debug_api
 def delete_time_entry_by_uid(uid_val):
     """
     DELETE /time/entries/<uid>

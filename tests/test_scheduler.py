@@ -12,7 +12,7 @@ import pytest
 
 # Adjust these imports to your code’s actual paths:
 from lifelog.config import schedule_manager as sm
-from lifelog.config import config_manager as cfg
+from lifelog.config import config_manager as cf
 from lifelog.config.schedule_manager import apply_scheduled_jobs, apply_cron_jobs, apply_windows_tasks, build_cron_jobs
 from lifelog.first_time_run import setup_scheduled_tasks
 
@@ -31,10 +31,10 @@ def fake_user_config(tmp_path, monkeypatch):
     fake = tmp_path / "config.toml"
     fake.write_text("{}", encoding="utf-8")
     monkeypatch.setenv("LIFELOG_DB_PATH", str(tmp_path / "fake_db.sqlite"))
-    monkeypatch.setattr(cfg, "USER_CONFIG", fake)
+    monkeypatch.setattr(cf, "USER_CONFIG", fake)
     # Now when load_config() or save_config() is called, it will use this tmp file.
     # We also force is_host_server() to True for testing.
-    monkeypatch.setattr(cfg, "is_host_server", lambda: True)
+    monkeypatch.setattr(cf, "is_host_server", lambda: True)
     yield
 
 
@@ -50,57 +50,67 @@ def test_apply_cron_jobs_creates_file_and_contents(tmp_path, monkeypatch):
         2. File contents match “<schedule> root <command>\n” for each job
         3. File permissions are 0o644
     """
-    # 1) Prepare a temporary “/etc/cron.d” substitute
-    fake_cron_dir = tmp_path / "etc_cron_d"
-    monkeypatch.setattr(sm, "CRON_D_DIR", fake_cron_dir)
-    # Monkey‐patch CRON_FILE to be inside our fake dir
-    monkeypatch.setattr(sm, "CRON_FILE", fake_cron_dir / "lifelog_recur_auto")
+    if platform.system() in ["Linux", "macOS"]:
+        # 1) Prepare a temporary “/etc/cron.d” substitute
+        fake_cron_dir = tmp_path / "etc_cron_d"
+        monkeypatch.setattr(sm, "CRON_D_DIR", fake_cron_dir)
+        chmod_calls = []
 
-    # 2) Create a fake TOML config with 2 jobs under [cron]
-    #    We’ll monkey‐patch cfg.load_config() to return exactly this dict.
-    fake_conf = {
-        "cron": {
-            "recur_auto": {
-                "schedule": "0 4 * * *",
-                "command": "/usr/bin/llog task auto_recur"
-            },
-            "env_sync": {
-                "schedule": "30 2 */4 * *",
-                "command": "/usr/bin/llog env sync-all"
+        monkeypatch.setattr(os, "chmod", lambda p,
+                            m: chmod_calls.append((p, m)))
+        # Monkey‐patch CRON_FILE to be inside our fake dir
+        monkeypatch.setattr(
+            sm, "CRON_FILE", fake_cron_dir / "lifelog_recur_auto")
+
+        # 2) Create a fake TOML config with 2 jobs under [cron]
+        #    We’ll monkey‐patch cf.load_config() to return exactly this dict.
+        fake_conf = {
+            "cron": {
+                "recur_auto": {
+                    "schedule": "0 4 * * *",
+                    "command": "/usr/bin/llog task auto_recur"
+                },
+                "env_sync": {
+                    "schedule": "30 2 */4 * *",
+                    "command": "/usr/bin/llog env sync-all"
+                }
             }
         }
-    }
-    monkeypatch.setattr(cfg, "load_config", lambda: fake_conf)
+        monkeypatch.setattr(cf, "load_config", lambda: fake_conf)
 
-    # 3) Call apply_cron_jobs() (under the assumption platform.system() in ["Linux","Darwin"])
-    #    But first force platform.system() to return “Linux”
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
+        # 3) Call apply_cron_jobs() (under the assumption platform.system() in ["Linux","Darwin"])
+        #    But first force platform.system() to return “Linux”
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
 
-    # Now actually create the directory and run
-    fake_cron_dir.mkdir(parents=True, exist_ok=True)
-    apply_cron_jobs()
+        # Now actually create the directory and run
+        fake_cron_dir.mkdir(parents=True, exist_ok=True)
+        apply_cron_jobs()
 
-    # 4) Inspect the resulting file
-    cron_file = fake_cron_dir / "lifelog_recur_auto"
-    assert cron_file.exists(), "Expected /etc/cron.d/lifelog_recur_auto to be created"
+        # 4) Inspect the resulting file
+        cron_file = fake_cron_dir / "lifelog_recur_auto"
+        assert cron_file.exists(), "Expected /etc/cron.d/lifelog_recur_auto to be created"
 
-    text = cron_file.read_text(encoding="utf-8").strip().splitlines()
-    # We expect exactly two lines, order not guaranteed
-    expected_lines = {
-        "0 4 * * * root /usr/bin/llog task auto_recur",
-        "30 2 */4 * * root /usr/bin/llog env sync-all"
-    }
-    assert set(text) == expected_lines
+        text = cron_file.read_text(encoding="utf-8").strip().splitlines()
+        # We expect exactly two lines, order not guaranteed
+        expected_lines = {
+            "0 4 * * * root /usr/bin/llog task auto_recur",
+            "30 2 */4 * * root /usr/bin/llog env sync-all"
+        }
+        assert set(text) == expected_lines
 
-    # 5) Permissions: must be 0o644
-    st = cron_file.stat()
-    # Mask out file type bits, compare only permission bits
-    assert stat.S_IMODE(st.st_mode) == 0o644
-
+        # 5) Permissions: must be 0o644
+        st = cron_file.stat()
+        # Mask out file type bits, compare only permission bits
+        assert chmod_calls == [
+            (str(fake_cron_dir / "lifelog_recur_auto"), 0o644)]
+    else:
+        pytest.skip("This test is only for Linux/macOS systems.")
 
 # --------------------------------------
 # TEST: apply_windows_tasks() on “Windows”
 # --------------------------------------
+
+
 def test_apply_windows_tasks_invokes_schtasks(tmp_path, monkeypatch):
     """
     - Monkey‐patch platform.system() → “Windows”
@@ -139,7 +149,7 @@ def test_apply_windows_tasks_invokes_schtasks(tmp_path, monkeypatch):
             }
         }
     }
-    monkeypatch.setattr(cfg, "load_config", lambda: fake_conf)
+    monkeypatch.setattr(cf, "load_config", lambda: fake_conf)
 
     # 4) Run apply_windows_tasks()
     apply_windows_tasks()
@@ -202,8 +212,8 @@ def test_setup_scheduled_tasks_updates_config_and_calls_apply(tmp_path, monkeypa
     }
 
     # 2) Monkey‐patch shutil.which → return “/usr/local/bin/llog”
-    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/llog")
-
+    monkeypatch.setattr(cf, "load_config", lambda: {})
+    monkeypatch.setattr(shutil, "which", lambda _: "llog")
     # 3) Stub out typer.prompt to return fixed values (“04:00” then “02:00”)
     answers = iter(["04:00", "02:00"])
     monkeypatch.setattr("typer.prompt", lambda *args, **kwargs: next(answers))
@@ -214,7 +224,7 @@ def test_setup_scheduled_tasks_updates_config_and_calls_apply(tmp_path, monkeypa
 
     # 5) Monkey‐patch apply_scheduled_jobs() so that we record a flag
     called = {"yes": False}
-    monkeypatch.setattr("livelog.config.schedule_manager.apply_scheduled_jobs",
+    monkeypatch.setattr("lifelog.config.schedule_manager.apply_scheduled_jobs",
                         lambda: called.update({"yes": True}))
 
     # 6) Call the function

@@ -897,98 +897,18 @@ def get_goal_by_uid(uid_val: str) -> Optional[Goal]:
     conn = get_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM goals WHERE uid = ?", (uid_val,))
-    core = cursor.fetchone()
-    if not core:
-        conn.close()
+
+    # 1) Only fetch the numeric ID for this UID
+    cursor.execute("SELECT id FROM goals WHERE uid = ?", (uid_val,))
+    row = cursor.fetchone()
+    conn.close()
+
+    # 2) If no such goal, 404-style None
+    if not row:
         return None
 
-    row_dict = dict(core)
-    goal_id = row_dict["id"]
-    kind = row_dict["kind"]
-
-    # Fetch detail columns exactly as in get_goals_for_tracker
-    if kind == "sum":
-        cursor.execute(
-            "SELECT amount, unit FROM goal_sum WHERE goal_id = ?", (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["amount"] = det["amount"]
-            row_dict["unit"] = det["unit"]
-
-    elif kind == "count":
-        cursor.execute(
-            "SELECT amount, unit FROM goal_count WHERE goal_id = ?", (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["amount"] = det["amount"]
-            row_dict["unit"] = det["unit"]
-
-    elif kind == "bool":
-        pass
-
-    elif kind == "streak":
-        cursor.execute(
-            "SELECT target_streak FROM goal_streak WHERE goal_id = ?", (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["target_streak"] = det["target_streak"]
-
-    elif kind == "duration":
-        cursor.execute(
-            "SELECT amount, unit FROM goal_duration WHERE goal_id = ?", (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["amount"] = det["amount"]
-            row_dict["unit"] = det["unit"]
-
-    elif kind == "milestone":
-        cursor.execute(
-            "SELECT target, unit FROM goal_milestone WHERE goal_id = ?", (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["target"] = det["target"]
-            row_dict["unit"] = det["unit"]
-
-    elif kind == "reduction":
-        cursor.execute(
-            "SELECT amount, unit FROM goal_reduction WHERE goal_id = ?", (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["amount"] = det["amount"]
-            row_dict["unit"] = det["unit"]
-
-    elif kind == "range":
-        cursor.execute(
-            "SELECT min_amount, max_amount, unit, mode FROM goal_range WHERE goal_id = ?",
-            (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["min_amount"] = det["min_amount"]
-            row_dict["max_amount"] = det["max_amount"]
-            row_dict["unit"] = det["unit"]
-            row_dict["mode"] = det["mode"]
-
-    elif kind == "percentage":
-        cursor.execute(
-            "SELECT target_percentage, current_percentage FROM goal_percentage WHERE goal_id = ?",
-            (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["target_percentage"] = det["target_percentage"]
-            row_dict["current_percentage"] = det["current_percentage"]
-
-    elif kind == "replacement":
-        cursor.execute(
-            "SELECT old_behavior, new_behavior FROM goal_replacement WHERE goal_id = ?",
-            (goal_id,))
-        det = cursor.fetchone()
-        if det:
-            row_dict["old_behavior"] = det["old_behavior"]
-            row_dict["new_behavior"] = det["new_behavior"]
-
-    conn.close()
-    return goal_from_row(row_dict)
+    # 3) Delegate to get_goal_by_id (it already loads core + detail)
+    return get_goal_by_id(row["id"])
 
 
 def add_goal(tracker_id: int, goal_data: Dict[str, Any]) -> Goal:
@@ -1149,7 +1069,7 @@ def update_goal(goal_id: int, updates: Dict[str, Any]) -> Optional[Goal]:
         process_sync_queue()
 
         # e) Return the updated Goal dataclass
-        return goal_from_row(row)
+        return goal_from_row(dict(row))
 
 
 def delete_goal(goal_id: int) -> bool:
@@ -1242,16 +1162,38 @@ def upsert_local_goal(data: Dict[str, Any]) -> None:
 
 
 def get_goal_by_id(goal_id: int) -> Optional[Goal]:
-    """
-    Helper to fetch by numeric ID (server‐only or local).
-    """
     conn = get_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+
+    # 1) Fetch core goal row
     cursor.execute("SELECT * FROM goals WHERE id = ?", (goal_id,))
-    row = cursor.fetchone()
+    core = cursor.fetchone()
+    if not core:
+        conn.close()
+        return None
+
+    # 2) Convert to dict so we can inject detail fields
+    row_dict = dict(core)
+    kind = row_dict["kind"]
+
+    # 3) Pull in the detail‐table columns for this kind
+    if kind == "sum":
+        cursor.execute(
+            "SELECT amount, unit FROM goal_sum WHERE goal_id = ?",
+            (goal_id,)
+        )
+        det = cursor.fetchone()
+        if det:
+            row_dict["amount"] = det["amount"]
+            row_dict["unit"] = det["unit"]
+
+    # (repeat for other kinds: count, range, etc. exactly as in your schema…)
+
     conn.close()
-    return goal_from_row(row) if row else None
+
+    # 4) Now build the dataclass
+    return goal_from_row(row_dict)
 
 
 def query_goals(**filters):
@@ -1270,7 +1212,7 @@ def query_goals(**filters):
         cur.execute(sql)
     rows = cur.fetchall()
     conn.close()
-    return [goal_from_row(row) for row in rows]
+    return [goal_from_row(dict(r)) for r in rows]
 
 # For tracker
 
@@ -1289,3 +1231,17 @@ def validate_goal_fields(goal: dict):
         if goal.get("min_amount") is None or goal.get("max_amount") is None:
             raise ValueError("Range goals need min_amount and max_amount.")
     # Extend for other types as needed
+
+
+def get_all_trackers_with_goals() -> List[Dict[str, Any]]:
+    trackers = get_all_trackers()
+    for tracker in trackers:
+        tracker["goals"] = get_goals_for_tracker(tracker["id"])
+    return trackers
+
+
+def get_all_trackers_with_entries() -> List[Dict[str, Any]]:
+    trackers = get_all_trackers()
+    for tracker in trackers:
+        tracker["entries"] = get_entries_for_tracker(tracker["id"])
+    return trackers

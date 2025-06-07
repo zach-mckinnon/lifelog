@@ -52,6 +52,7 @@ def draw_time(pane, h, w, selected_idx):
         pane.erase()
         max_h, max_w = pane.getmaxyx()
         pane.border()
+        title = " Time "
         period = get_time_period()
         period_title = {
             'day': ' (last 24h)',
@@ -59,8 +60,8 @@ def draw_time(pane, h, w, selected_idx):
             'month': ' (last 30 days)',
             'all': ' (all time)'
         }.get(period, '')
-        safe_addstr(pane, 0, max((max_w - 13) // 2, 1),
-                    f" Time {period_title} ", curses.A_BOLD)
+        safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
+                    title, curses.A_BOLD)
 
         y = 2
         active = time_repository.get_active_time_entry()

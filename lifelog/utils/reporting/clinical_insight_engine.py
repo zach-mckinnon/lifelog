@@ -179,9 +179,11 @@ def insight_missed_goals(trackers):
 
 
 def pearson_corr(xs, ys):
-    n = len(xs)
-    if n < 2:
+    # Edge‐cases: need at least two points, and equal lengths
+    if len(xs) != len(ys) or len(xs) < 2:
         return 0.0
+
+    n = len(xs)
     avg_x = sum(xs) / n
     avg_y = sum(ys) / n
     num = sum((x - avg_x)*(y - avg_y) for x, y in zip(xs, ys))

@@ -6,7 +6,7 @@ from importlib.resources import files
 import os
 from pathlib import Path
 import subprocess
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import toml
 from rich.console import Console
 
@@ -15,67 +15,80 @@ from lifelog.utils.encrypt import decrypt_data
 
 console = Console()
 # Standardized base directory
-BASE_DIR = Path.home() / ".lifelog"
-USER_CONFIG = BASE_DIR / "config.toml"
 
-# Load default config from package resources
-DEFAULT_CONFIG = files("lifelog.config").joinpath(
-    "config.toml").read_text(encoding="utf-8")
+MODES = ("local", "server", "client")
+
+if "BASE_DIR" not in globals():
+    # honor XDG_CONFIG_HOME first; else ~/.lifelog
+    _xdg = os.getenv("XDG_CONFIG_HOME")
+    BASE_DIR = Path(_xdg) if _xdg else Path.home() / ".lifelog"
+
+if "USER_CONFIG" not in globals():
+    USER_CONFIG = BASE_DIR / "config.toml"
+
+if "DEFAULT_CONFIG" not in globals():
+    # the shipped defaults, read from your package resources
+    DEFAULT_CONFIG = files("lifelog.config") \
+        .joinpath("config.toml") \
+        .read_text(encoding="utf-8")
 
 
 def load_config() -> dict:
-    # Ensure base directory exists
     BASE_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Create default config if missing
     if not USER_CONFIG.exists():
         USER_CONFIG.write_text(DEFAULT_CONFIG, encoding="utf-8")
-
-    # Load and return config
     return toml.loads(USER_CONFIG.read_text(encoding="utf-8"))
 
 
 def save_config(doc: dict):
-    USER_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    with USER_CONFIG.open("w", encoding="utf-8") as f:
-        f.write(toml.dumps(doc))
+    BASE_DIR.mkdir(parents=True, exist_ok=True)
+    USER_CONFIG.write_text(toml.dumps(doc), encoding="utf-8")
 
 
-def get_deployment_mode_and_url():
-    config = load_config()
-    deployment = config.get("deployment", {})
-    mode = deployment.get("mode", "standalone")
-    server_url = deployment.get("server_url", "http://localhost:5000")
-    return mode, server_url
+def get_deployment_mode() -> str:
+    cfg = load_config().get("deployment", {})
+    mode = cfg.get("mode", "local")
+    if mode not in MODES:
+        console.print(
+            f"[yellow]Warning:[/] unknown deployment.mode '{mode}', defaulting to 'local'")
+        return "local"
+    return mode
+
+
+def get_server_url() -> str:
+    return load_config().get("deployment", {}).get("server_url", "")
+
+
+def is_local_mode() -> bool:
+    return get_deployment_mode() == "local"
+
+
+def is_server_mode() -> bool:
+    return get_deployment_mode() == "server"
 
 
 def is_client_mode() -> bool:
+    return get_deployment_mode() == "client"
+
+
+def get_deployment_mode_and_url() -> Tuple[str, str]:
     """
-    Return True if the deployment mode is set to 'client' (or whatever you’ve chosen).
+    Backwards‐compat shim for code & tests that still call get_deployment_mode_and_url().
     """
-    config = load_config()
-    mode = config.get("deployment", {}).get("mode", "standalone")
-    return mode == "client"
+    return get_deployment_mode(), get_server_url()
+
+
+def is_direct_db_mode() -> bool:
+    return is_local_mode() or is_server_mode()
+
+
+def is_host_server() -> bool:
+    return bool(load_config().get("deployment", {}).get("host_server", False))
 
 
 def get_config_value(section: str, key: str, default=None) -> Any:
     config = load_config()
     return config.get(section, {}).get(key, default)
-
-
-def get_deployment_mode() -> str:
-    config = load_config()
-    return config.get("deployment", {}).get("mode", "local")
-
-
-def get_server_url() -> str:
-    config = load_config()
-    return config.get("deployment", {}).get("server_url", "")
-
-
-def is_host_server() -> bool:
-    config = load_config()
-    return config.get("deployment", {}).get("host_server", False)
 
 
 def set_deployment_mode(mode):
@@ -125,6 +138,24 @@ def set_config_value(section: str, key: str, value: Any):
     sec[key] = value
     config[section] = sec
     save_config(config)
+
+
+def delete_config_value(section: str, key: str):
+    """
+    Deletes `key` from the specified `section` in the config, if it exists.
+    """
+    config = load_config()
+    # grab the section dict (or empty if missing)
+    sec = config.get(section, {})
+    # remove the key if present
+    if key in sec:
+        del sec[key]
+        # write back and persist
+        config[section] = sec
+        save_config(config)
+    else:
+        # no-op if the key wasn’t there; you could log or raise if you prefer
+        console.print(f"[yellow]Warning:[/] '{key}' not found in [{section}]")
 
 
 def get_all_category_importance() -> Dict[str, float]:

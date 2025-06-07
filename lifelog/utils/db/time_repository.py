@@ -14,7 +14,7 @@ from lifelog.utils.db.db_helper import (
     fetch_from_server,
 )
 from lifelog.utils.db.database_manager import get_connection, add_record, update_record
-from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as time_fields
+from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
 
 
 def _pull_changed_time_logs_from_host() -> None:
@@ -51,7 +51,7 @@ def _get_all_time_field_names() -> List[str]:
     """
     # time_fields is imported from models; it returns the dataclass fields for TimeLog.
     # We exclude "id" because SQLite will allocate it automatically.
-    return [f.name for f in time_fields if f.name != "id"]
+    return [f.name for f in dataclass_fields(TimeLog) if f.name != "id"]
 
 
 def upsert_local_time_log(data: Dict[str, Any]) -> None:
@@ -290,11 +290,13 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     if isinstance(data.get("end"), datetime):
         data["end"] = data["end"].isoformat()
 
-    # 2) If duration not provided, compute from start/end
-    if "duration_minutes" not in data or data["duration_minutes"] is None:
-        st = datetime.fromisoformat(data["start"])
-        ed = datetime.fromisoformat(data["end"])
-        data["duration_minutes"] = max(0.0, (ed - st).total_seconds() / 60)
+    # 2) Only compute a duration if we actually have an end time
+    if data.get("end") is not None:
+        # duration_minutes missing or None? compute it
+        if data.get("duration_minutes") is None:
+            st = datetime.fromisoformat(data["start"])
+            ed = datetime.fromisoformat(data["end"])
+            data["duration_minutes"] = max(0.0, (ed - st).total_seconds() / 60)
 
     # 3) Assign a UID
     if not is_direct_db_mode():

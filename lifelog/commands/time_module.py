@@ -204,7 +204,7 @@ def distracted(
         console.print(
             f"[green]Distracted time (+{mins} min) logged for current session (Total distracted: {new_distracted} min).[/green]")
     else:
-        # No session, log as a standalone distraction (and increment daily stat elsewhere if desired)
+        # No session, log as a local distraction (and increment daily stat elsewhere if desired)
         start = now - timedelta(minutes=mins)
         distraction = TimeLog(
             title="Distracted",
@@ -216,7 +216,7 @@ def distracted(
         )
         time_repository.add_time_entry(distraction)
         console.print(
-            f"[green]Distracted time ({mins} min) logged as standalone block.[/green]")
+            f"[green]Distracted time ({mins} min) logged as local block.[/green]")
 
 
 @app.command("summary")

@@ -50,7 +50,8 @@ app.add_typer(sync_app, name="sync", help="Fetch external environmental data")
 
 # Register all modules
 app.add_typer(track_module.app, name="track",
-              help="Track recurring self-measurements like mood, energy, pain, as well as habits and goals.")
+              help="Track recurring self-measurements and goals."
+              )
 app.add_typer(time_module.app, name="time",
               help="Track time in categories like resting, working, socializing.")
 app.add_typer(task_module.app, name="task",
@@ -158,7 +159,6 @@ def ui(
             auto_sync()
         except Exception as e:
             # We print a non‐fatal warning in the TUI mode:
-            console = curses.initscr()
             console.addstr(0, 0, f"⚠️ Auto‐sync failed: {e}")
             console.refresh()
             curses.napms(1500)  # pause 1.5s so user can see it
@@ -234,7 +234,7 @@ def help_command():
     console.print(table)
     console.print(
         Panel.fit(
-            "[italic green]Tip:[/] Use [bold]--help[/bold] after any command to see available options.\n\nExample: [bold yellow]llog task --help[/bold yellow]",
+            "[italic green]Tip:[/] Use [bold]--help[/bold] after any command to see available options.",
             title="💡 Usage Tip",
             title_align="left"
         )
@@ -246,7 +246,6 @@ def config_edit():
     """
     Interactive config editor. Change aliases, categories, category importance, etc.
     """
-    import lifelog.config.config_manager as cf
 
     def select_section():
         print("\nWhat config section would you like to edit?")

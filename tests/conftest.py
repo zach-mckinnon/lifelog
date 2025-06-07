@@ -5,10 +5,92 @@ import pytest
 from pathlib import Path
 import importlib
 from _pytest.monkeypatch import MonkeyPatch
+# ────────────────────────────────────────────────────────────────────────────────
+# Headless-safe curses stub (Linux + Windows)
+#     --- place this BEFORE other imports that might import curses
+# ────────────────────────────────────────────────────────────────────────────────
+import sys
+import types
+
+import typer
+from rich.prompt import Confirm
+
+
+# def _install_dummy_curses():
+#     """
+#     Create a minimal stand-in for the real curses module so any call made during
+#     tests never raises `_curses.error` (the typical “must call initscr() first”).
+#     Executed once, at import time, before the test suite collects files.
+#     """
+#     if "curses" in sys.modules:        # already real curses? leave it alone
+#         return
+
+#     dummy = types.ModuleType("curses")
+#     # Basic attributes used by your UI code
+#     dummy.A_NORMAL = 0
+#     dummy.A_BOLD = 1
+#     dummy.A_REVERSE = 2
+#     dummy.KEY_UP = 259
+#     dummy.KEY_DOWN = 258
+#     dummy.KEY_ENTER = 10
+#     dummy.KEY_BACKSPACE = 263
+#     dummy.KEY_LEFT = 260
+#     dummy.KEY_RIGHT = 261
+#     dummy.KEY_DC = 330
+#     dummy.color_pair = lambda n: n
+
+#     # Safe no-op versions of functions that normally need `initscr`
+#     for _fn in (
+#         "initscr", "endwin", "echo", "noecho", "cbreak", "nocbreak",
+#         "raw", "noraw", "start_color", "use_default_colors", "curs_set"
+#     ):
+#         setattr(dummy, _fn, lambda *a, **k: None)
+
+#     # A dead-simple window object for newwin()
+#     class _DummyWin:
+#         def __init__(self, h=25, w=80): self._h, self._w = h, w
+#         def getmaxyx(self): return (self._h, self._w)
+#         def border(self): pass
+#         def addstr(self, *a, **k): pass
+#         def erase(self): pass
+#         def noutrefresh(self): pass
+#         def refresh(self): pass
+#         def getch(self): return -1
+#         def curs_set(self, *_): pass
+#         def keypad(self, *_): pass
+#         def nodelay(self, *_): pass
+
+#     dummy.newwin = lambda *args, **kw: _DummyWin(*args)
+
+#     # Provide a very small ascii sub-module
+#     dummy.ascii = types.SimpleNamespace(EOT=4)
+
+#     # Finally, register the stub (both curses and curses.ascii)
+#     sys.modules["curses"] = dummy
+#     sys.modules["curses.ascii"] = dummy.ascii
+
+
+# _install_dummy_curses()
 
 # ────────────────────────────────────────────────────────────────────────────────
-# 1) Fixture: create a temporary SQLite file and monkey-patch LIFELOG_DB_PATH
+# Fixture: create a temporary SQLite file and monkey-patch LIFELOG_DB_PATH
 # ────────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _stub_typer_prompts(monkeypatch):
+    """
+    Silence every interactive question coming from typer.confirm,
+    typer.prompt, and rich.prompt.Confirm.ask so tests run headless.
+    """
+    # Always say “no” to yes/no confirmations.
+    monkeypatch.setattr(typer, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(Confirm, "ask", lambda *a, **k: False)
+
+    # When code calls typer.prompt("…") just return an empty string
+    # (or a sentinel value if a specific answer is required in a test).
+    monkeypatch.setattr(typer, "prompt", lambda *a, **k: "")
+
+    yield
 
 
 @pytest.fixture(scope="session")

@@ -101,44 +101,41 @@ def get_task_by_id(task_id):
 
 def add_task(task_data):
     """
-    Accepts dict or Task object, handles dataclass conversion, and fills in defaults.
+    Accepts dict or Task object, handles dataclass conversion, fills in defaults,
+    and then INSERTs exactly the columns in get_task_fields().
     """
-    if isinstance(task_data, Task):
+    # 1) Turn your dataclass into a plain dict, or copy the dict you were given.
+    if hasattr(task_data, "__dataclass_fields__"):
         data = asdict(task_data)
     else:
-        data = task_data
-    print(f"Adding task with data: {data}")
+        data = task_data.copy()
 
-    data.setdefault("created", datetime.now().isoformat())
-
-    # Set defaults for missing fields
-    if "importance" not in data:
-        data.setdefault("importance", 1)
-
-    if "priority" not in data:
-        data.setdefault("priority", 1)
-
-    if not is_direct_db_mode():
-        data.setdefault("uid", str(uuid.uuid4()))
-
-    # Add only fields present in the model/schema
+    # 2) Fill in a default for *every* column your model knows about
+    # e.g. ['uid','title','project',…,'start','end','notes']
     fields = get_task_fields()
+    for f in fields:
+        data.setdefault(f, None)
 
+    # 3) Now override the ones that should never be None
+    data["created"] = data.get("created") or datetime.now().isoformat()
+    data["status"] = data.get("status") or "backlog"
+    data["importance"] = data.get("importance") or 1
+    data["priority"] = data.get("priority") or 1.0
+
+    # 4) UID: only auto‐generate in client mode
+    if not is_direct_db_mode():
+        data["uid"] = data.get("uid") or str(uuid.uuid4())
+
+    # 5) Insert and return
     if is_direct_db_mode():
-        add_record("tasks", data, fields)
-        # after insertion, fetch last rowid if you need to build the Task
-        conn = get_connection()
-        last_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.close()
-        return get_task_by_id(last_id)
-
-    # 5. If client, queue and immediately try syncing
+        new_id = add_record("tasks", data, fields)  # Use returned ID
+        return get_task_by_id(new_id)
     else:
-        # client mode: same insert logic
+        # client mode: insert, queue up a “create”, try sync, and re‐fetch
         add_record("tasks", data, fields)
         queue_sync_operation("tasks", "create", data)
         process_sync_queue()
-        # Here, to return a Task, we must look it up locally by uid:
+
         conn = get_connection()
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM tasks WHERE uid = ?",
@@ -291,9 +288,6 @@ def query_tasks(
             query += " AND uid = ?"
             sql_params.append(uid)
 
-        if not show_completed:
-            query += " AND (status IS NULL OR status != 'done')"
-
         if title_contains:
             query += " AND title LIKE ?"
             sql_params.append(f"%{title_contains}%")
@@ -318,6 +312,9 @@ def query_tasks(
             query += " AND status = ?"
             sql_params.append(status)
 
+        if not show_completed and status is None:
+            query += " AND (status IS NULL OR status != 'done')"
+
         sort_field = {
             "priority": "priority DESC",
             "due": "due ASC",
@@ -341,7 +338,7 @@ def query_tasks(
             "importance": importance,
             "due_contains": due_contains,
             "status": status,
-            "show_completed": "true" if show_completed else "false",
+
             "sort": sort
         }
         params.update(kwargs)

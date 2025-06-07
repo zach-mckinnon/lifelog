@@ -9,16 +9,16 @@ from lifelog.ui_views.ui_helpers import log_exception, safe_addstr
 
 
 def _drop_to_console(func, *args):
-    """
-    Exit curses, run a blocking func(*args) that prints via Rich,
-    then pause for Enter before returning into curses.
-    """
-    curses.endwin()
+    try:
+        curses.endwin()  # Only call if initialized
+    except curses.error:
+        pass
     try:
         func(*args)
     except Exception as e:
         print(f"\n[red]Error running report: {e}[/]")
     input("\nPress Enter to return to the TUI…")
+    curses.initscr()  # Reinitialize curses
 
 
 def run_summary_trackers(stdscr):

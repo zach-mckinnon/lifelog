@@ -8,6 +8,8 @@ The module uses JSON files for data storage and integrates with a cron job syste
 
 from datetime import datetime
 import json
+import random
+from typing import Dict, List, Optional
 import requests
 import lifelog.config.config_manager as cf
 
@@ -24,6 +26,29 @@ def load_feedback_sayings():
     cur.execute("SELECT context, sayings FROM feedback_sayings")
     conn.close()
     return {row['context']: json.loads(row['sayings']) for row in cur.fetchall()}
+
+
+_sayings_cache: Optional[Dict[str, List[str]]] = None
+
+
+def get_feedback_saying(context: str, *, fallback: str = "encouragement") -> str:
+    """
+    Return a random saying for the given *context*.
+    • Loads from DB once, then serves from memory.
+    • Falls back to the *fallback* context, then to a generic phrase.
+    """
+    global _sayings_cache
+    if _sayings_cache is None:
+        try:
+            _sayings_cache = load_feedback_sayings()
+        except Exception:
+            _sayings_cache = default_feedback_sayings()
+
+    pool = _sayings_cache.get(context) or _sayings_cache.get(fallback)
+    if not pool:
+        return "Keep going!"
+
+    return random.choice(pool)
 
 
 def save_feedback_sayings(sayings: dict):
@@ -101,60 +126,6 @@ def fetch_daily_zen_quote():
         print(
             f"[yellow]⚠️ Warning[/yellow]: Could not fetch quote from ZenQuotes API: {e}")
         return None
-
-
-def get_motivational_quote():
-    """
-    Retrieves a daily quote.
-    - Fetches fresh quote from API if possible.
-    - Falls back to last saved quote if API is unreachable.
-    """
-    today = datetime.now().date()
-    DAILY_QUOTE_FILE = cf.get_motivational_quote_file()
-    stored_quote_data = {}
-
-    # Try to fetch a fresh quote first
-    new_quote = fetch_daily_zen_quote()
-    if new_quote:
-        # Check if already saved
-        if DAILY_QUOTE_FILE.exists():
-            try:
-                with open(DAILY_QUOTE_FILE, "r") as f:
-                    stored_quote_data = json.load(f)
-                if stored_quote_data.get("quote") == new_quote:
-                    # Same quote, don't resave
-                    return new_quote
-            except json.JSONDecodeError:
-                print(
-                    "[yellow]⚠️ Warning[/yellow]: Could not decode stored daily quote.")
-
-        # Save only if new or no existing quote
-        save_motivation_quote({"date": str(today), "quote": new_quote})
-        return new_quote
-
-    # If fetching fails, try loading the stored one
-    if DAILY_QUOTE_FILE.exists():
-        try:
-            with open(DAILY_QUOTE_FILE, "r") as f:
-                stored_quote_data = json.load(f)
-            if stored_quote_data.get("quote"):
-                return stored_quote_data["quote"]
-        except json.JSONDecodeError:
-            print("[yellow]⚠️ Warning[/yellow]: Stored daily quote file is corrupt.")
-
-    return None
-
-
-def save_motivation_quote(quote_data):
-    """Saves the daily ZenQuote to a JSON file."""
-    DAILY_QUOTE_FILE = cf.get_motivational_quote_file()
-    DAILY_QUOTE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(DAILY_QUOTE_FILE, "w") as f:
-            json.dump(quote_data, f, indent=2)
-    except IOError:
-        print(
-            f"[yellow]⚠️ Warning[/yellow]: Could not save daily quote to {DAILY_QUOTE_FILE}")
 
 
 def default_feedback_sayings():

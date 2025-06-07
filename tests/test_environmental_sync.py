@@ -152,13 +152,13 @@ def test_sync_all_invokes_all_sections(monkeypatch, stub_repo):
 
     # Monkey-patch each function to record a call
     monkeypatch.setattr(
-        "livelog.commands.environmental_sync.weather", lambda: calls.append("weather"))
+        "lifelog.commands.environmental_sync.weather", lambda: calls.append("weather"))
     monkeypatch.setattr(
-        "livelog.commands.environmental_sync.air", lambda: calls.append("air"))
+        "lifelog.commands.environmental_sync.air", lambda: calls.append("air"))
     monkeypatch.setattr(
-        "livelog.commands.environmental_sync.moon", lambda: calls.append("moon"))
+        "lifelog.commands.environmental_sync.moon", lambda: calls.append("moon"))
     monkeypatch.setattr(
-        "livelog.commands.environmental_sync.satellite", lambda: calls.append("sat"))
+        "lifelog.commands.environmental_sync.satellite", lambda: calls.append("sat"))
     sync_all()
     assert calls == ["weather", "air", "moon", "sat"]
 

@@ -19,7 +19,7 @@ def get_mode() -> Tuple[str, str]:
 
 
 def is_direct_db_mode() -> bool:
-    """Check if we should write directly to DB (standalone or host)"""
+    """Check if we should write directly to DB (local or host)"""
     mode, _ = get_mode()
     return mode in ['local', 'server']
 

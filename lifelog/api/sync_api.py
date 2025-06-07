@@ -102,17 +102,24 @@ def handle_sync(table: str):
             # payload must include tracker_id and uid
             track_repository.add_goal(payload["tracker_id"], payload)
 
-        elif operation == 'update':
+        if operation == 'update':
             if "uid" in payload:
                 uid_val = payload.pop("uid")
                 updates = {k: v for k, v in payload.items() if k != "id"}
                 goal = track_repository.get_goal_by_uid(uid_val)
                 if goal:
+                    # Inject the existing kind so update_goal can update the right detail table
+                    updates['kind'] = goal.kind
                     track_repository.update_goal(goal.id, updates)
+
             elif "id" in payload:
                 gid = payload.pop("id")
                 updates = {k: v for k, v in payload.items()}
-                track_repository.update_goal(gid, updates)
+                # Fetch the goal to get its kind
+                goal = track_repository.get_goal_by_id(gid)
+                if goal:
+                    updates['kind'] = goal.kind
+                    track_repository.update_goal(gid, updates)
             else:
                 return jsonify({"error": "No identifier provided for update"}), 400
 

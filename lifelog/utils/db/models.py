@@ -1,8 +1,14 @@
 # lifelog/models.py
+from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, fields
-from pydantic import BaseModel
 from datetime import datetime
+
+
+class TaskStatus(Enum):
+    BACKLOG = "backlog"
+    ACTIVE = "active"
+    DONE = "done"
 
 
 @dataclass
@@ -14,7 +20,7 @@ class Task:
     importance: int = 1
     created: Optional[datetime] = None
     due: Optional[datetime] = None
-    status: str = "backlog"
+    status: TaskStatus = TaskStatus.BACKLOG
     start: Optional[datetime] = None
     end: Optional[datetime] = None
     priority: float = 1
@@ -100,7 +106,7 @@ class Tracker:
 
 
 @dataclass
-class TrackerEntry(BaseModel):
+class TrackerEntry():
     id: int
     tracker_id: int
     timestamp: str
@@ -226,7 +232,7 @@ def get_tracker_fields() -> List[str]:
     If your schema has: (id, uid, title, type, category, created),
     this will return ['uid','title','type','category','created'].
     """
-    return ["uid", "title", "type", "category", "created"]
+    return ["uid", "title", "type", "category", "created", "tags", "notes"]
 
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -332,7 +338,7 @@ def tracker_from_row(row: Dict[str, Any]) -> Tracker:
 # ───────────────────────────────────────────────────────────────────────────────
 
 @dataclass
-class TrackerEntry(BaseModel):
+class TrackerEntry():
     id: int
     tracker_id: int
     timestamp: str
@@ -355,14 +361,17 @@ def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
 
 
 def goal_from_row(row):
+    if not isinstance(row, dict):
+        row = dict(row)
     kind = row["kind"]
-    base = dict(
-        id=row["id"],
-        tracker_id=row["tracker_id"],
-        title=row["title"],
-        kind=row["kind"],
-        period=row.get("period", "day"),
-    )
+    base = {
+        "id": row["id"],
+        "tracker_id": row["tracker_id"],
+        "title": row["title"],
+        "kind": row["kind"],
+        "period": row.get("period", "day"),
+        "uid": row.get("uid"),
+    }
     if kind == "sum":
         return GoalSum(**base, amount=row["amount"], unit=row.get("unit"))
     elif kind == "count":

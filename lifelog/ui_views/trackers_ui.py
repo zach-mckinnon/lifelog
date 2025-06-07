@@ -17,7 +17,9 @@ from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_t
 def draw_trackers(pane, h, w, selected_idx, color_pair=None):
     trackers = track_repository.get_all_trackers()
     pane.erase()
+    max_h, max_w = pane.getmaxyx()
     pane.border()
+    title = " Trackers "
     y = 1
     for i, tracker in enumerate(trackers):
         line = f"{tracker.id:>2} {tracker.title:20} {tracker.category or '-':8} {tracker.type:6}"
@@ -27,7 +29,8 @@ def draw_trackers(pane, h, w, selected_idx, color_pair=None):
                 color_pair) if color_pair else curses.A_REVERSE
         else:
             attr = curses.A_NORMAL
-        safe_addstr(pane, y + i, 2, line[:w-4], attr)
+        safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
+                    title, curses.A_BOLD)
     pane.noutrefresh()
 
 

@@ -3,11 +3,11 @@ from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
-_ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
-if _ENV_DB:
-    DB_PATH = Path(_ENV_DB).expanduser().resolve()
-else:
-    DB_PATH = BASE_DIR / "lifelog.db"
+# _ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
+# if _ENV_DB:
+#     DB_PATH = Path(_ENV_DB).expanduser().resolve()
+# else:
+#     DB_PATH = BASE_DIR / "lifelog.db"
 
 
 class DBConnection:
@@ -20,28 +20,40 @@ class DBConnection:
         self.conn.close()
 
 
+def _resolve_db_path():
+    # Always read the latest env var at call time
+    env_db = os.getenv("LIFELOG_DB_PATH", "").strip()
+    if env_db:
+        return Path(env_db).expanduser().resolve()
+    return BASE_DIR / "lifelog.db"
+
+
 def get_connection():
-    # 1) ensure ~/.lifelog exists
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # 2) open (or create) the DB file
-    conn = sqlite3.connect(DB_PATH)
+    # 1) pick up the current DB_PATH
+    db_path = _resolve_db_path()
+    # 2) ensure the directory exists
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    # 3) open (or create) the DB file
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    # 3) turn on FOREIGN KEY support so ON DELETE CASCADE works
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def is_initialized() -> bool:
     """Check if database exists and has tables"""
-    if not DB_PATH.exists():
+    db_path = _resolve_db_path()
+    if not db_path.exists():
         return False
 
     try:
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = cursor.fetchall()
-            return len(tables) > 0
+        # Open a connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cur.fetchall()
+        conn.close()
+        return len(tables) > 0
     except sqlite3.Error:
         return False
 
@@ -58,7 +70,9 @@ def initialize_schema():
             title TEXT,
             type TEXT,
             category TEXT,
-            created DATETIME
+            created DATETIME,
+            notes TEXT, 
+            tags TEXT
         );
 
         CREATE TABLE IF NOT EXISTS tasks (
@@ -182,7 +196,7 @@ def initialize_schema():
             tracker_id INTEGER,
             timestamp DATETIME,
             value FLOAT,
-            FOREIGN KEY(tracker_id) REFERENCES trackers(id)
+            FOREIGN KEY(tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS time_history (
@@ -240,7 +254,7 @@ def initialize_schema():
             CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due);
             CREATE INDEX IF NOT EXISTS idx_goals_tracker_id ON goals(tracker_id);
             """)
-
+        cursor.executescript("SELECT COUNT(*) FROM feedback_sayings")
         conn.commit()
     except sqlite3.Error as e:
         print(f"Schema initialization error: {e}")
@@ -258,8 +272,10 @@ def add_record(table, data, fields):
     cursor.execute(f"""
         INSERT INTO {table} ({cols}) VALUES ({placeholders})
     """, values)
+    new_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    return new_id
 
 
 def update_record(table, record_id, updates):

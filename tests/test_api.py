@@ -6,6 +6,8 @@ import pytest
 from datetime import datetime, timedelta
 
 from lifelog.app import app as flask_app
+
+
 from lifelog.config import config_manager as cfg
 from lifelog.utils.db.database_manager import initialize_schema, get_connection
 from lifelog.utils.db import database_manager as dbman
@@ -42,8 +44,13 @@ def client(tmp_path_factory):
                     "host_server": True
                 },
             }
-        mp.setattr(cfg, "load_config", fake_load_config)
+        mp.setattr(cfg, "load_config", lambda: {
+            "deployment": {"mode": "server", "server_url": "http://localhost:5000", "host_server": True},
+            "api":        {"key": "testkey"}
+        })
+
         mp.setattr(cfg, "is_host_server", lambda: True)
+        # no need to patch is_direct_db_mode or is_client_mode, they derive from mode
 
         # 4) initialize_schema()
         from lifelog.utils.db.database_manager import initialize_schema
@@ -52,6 +59,8 @@ def client(tmp_path_factory):
         # 5) build Flask test client
         from lifelog.app import app as flask_app
         flask_app.config["TESTING"] = True
+        flask_app.config["DEBUG"] = True                 # optional, but useful
+        flask_app.config["PROPAGATE_EXCEPTIONS"] = True
         yield flask_app.test_client()
     finally:
         mp.undo()
@@ -79,7 +88,6 @@ def api_key_header():
 def test_create_list_get_update_delete_task(client, api_key_header):
     # 1) POST /tasks to create a new task
     task_payload = {
-        "uid": "api-uid-1234",
         "title": "API‐Created Task",
         "project": "TestProj",
         "category": "TestCat",
@@ -94,6 +102,7 @@ def test_create_list_get_update_delete_task(client, api_key_header):
         "recur_base": None,
         "tags": "tag1,tag2",
         "notes": "This is a test",
+        "uid": "api-uid-1234",
     }
     rv = client.post("/tasks/", headers=api_key_header, json=task_payload)
     assert rv.status_code == 201

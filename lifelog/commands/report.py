@@ -172,10 +172,10 @@ def _report_range(tracker, goal, details, df):
     mode = details.get("mode", "goal")
 
     if mode == "goal":
-        completed = min_val <= latest_value <= max_val
+        completed = bool(min_val <= latest_value <= max_val)
         status = "✓ In range" if completed else "✗ Out of range"
     else:
-        completed = None
+        completed = False
         status = f"Scale entry logged: {latest_value} (range {min_val}-{max_val})"
 
     return {
@@ -200,10 +200,10 @@ def _report_sum(tracker, goal, details, df):
     target = details['amount']
 
     pct = (total / target) * 100 if target else 0
-
+    completed = bool(total >= target)
     return {
         "report_type": ReportType.SUM_ACCUMULATION.value,
-        "completed": total >= target,
+        "completed": completed,
         "metrics": {
             "total": total,
             "target": target,
@@ -226,7 +226,7 @@ def _report_count(tracker, goal, details, df):
 
     return {
         "report_type": ReportType.COUNT_FREQUENCY.value,
-        "completed": count >= target,
+        "completed": bool(count >= target),
         "metrics": {
             "count": count,
             "target": target,
@@ -249,7 +249,7 @@ def _report_bool(tracker, goal, df):
 
     return {
         "report_type": ReportType.BOOL_COMPLETION.value,
-        "completed": pct == 100.0,
+        "completed": bool(pct == 100.0),
         "metrics": {
             "true": true_count,
             "false": total-true_count,
@@ -282,7 +282,7 @@ def _report_streak(tracker, goal, details, df):
 
     return {
         "report_type": ReportType.STREAK_CURRENT.value,
-        "completed": streak >= target,
+        "completed": bool(streak >= target),
         "metrics": {
             "streak": streak,
             "target": target
@@ -313,7 +313,7 @@ def _report_duration(tracker, goal, details, df):
 
     return {
         "report_type": ReportType.DURATION_TIME.value,
-        "completed": total_minutes >= target_minutes,
+        "completed": bool(total_minutes >= target_minutes),
         "metrics": {
             "total_minutes": total_minutes,
             "target_minutes": target_minutes,
@@ -333,23 +333,31 @@ def _report_milestone(tracker, goal, details, df):
     target = details['target']
     unit = details.get('unit', '')
 
+    # ------------------------- NEW LOGIC --------------------------
+    # A milestone is complete only if
+    #   • total progress ≥ target, and
+    #   • the last reading repeats the previous one (stable)
+    stable = len(df) >= 2 and df['value'].iloc[-1] == df['value'].iloc[-2]
+    completed = bool(current >= target and stable)
+    # --------------------------------------------------------------
+
     pct = (current / target) * 100 if target else 0
     remaining = max(0, target - current)
 
     return {
         "report_type": ReportType.MILESTONE_PROGRESS.value,
-        "completed": current >= target,
+        "completed": completed,
         "metrics": {
             "current": current,
             "target": target,
-            "percent": pct
+            "percent": pct,
         },
         "display_format": {
             "primary": f"{current:.1f}/{target:.1f} {unit}",
             "secondary": f"{pct:.1f}% complete",
-            "tertiary": f"{remaining:.1f} {unit} remaining" if remaining else "Completed!"
+            "tertiary": f"{remaining:.1f} {unit} remaining" if remaining else "Completed!",
         },
-        "status": "🏆 Milestone achieved!" if current >= target else "⏳ Progressing toward milestone"
+        "status": "🏆 Milestone achieved!" if completed else "⏳ Progressing toward milestone",
     }
 
 
@@ -357,8 +365,8 @@ def _report_percentage(tracker, goal, details, df):
     latest_pct = df['value'].iloc[-1]
     target_pct = details['target_percentage']
 
-    completed = latest_pct >= target_pct
-
+    completed = bool(latest_pct >= target_pct
+                     )
     return {
         "report_type": ReportType.PERCENTAGE_PROGRESS.value,
         "completed": completed,
@@ -384,7 +392,7 @@ def _report_reduction(tracker, goal, details, df):
 
     return {
         "report_type": ReportType.REDUCTION_TREND.value,
-        "completed": latest <= target,
+        "completed": bool(latest <= target),
         "metrics": {
             "latest": latest,
             "target": target
@@ -410,7 +418,7 @@ def _report_replacement(tracker, goal, details, df):
 
     return {
         "report_type": ReportType.REPLACEMENT_RATIO.value,
-        "completed": ratio >= 75,
+        "completed": bool(ratio >= 75),
         "metrics": {
             "new_behavior": new_behavior_count,
             "old_behavior": old_behavior_count,

@@ -30,7 +30,7 @@ from lifelog.utils.shared_utils import add_category_to_config, add_project_to_co
 import lifelog.config.config_manager as cf
 from lifelog.config.schedule_manager import apply_scheduled_jobs, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
-from lifelog.utils.get_quotes import get_motivational_quote
+from lifelog.utils.get_quotes import get_feedback_saying, get_motivational_quote
 
 
 app = typer.Typer(help="Create and manage your personal tasks.")
@@ -157,7 +157,7 @@ def add(
 
     console.print(
         f"[green]✅ Task added[/green]: [bold blue]{title}[/bold blue]")
-    console.print(get_motivational_quote("task_added"))
+    console.print(get_feedback_saying("task_added"))
 
 
 # TODO: Improve the filtering and sorting options to properly work for priority by default.
@@ -551,7 +551,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 
     console.print(
         f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
-    console.print(get_motivational_quote("task_done"))
+    console.print(get_feedback_saying("task_completed"))
     # try:
     #     publish.single(
     #         topic="servo/control",

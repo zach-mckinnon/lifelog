@@ -140,7 +140,7 @@ def test_generate_insights_with_enough_overlap(monkeypatch):
         fake.setdefault("M1", {})[day] = i + 1
         fake.setdefault("M2", {})[day] = (i + 1) * 2
     monkeypatch.setattr(
-        "livelog.utils.insight_engine.daily_averages", lambda entries: fake)
+        "lifelog.utils.reporting.insight_engine.daily_averages", lambda entries: fake)
     # Now generate_insights should produce at least one insight
     insights = generate_insights()
     assert isinstance(insights, list)
