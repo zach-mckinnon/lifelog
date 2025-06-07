@@ -4,6 +4,7 @@ from pathlib import Path
 import platform
 import shutil
 import sys
+from typing import Optional
 import requests
 from rich.console import Console
 from rich.panel import Panel
@@ -348,62 +349,60 @@ def setup_api(config):
             "Docker: [cyan]cd ~/.lifelog/docker && docker-compose up -d[/cyan]")
 
 
-def generate_docker_files(base_path=None):
-    # Use the current directory as base if not given
-    base_path = Path(base_path or os.getcwd())
+def generate_docker_files(base_path: Optional[Path] = None) -> None:
+    """
+    Create ~/.lifelog/docker/{Dockerfile,docker-compose.yml}
+
+    • Works on Python 3.9 (no PEP-604 unions, no 3.10-only syntax)
+    • Build context is the parent ~/.lifelog directory so COPY .lifelog … works.
+    • docker-compose mounts ~/.lifelog, preserving the SQLite DB & config.
+    """
+    # Resolve target directory
+    base_path = (base_path or Path.home() / ".lifelog").expanduser().resolve()
     docker_dir = base_path / "docker"
     docker_dir.mkdir(parents=True, exist_ok=True)
 
-    # Now check for existing files
-    if (docker_dir / "Dockerfile").exists() or (docker_dir / "docker-compose.yml").exists():
-        if not typer.confirm("Docker files already exist. Overwrite?", default=False):
+    # Abort if files exist and user says “no”
+    if any((docker_dir / f).exists() for f in ("Dockerfile", "docker-compose.yml")):
+        if not typer.confirm("Docker files already exist here. Overwrite?", default=False):
             print("Skipped Docker file generation.")
             return
 
-    dockerfile_content = """\
-FROM python:3.11-slim
+    # ── Dockerfile ──────────────────────────────────────────────────────────
+    dockerfile_content = (
+        "FROM python:3.9-slim\n\n"
+        "# Install the lifelog wheel and runtime deps\n"
+        "RUN pip install --no-cache-dir lifelog flask gunicorn\n\n"
+        "# Copy seed config / DB (image still works without host volume)\n"
+        "COPY .lifelog /root/.lifelog\n\n"
+        "WORKDIR /app\n"
+        "EXPOSE 5000\n\n"
+        'CMD ["llog", "api-start", "--host", "0.0.0.0", "--port", "5000"]\n'
+    )
 
-WORKDIR /app
+    # ── docker-compose.yml ──────────────────────────────────────────────────
+    compose_content = (
+        "services:\n"
+        "  lifelog-api:\n"
+        "    build:\n"
+        "      context: \"..\"\n"
+        "      dockerfile: \"docker/Dockerfile\"\n"
+        "    image: docker-lifelog-api\n"
+        "    ports:\n"
+        "      - \"5000:5000\"\n"
+        "    volumes:\n"
+        "      - ~/.lifelog:/root/.lifelog \n"
+        "    restart: unless-stopped\n"
+    )
 
-# Install dependencies
-RUN pip install lifelog flask gunicorn
-
-# Copy configuration
-COPY ./.lifelog /root/.lifelog
-
-# Expose API port
-EXPOSE 5000
-
-# Start the API server
-CMD ["llog", "api-start", "--host", "0.0.0.0", "--port", "5000"]
-"""
-
-    compose_content = """\
-version: '3.8'
-
-services:
-  lifelog-api:
-    build: .
-    ports:
-      - "5000:5000"
-    volumes:
-      - ~/.lifelog:/root/.lifelog
-    environment:
-      - FLASK_ENV=production
-    restart: unless-stopped
-"""
-
-    # Write Dockerfile
-    with open(docker_dir / "Dockerfile", "w") as f:
-        f.write(dockerfile_content)
-    # Write docker-compose.yml
-    with open(docker_dir / "docker-compose.yml", "w") as f:
-        f.write(compose_content)
+    # Write files (UTF-8)
+    (docker_dir / "Dockerfile").write_text(dockerfile_content, encoding="utf-8")
+    (docker_dir / "docker-compose.yml").write_text(compose_content, encoding="utf-8")
 
     print("\n[green]Docker deployment files created.[/green]")
-    print(f"Dockerfile: {docker_dir / 'Dockerfile'}")
-    print(f"docker-compose.yml: {docker_dir / 'docker-compose.yml'}")
-    print("\nTo build and run:\n  cd docker && docker-compose up -d --build\n")
+    print(f"Dockerfile:          {docker_dir / 'Dockerfile'}")
+    print(f"docker-compose.yml:  {docker_dir / 'docker-compose.yml'}")
+    print("\nRun:\n  cd ~/.lifelog/docker && docker compose up -d --build\n")
 
 
 def setup_deployment(config):
