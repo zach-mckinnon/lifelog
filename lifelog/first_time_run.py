@@ -306,6 +306,17 @@ def setup_api(config):
         style="yellow"
     ))
 
+    # Check if API setup is already complete
+    api_completed = config.get("meta", {}).get("api_setup_complete", False)
+
+    if api_completed:
+        if not typer.confirm("API setup already completed. Reconfigure?", default=False):
+            console.print("[yellow]Skipping API setup[/yellow]")
+            return
+        else:
+            console.print(
+                "[bold yellow]Reconfiguring API credentials[/bold yellow]")
+
     if typer.confirm("Enable REST API access?", default=True):
         # Generate secure credentials
         key = ''.join(secrets.choice(string.ascii_letters + string.digits)
@@ -323,6 +334,9 @@ def setup_api(config):
             "secret": encrypt_data(config, secret)
         }
 
+        # Mark API setup as complete
+        config.setdefault("meta", {})["api_setup_complete"] = True
+
         # Show the plaintext credentials to the user
         console.print(f"\n[bold]Your API Credentials:[/bold]")
         console.print(f"Key: [cyan]{key}[/cyan]")
@@ -336,14 +350,29 @@ def setup_api(config):
             from lifelog.config.config_manager import BASE_DIR
             generate_docker_files(BASE_DIR)
             console.print(
-                f"[green]Docker deployment files created at {BASE_DIR / 'docker'}[/green]")
-            console.print(
-                f"To build and run:\n  cd {BASE_DIR / 'docker'} && docker-compose up -d --build\n")
+                f"[green]✓ Docker deployment files created at {BASE_DIR / 'docker'}[/green]")
+
+            # Check if Docker files already exist
+            docker_files_exist = any((BASE_DIR / "docker" / f).exists()
+                                     for f in ("Dockerfile", "docker-compose.yml"))
+
+            console.print(f"To build and run:")
+            console.print(f"  cd {BASE_DIR / 'docker'}")
+
+            if docker_files_exist:
+                console.print(
+                    f"  docker compose up -d --build # Rebuild existing container")
+            else:
+                console.print(
+                    f"  docker compose up -d --build # Build and run new container")
+            console.print()
 
         console.print("\n[bold]Usage:[/bold]")
-        console.print("Start API: [cyan]llog api-start[/cyan]")
+        console.print("Start API directly: [cyan]llog api-start[/cyan]")
         console.print(
-            "Docker: [cyan]cd ~/.lifelog/docker && docker-compose up -d[/cyan]")
+            "Start API in production: [cyan]llog api-start --prod[/cyan]")
+        console.print(
+            "Manage Docker: [cyan]llog docker [up|down|build|logs][/cyan]")
 
 
 def generate_docker_files(base_path: Optional[Path] = None) -> None:
@@ -368,30 +397,32 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
     # ── Dockerfile ──────────────────────────────────────────────────────────
     dockerfile_content = (
         "FROM python:3.9-slim\n\n"
+        "# Create non-root user\n"
+        "RUN useradd -m lifeloguser\n"
+        "USER lifeloguser\n"
+        "WORKDIR /home/lifeloguser/app\n\n"
         "# Install dependencies\n"
         "RUN pip install --no-cache-dir lifelog flask gunicorn\n\n"
-        "WORKDIR /app\n"
         "EXPOSE 5000\n\n"
         'CMD ["llog", "api-start", "--host", "0.0.0.0", "--port", "5000"]\n'
     )
 
     # ── docker-compose.yml ──────────────────────────────────────────────────
+    home_path = str(Path.home())
     compose_content = (
-        "version: '3.8'\n"
         "services:\n"
         "  lifelog-api:\n"
-        "    build:\n"
-        "      context: .\n"
-        "      dockerfile: Dockerfile\n"
+        "    build: .\n"
         "    image: docker-lifelog-api\n"
         "    container_name: lifelog-api\n"
         "    ports:\n"
         "      - \"5000:5000\"\n"
         "    volumes:\n"
-        "      - \"$HOME/.lifelog:/root/.lifelog\"\n"
+        f"      - \"{home_path}/.lifelog:/home/lifeloguser/.lifelog\"\n"
         "    restart: unless-stopped\n"
         "    environment:\n"
-        "      - TZ=America/Los_Angeles  # Update with your timezone\n"
+        "      - TZ=America/Los_Angeles\n"
+        "      - FLASK_ENV=production\n"
     )
 
     # Write files

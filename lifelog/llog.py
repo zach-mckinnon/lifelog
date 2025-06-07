@@ -27,6 +27,7 @@ from rich.table import Table
 
 from lifelog.utils.db.db_helper import auto_sync, should_sync
 from lifelog.utils import hooks as hooks_util
+from lifelog.utils import log_utils
 
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
@@ -486,6 +487,8 @@ def docker_cmd(
         docker_args += ["restart"]
     elif action == "logs":
         docker_args += ["logs", "-f"]
+    elif action == "status":
+        docker_args += ["ps", "-a", "--filter", "name=lifelog-api"]
     else:
         console.print(
             "[red]Unknown action. Use up, down, restart, logs.[/red]")
@@ -500,7 +503,8 @@ def docker_cmd(
 def start_api(
     host: str = typer.Option("127.0.0.1", help="Host to bind to"),
     port: int = typer.Option(5000, help="Port to listen on"),
-    debug: bool = typer.Option(False, help="Enable debug mode")
+    debug: bool = typer.Option(False, help="Enable debug mode"),
+    prod: bool = typer.Option(False, "--prod", help="Use production server")
 ):
     """Start the REST API server"""
     import os
@@ -509,10 +513,26 @@ def start_api(
     # Ensure initialization
     initialize_application()
 
-    console.print(
-        f"[green]🚀 Starting API server at http://{host}:{port}[/green]")
-    os.environ["FLASK_ENV"] = "development" if debug else "production"
-    app.run(host=host, port=port, debug=debug)
+    if prod or os.getenv("FLASK_ENV") == "production":
+        console.print(
+            "[green]🚀 Starting PRODUCTION server with gunicorn[/green]")
+        try:
+            subprocess.run([
+                "gunicorn",
+                "-b", f"{host}:{port}",
+                "-w", "4",
+                "--timeout", "120",
+                "lifelog.app:app"
+            ])
+        except FileNotFoundError:
+            console.print(
+                "[red]Error: gunicorn not installed. Install with 'pip install gunicorn'[/red]")
+            sys.exit(1)
+    else:
+        console.print(
+            f"[green]🚀 Starting DEVELOPMENT server at http://{host}:{port}[/green]")
+        os.environ["FLASK_ENV"] = "development" if debug else "production"
+        app.run(host=host, port=port, debug=debug)
 
 
 @app.command("sync")
@@ -523,9 +543,33 @@ def sync_command():
     console.print("[green]Sync completed![/green]")
 
 
+@app.command("backup")
+def backup_command(
+    output: Annotated[str, typer.Argument(help="Output file path")] = None
+):
+    """Create a backup of the lifelog database"""
+    from datetime import datetime
+    import shutil
+
+    db_path = cf.BASE_DIR / "lifelog.db"
+    if not db_path.exists():
+        console.print("[red]Database file not found![/red]")
+        return
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output = output or f"lifelog_backup_{timestamp}.db"
+
+    try:
+        shutil.copy2(db_path, output)
+        console.print(f"[green]✓ Backup created at: {output}[/green]")
+    except Exception as e:
+        console.print(f"[red]Backup failed: {e}[/red]")
+
+
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     ensure_app_initialized()
+    log_utils.setup_logging()
     if should_sync():
         try:
             auto_sync()
@@ -538,6 +582,7 @@ def main_callback(ctx: typer.Context):
 lifelog_app = app
 
 if __name__ == "__main__":
+
     try:
         app()
     except KeyboardInterrupt:
