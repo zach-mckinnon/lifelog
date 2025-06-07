@@ -45,9 +45,6 @@ def run_wizard(config):
     show_welcome()
     setup_location(config)
     setup_deployment(config)
-    setup_ai(config)
-    if config["deployment"].get("host_server", False):
-        setup_api(config)
     show_tutorial()
 
     # Add first-run marker
@@ -371,7 +368,7 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
     # ── Dockerfile ──────────────────────────────────────────────────────────
     dockerfile_content = (
         "FROM python:3.9-slim\n\n"
-        "# Install the lifelog wheel and runtime deps\n"
+        "# Install dependencies\n"
         "RUN pip install --no-cache-dir lifelog flask gunicorn\n\n"
         "WORKDIR /app\n"
         "EXPOSE 5000\n\n"
@@ -380,20 +377,24 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
 
     # ── docker-compose.yml ──────────────────────────────────────────────────
     compose_content = (
+        "version: '3.8'\n"
         "services:\n"
         "  lifelog-api:\n"
         "    build:\n"
-        "      context: \"..\"\n"
-        "      dockerfile: \"docker/Dockerfile\"\n"
+        "      context: .\n"
+        "      dockerfile: Dockerfile\n"
         "    image: docker-lifelog-api\n"
+        "    container_name: lifelog-api\n"
         "    ports:\n"
         "      - \"5000:5000\"\n"
         "    volumes:\n"
-        "      - ~/.lifelog:/root/.lifelog \n"
+        "      - \"$HOME/.lifelog:/root/.lifelog\"\n"
         "    restart: unless-stopped\n"
+        "    environment:\n"
+        "      - TZ=America/Los_Angeles  # Update with your timezone\n"
     )
 
-    # Write files (UTF-8)
+    # Write files
     (docker_dir / "Dockerfile").write_text(dockerfile_content, encoding="utf-8")
     (docker_dir / "docker-compose.yml").write_text(compose_content, encoding="utf-8")
 

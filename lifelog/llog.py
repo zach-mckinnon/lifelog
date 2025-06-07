@@ -477,7 +477,7 @@ def docker_cmd(
         )
         raise typer.Exit(1)
     # Build docker command
-    docker_args = docker_cmd + ["-f", str(compose_file)]
+    docker_args = docker_cmd + ["--project-directory", str(DOCKER_DIR)]
     if action == "up":
         docker_args += ["up", "-d", "--build"]
     elif action == "down":
