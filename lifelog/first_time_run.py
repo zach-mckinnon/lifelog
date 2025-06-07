@@ -373,8 +373,6 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
         "FROM python:3.9-slim\n\n"
         "# Install the lifelog wheel and runtime deps\n"
         "RUN pip install --no-cache-dir lifelog flask gunicorn\n\n"
-        "# Copy seed config / DB (image still works without host volume)\n"
-        "COPY .lifelog /root/.lifelog\n\n"
         "WORKDIR /app\n"
         "EXPOSE 5000\n\n"
         'CMD ["llog", "api-start", "--host", "0.0.0.0", "--port", "5000"]\n'
