@@ -26,7 +26,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from lifelog.utils.db.db_helper import auto_sync, should_sync
-
+from lifelog.utils import hooks as hooks_util
 
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
@@ -81,7 +81,7 @@ def initialize_application():
         # 3. Load or create config
         config = cf.load_config()
         console.print("[dim]• Configuration loaded[/dim]")
-
+        hooks_util.ensure_hooks_dir()
         # 4. Skip wizard for UI command - handled separately
         if "ui" in sys.argv:
             return True

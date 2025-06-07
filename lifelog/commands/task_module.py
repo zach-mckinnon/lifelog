@@ -31,6 +31,7 @@ import lifelog.config.config_manager as cf
 from lifelog.config.schedule_manager import apply_scheduled_jobs, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
 from lifelog.utils.get_quotes import get_feedback_saying, get_motivational_quote
+from lifelog.utils.hooks import build_payload, run_hooks
 
 
 app = typer.Typer(help="Create and manage your personal tasks.")
@@ -151,6 +152,7 @@ def add(
     # Save using repository (already generic)
     try:
         task_repository.add_task(task)
+        run_hooks("task_created", build_payload("task_created", task))
     except Exception as e:
         console.print(f"[bold red]❌ Failed to save task: {e}[/bold red]")
         raise typer.Exit(code=1)
@@ -343,7 +345,7 @@ def start(id: int):
     # Start time tracking linked to the task
     time_repository.start_time_entry(
         task.title, task_id=id, start_time=now.isoformat())
-
+    run_hooks("task_started", build_payload("task_started", task))
     console.print(
         f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task.title}")
 
@@ -431,6 +433,8 @@ def modify(
         console.print(f"[bold red]❌ {e}[/bold red]")
         raise typer.Exit(code=1)
     task_repository.update_task(id, updates)
+    updated_task = task = task_repository.get_task_by_id(id)
+    run_hooks("task_updated", build_payload("task_updated", updated_task))
     console.print(
         f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
 
@@ -497,7 +501,7 @@ def stop(
 
     duration_minutes = (
         end_time - datetime.fromisoformat(active["start"])).total_seconds() / 60
-
+    run_hooks("task_stopped", build_payload("task_stopped", task))
     console.print(
         f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task.id}][/bold blue]: {task.title} — Duration: [cyan] {round(duration_minutes, 2)} [/cyan] minutes")
 
@@ -552,17 +556,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     console.print(
         f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_feedback_saying("task_completed"))
-    # try:
-    #     publish.single(
-    #         topic="servo/control",
-    #         payload="open",
-    #         hostname="192.168.68.69",
-    #         port=1883,
-    #         qos=1
-    #     )
-    #     console.print("[cyan]📡 MQTT command sent to ESP32 servo.[/cyan]")
-    # except Exception as e:
-    #     console.print(f"[bold red]❌ MQTT Publish Error[/bold red]: {e}")
+    run_hooks("task_stopped", build_payload("task_completed", task))
 
 
 @app.command()
