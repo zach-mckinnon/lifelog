@@ -44,6 +44,8 @@ def run_wizard(config):
     """Main wizard sequence"""
     show_welcome()
     setup_location(config)
+    setup_scheduled_tasks(config)
+    setup_ai(config)
     setup_deployment(config)
     show_tutorial()
 
@@ -114,7 +116,7 @@ def show_welcome(stdscr=None):
             logo,
             style="bold cyan",
             expand=False,
-            title="LIFELOG",
+            title="Get your life on track with...",
             title_align="center",
             subtitle="v1.0",
             subtitle_align="center"
@@ -376,13 +378,6 @@ def setup_api(config):
 
 
 def generate_docker_files(base_path: Optional[Path] = None) -> None:
-    """
-    Create ~/.lifelog/docker/{Dockerfile,docker-compose.yml}
-
-    • Works on Python 3.9 (no PEP-604 unions, no 3.10-only syntax)
-    • Build context is the parent ~/.lifelog directory so COPY .lifelog … works.
-    • docker-compose mounts ~/.lifelog, preserving the SQLite DB & config.
-    """
     # Resolve target directory
     base_path = (base_path or Path.home() / ".lifelog").expanduser().resolve()
     docker_dir = base_path / "docker"
@@ -396,17 +391,23 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
 
     # ── Dockerfile ──────────────────────────────────────────────────────────
     dockerfile_content = (
-        "FROM python:3.9-slim\n\n"
-        "# Create non-root user\n"
-        "RUN useradd -m lifeloguser\n"
-        "USER lifeloguser\n"
-        "WORKDIR /home/lifeloguser/app\n\n"
-        "# Install dependencies\n"
+        "FROM python:3.9\n\n"
+        "# Install system dependencies\n"
+        "RUN apt-get update && \\\n"
+        "    apt-get install -y --no-install-recommends \\\n"
+        "        libcairo2 \\\n"
+        "    && rm -rf /var/lib/apt/lists/*\n\n"
+        "# Install Python dependencies\n"
         "RUN pip install --no-cache-dir lifelog flask gunicorn\n\n"
+        "# Create non-root user and set up environment\n"
+        "RUN useradd -m lifelogserver && \\\n"
+        "    mkdir -p /home/lifelogserver/app && \\\n"
+        "    chown -R lifelogserver:lifelogserver /home/lifelogserver\n\n"
+        "USER lifelogserver\n"
+        "WORKDIR /home/lifelogserver/app\n\n"
         "EXPOSE 5000\n\n"
         'CMD ["llog", "api-start", "--host", "0.0.0.0", "--port", "5000"]\n'
     )
-
     # ── docker-compose.yml ──────────────────────────────────────────────────
     home_path = str(Path.home())
     compose_content = (
@@ -418,7 +419,7 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
         "    ports:\n"
         "      - \"5000:5000\"\n"
         "    volumes:\n"
-        f"      - \"{home_path}/.lifelog:/home/lifeloguser/.lifelog\"\n"
+        f"      - \"{home_path}/.lifelog:/home/lifelogserver/.lifelog\"\n"
         "    restart: unless-stopped\n"
         "    environment:\n"
         "      - TZ=America/Los_Angeles\n"
