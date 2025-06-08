@@ -359,12 +359,12 @@ def tag_autocomplete(ctx: typer.Context, incomplete: str):
 
 
 def get_available_categories() -> list:
-    config = cf.load_config()()
+    config = cf.load_config()
     return list(config.get("categories", {}).keys())
 
 
 def add_category_to_config(category: str, description: str = ""):
-    config = cf.load_config()()
+    config = cf.load_config()
     cats = config.get("categories", {})
     if category not in cats:
         cats[category] = description
@@ -373,7 +373,7 @@ def add_category_to_config(category: str, description: str = ""):
 
 
 def get_available_projects() -> list:
-    config = cf.load_config()()
+    config = cf.load_config()
     return list(config.get("projects", {}).keys())
 
 
@@ -401,10 +401,10 @@ def add_tag_to_config(tag: str, description: str = ""):
 
 
 def get_available_statuses() -> list:
-    config = cf.load_config()()
+    config = cf.load_config()
     return config.get("statuses", ["backlog", "active", "done"])
 
 
 def get_available_priorities() -> list:
-    config = cf.load_config()()
+    config = cf.load_config()
     return config.get("priorities", [str(x) for x in range(0, 11)])
