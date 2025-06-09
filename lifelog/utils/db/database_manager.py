@@ -246,6 +246,20 @@ def initialize_schema():
             last_synced_at TEXT  -- ISO‐8601 timestamp of last successful pull
         );
         
+        CREATE TABLE IF NOT EXISTS api_devices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_name TEXT,
+            device_token TEXT UNIQUE NOT NULL,
+            paired_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS api_pairing_codes (
+            code TEXT PRIMARY KEY,
+            expires_at DATETIME,
+            device_name TEXT
+        );
+
+        
         """)
         cursor.executescript("""
             CREATE INDEX IF NOT EXISTS idx_tracker_entries_tracker_id ON tracker_entries(tracker_id);
@@ -291,3 +305,16 @@ def update_record(table, record_id, updates):
         f"UPDATE {table} SET {', '.join(fields)} WHERE id = ?", values)
     conn.commit()
     conn.close()
+
+
+def get_all_api_devices():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT device_name, device_token, paired_at
+        FROM api_devices
+        ORDER BY paired_at DESC
+    """)
+    devices = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return devices

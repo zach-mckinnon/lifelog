@@ -2,7 +2,7 @@
 
 from flask import request, jsonify, Blueprint
 from lifelog.api.errors import debug_api
-from lifelog.api.auth import require_api_key
+from lifelog.api.auth import require_device_token
 from lifelog.utils.db import task_repository
 from lifelog.config.config_manager import is_host_server, is_client_mode
 from lifelog.utils.db.db_helper import should_sync
@@ -11,7 +11,7 @@ tasks_bp = Blueprint('tasks', __name__, url_prefix='/tasks')
 
 
 @tasks_bp.route('/', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def list_tasks():
     """
@@ -48,7 +48,7 @@ def list_tasks():
 
 
 @tasks_bp.route('/', methods=['POST'])
-@require_api_key
+@require_device_token
 @debug_api
 def create_task():
     """
@@ -65,7 +65,7 @@ def create_task():
 
 
 @tasks_bp.route('/<int:task_id>', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def get_task(task_id):
     """
@@ -79,7 +79,7 @@ def get_task(task_id):
 
 
 @tasks_bp.route('/uid/<string:uid_val>', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def get_task_by_uid(uid_val):
     """
@@ -98,7 +98,7 @@ def get_task_by_uid(uid_val):
 
 
 @tasks_bp.route('/<int:task_id>', methods=['PUT'])
-@require_api_key
+@require_device_token
 @debug_api
 def update_task_api(task_id):
     # 1) fetch existing task by its numeric ID
@@ -116,7 +116,7 @@ def update_task_api(task_id):
 
 
 @tasks_bp.route('/uid/<string:uid_val>', methods=['PUT'])
-@require_api_key
+@require_device_token
 @debug_api
 def update_task_by_uid_api(uid_val):
     """
@@ -137,7 +137,7 @@ def update_task_by_uid_api(uid_val):
 
 
 @tasks_bp.route('/<int:task_id>', methods=['DELETE'])
-@require_api_key
+@require_device_token
 @debug_api
 def delete_task_api(task_id):
     """
@@ -156,7 +156,7 @@ def delete_task_api(task_id):
 
 
 @tasks_bp.route('/uid/<string:uid_val>', methods=['DELETE'])
-@require_api_key
+@require_device_token
 @debug_api
 def delete_task_by_uid_api(uid_val):
     """
@@ -176,7 +176,7 @@ def delete_task_by_uid_api(uid_val):
 
 
 @tasks_bp.route('/<int:task_id>/done', methods=['POST'])
-@require_api_key
+@require_device_token
 @debug_api
 def mark_task_done(task_id):
     """

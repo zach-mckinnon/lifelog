@@ -301,80 +301,72 @@ def setup_ai(config):
 
 
 def setup_api(config):
-    """Generate REST API credentials and Docker setup"""
+    """Prepare the API server: credentials, encryption, Docker files."""
     console.print(Panel(
-        "[bold]🔑 REST API Access[/bold]\n"
-        "Generate credentials for external integrations",
+        "[bold]🔑 REST API Server Setup[/bold]\n"
+        "Preparing server for device pairing and API sync.",
         style="yellow"
     ))
 
-    # Check if API setup is already complete
+    # Check if already complete
     api_completed = config.get("meta", {}).get("api_setup_complete", False)
 
     if api_completed:
         if not typer.confirm("API setup already completed. Reconfigure?", default=False):
-            console.print("[yellow]Skipping API setup[/yellow]")
+            console.print("[yellow]Skipping API setup.[/yellow]")
             return
         else:
             console.print(
-                "[bold yellow]Reconfiguring API credentials[/bold yellow]")
+                "[bold yellow]Reconfiguring API server credentials[/bold yellow]")
 
-    if typer.confirm("Enable REST API access?", default=True):
-        # Generate secure credentials
-        key = ''.join(secrets.choice(string.ascii_letters + string.digits)
-                      for _ in range(32))
-        secret = ''.join(secrets.choice(string.ascii_letters +
-                         string.digits + string.punctuation) for _ in range(64))
+    # No prompt; always enable API in host mode
+    key = ''.join(secrets.choice(string.ascii_letters + string.digits)
+                  for _ in range(32))
+    secret = ''.join(secrets.choice(string.ascii_letters +
+                     string.digits + string.punctuation) for _ in range(64))
 
-        # Ensure encryption is set up
-        setup_encryption(config)
+    setup_encryption(config)
 
-        # Store encrypted credentials
-        config["api"] = {
-            "enabled": True,
-            "key": encrypt_data(config, key),
-            "secret": encrypt_data(config, secret)
-        }
+    # Store encrypted credentials for internal server use only
+    config["api"] = {
+        "enabled": True,
+        "key": encrypt_data(config, key),
+        "secret": encrypt_data(config, secret)
+    }
 
-        # Mark API setup as complete
-        config.setdefault("meta", {})["api_setup_complete"] = True
+    config.setdefault("meta", {})["api_setup_complete"] = True
 
-        # Show the plaintext credentials to the user
-        console.print(f"\n[bold]Your API Credentials:[/bold]")
-        console.print(f"Key: [cyan]{key}[/cyan]")
-        console.print(f"Secret: [red]{secret}[/red]")
+    # Only show instructions for server/host, not the actual credentials
+    console.print(
+        "\n[bold green]✓ API server enabled for device sync.[/bold green]")
+
+    # Docker support for API server (optional but recommended)
+    if typer.confirm("\nCreate Docker deployment files?", default=True):
+        from lifelog.config.config_manager import BASE_DIR
+        generate_docker_files(BASE_DIR)
         console.print(
-            "\n[bold yellow]⚠️ Save these securely! They won't be shown again.[/bold yellow]")
+            f"[green]✓ Docker deployment files created at {BASE_DIR / 'docker'}[/green]")
 
-        # Create Docker files
-        if typer.confirm("\nCreate Docker deployment files?", default=True):
-            # Use the actual config base directory for the docker folder
-            from lifelog.config.config_manager import BASE_DIR
-            generate_docker_files(BASE_DIR)
+        docker_files_exist = any((BASE_DIR / "docker" / f).exists()
+                                 for f in ("Dockerfile", "docker-compose.yml"))
+        console.print(f"To build and run:")
+        console.print(f"  cd {BASE_DIR / 'docker'}")
+        if docker_files_exist:
             console.print(
-                f"[green]✓ Docker deployment files created at {BASE_DIR / 'docker'}[/green]")
+                "  docker compose up -d --build  # Rebuild existing container")
+        else:
+            console.print(
+                "  docker compose up -d --build  # Build and run new container")
+        console.print()
 
-            # Check if Docker files already exist
-            docker_files_exist = any((BASE_DIR / "docker" / f).exists()
-                                     for f in ("Dockerfile", "docker-compose.yml"))
-
-            console.print(f"To build and run:")
-            console.print(f"  cd {BASE_DIR / 'docker'}")
-
-            if docker_files_exist:
-                console.print(
-                    f"  docker compose up -d --build # Rebuild existing container")
-            else:
-                console.print(
-                    f"  docker compose up -d --build # Build and run new container")
-            console.print()
-
-        console.print("\n[bold]Usage:[/bold]")
-        console.print("Start API directly: [cyan]llog api-start[/cyan]")
-        console.print(
-            "Start API in production: [cyan]llog api-start --prod[/cyan]")
-        console.print(
-            "Manage Docker: [cyan]llog docker [up|down|build|logs][/cyan]")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("Start API directly: [cyan]llog api-start[/cyan]")
+    console.print(
+        "Start API in production: [cyan]llog api-start --prod[/cyan]")
+    console.print(
+        "Manage Docker: [cyan]llog docker [up|down|build|logs][/cyan]")
+    console.print(
+        "[bold cyan]To pair new devices, use:[/bold cyan] [yellow]llog api-pair-new[/yellow]")
 
 
 def generate_docker_files(base_path: Optional[Path] = None) -> None:
@@ -437,7 +429,7 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
 
 
 def setup_deployment(config):
-    """Guide user through deployment mode selection"""
+    """Guide user through deployment mode selection and API pairing/setup"""
     console.print(Panel(
         "[bold]🏢 Deployment Setup[/bold]\n"
         "Choose how you want to run Lifelog",
@@ -447,30 +439,48 @@ def setup_deployment(config):
     console.print(
         "1. [green]Local-only[/green]: All data stays on this device")
     console.print(
-        "2. [cyan]Server/Host[/cyan]: This device will host the API server")
-    console.print("3. [yellow]Client[/yellow]: Connect to an existing server")
+        "2. [cyan]Server/Host[/cyan]: This device will host the API server for other devices to sync")
+    console.print(
+        "3. [yellow]Client[/yellow]: Connect this device to a host/server")
 
     choice = typer.prompt("Select deployment mode (1-3)", type=int)
 
     if choice == 1:
+        # Local only: no API, nothing extra needed
         config["deployment"] = {
             "mode": "local",
             "server_url": None,
             "host_server": False
         }
-        console.print("[green]✓ Local-only mode selected[/green]")
+        console.print("[green]✓ Local-only mode selected.[/green]")
+        return
 
     elif choice == 2:
+        # Host/server: enable API, generate credentials, print next steps
         config["deployment"] = {
             "mode": "server",
             "server_url": "http://localhost:5000",
             "host_server": True
         }
-        console.print("[cyan]✓ Server/Host mode selected[/cyan]")
+        console.print("[cyan]✓ Server/Host mode selected.[/cyan]")
+
+        # Setup API server (credentials, Docker, etc.)
+        setup_api(config)
+
+        # Print pairing info
+        console.print(Panel(
+            "[bold green]Your API server is ready![/bold green]\n\n"
+            "To pair a new device:\n"
+            "  [cyan]llog api-pair-new[/cyan] on this server\n"
+            "Then follow the prompts on the client device.",
+            style="green"
+        ))
+        return
 
     elif choice == 3:
+        # Client: prompt for server URL and pairing code
         server_url = typer.prompt(
-            "Enter server URL (e.g., http://192.168.1.100:5000)")
+            "Enter host server URL (e.g., http://192.168.1.100:5000)")
         config["deployment"] = {
             "mode": "client",
             "server_url": server_url,
@@ -478,6 +488,35 @@ def setup_deployment(config):
         }
         console.print(
             f"[yellow]✓ Client mode selected. Server: {server_url}[/yellow]")
+
+        # Begin pairing process
+        console.print(Panel(
+            "[bold cyan]Pair this device with your host server.[/bold cyan]\n"
+            "1. On your host/server, run: [cyan]llog api-pair-new[/cyan]\n"
+            "2. Enter the pairing code shown below.",
+            style="cyan"
+        ))
+        device_name = typer.prompt("Name this device (e.g. 'Laptop')")
+        pairing_code = typer.prompt("Enter the pairing code from the server")
+
+        # Pair with host, store device token
+        try:
+            resp = requests.post(
+                f"{server_url}/api/pair/complete",
+                json={"pairing_code": pairing_code,
+                      "device_name": device_name},
+                timeout=10
+            )
+            if resp.status_code == 200 and "device_token" in resp.json():
+                token = resp.json()["device_token"]
+                config["api"] = {"device_token": token}
+                console.print("[green]✓ Device paired successfully![/green]")
+            else:
+                console.print(f"[red]Pairing failed: {resp.text}[/red]")
+        except Exception as e:
+            console.print(f"[red]Pairing error: {e}[/red]")
+
+        return
 
     else:
         console.print(
@@ -487,10 +526,7 @@ def setup_deployment(config):
             "server_url": None,
             "host_server": False
         }
-
-    # If hosting the server, proceed with API setup
-    if config["deployment"]["host_server"]:
-        setup_api(config)
+        return
 
 
 def show_tutorial():

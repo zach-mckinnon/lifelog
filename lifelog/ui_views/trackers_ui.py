@@ -15,7 +15,7 @@ from lifelog.utils.db import track_repository
 from lifelog.utils.shared_utils import add_category_to_config, get_available_categories, get_available_tags, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
-from ui_views.forms import GoalDetailForm, TrackerEntryForm, TrackerForm, run_form, run_goal_form
+from lifelog.ui_views.forms import GoalDetailForm, TrackerEntryForm, TrackerForm, run_form, run_goal_form
 
 
 def draw_trackers(pane, h, w, selected_idx, color_pair=None):

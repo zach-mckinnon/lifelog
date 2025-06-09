@@ -566,6 +566,39 @@ def backup_command(
         console.print(f"[red]Backup failed: {e}[/red]")
 
 
+@app.command("api-pair-new")
+def api_pair_new():
+    """Pair this device with the server."""
+    config = cf.load_config()
+    mode = config.get("deployment", {}).get("mode")
+    if mode == "server":
+        # Host: generate and show a pairing code
+        import requests
+        device_name = typer.prompt("Name this device (e.g. 'Office PC')")
+        r = requests.post("http://localhost:5000/api/pair/start",
+                          json={"device_name": device_name})
+        code = r.json().get("pairing_code")
+        print(
+            f"Pairing code: {code}\nExpires in {r.json().get('expires_in')} seconds")
+        print("Enter this code on the client device to complete pairing.")
+    elif mode == "client":
+        # Client: complete pairing using code and server URL
+        server_url = config["deployment"]["server_url"]
+        device_name = typer.prompt("Name this device (e.g. 'Laptop')")
+        code = typer.prompt("Enter the pairing code shown on the server")
+        r = requests.post(f"{server_url}/api/pair/complete",
+                          json={"pairing_code": code, "device_name": device_name})
+        if "device_token" in r.json():
+            token = r.json()["device_token"]
+            config["api"] = {"device_token": token}
+            cf.save_config(config)
+            print("[green]✓ Device paired successfully![/green]")
+        else:
+            print("[red]Pairing failed: " + str(r.json()) + "[/red]")
+    else:
+        print("This command is only for server/host or client devices.")
+
+
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     ensure_app_initialized()

@@ -1,5 +1,5 @@
 from flask import request, jsonify, Blueprint
-from lifelog.api.auth import require_api_key
+from lifelog.api.auth import require_device_token
 from lifelog.utils.db import task_repository, time_repository, track_repository
 from lifelog.utils.db.database_manager import update_record
 
@@ -7,7 +7,7 @@ sync_bp = Blueprint('sync', __name__, url_prefix='/sync')
 
 
 @sync_bp.route('/<table>', methods=['POST'])
-@require_api_key
+@require_device_token
 def handle_sync(table: str):
     data = request.json
     operation = data.get('operation')

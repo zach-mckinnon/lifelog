@@ -1,7 +1,7 @@
 # lifelog/api/track_api.py
 
 from flask import request, jsonify, Blueprint
-from lifelog.api.auth import require_api_key
+from lifelog.api.auth import require_device_token
 from lifelog.api.errors import debug_api
 from lifelog.utils.db import track_repository
 from lifelog.config.config_manager import is_host_server
@@ -14,7 +14,7 @@ trackers_bp = Blueprint('trackers', __name__, url_prefix='/trackers')
 # ───────────────────────────────────────────────────────────────────────────────
 
 @trackers_bp.route('/', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def list_trackers():
     """
@@ -39,7 +39,7 @@ def list_trackers():
 
 
 @trackers_bp.route('/', methods=['POST'])
-@require_api_key
+@require_device_token
 @debug_api
 def create_tracker():
     """
@@ -59,7 +59,7 @@ def create_tracker():
 
 
 @trackers_bp.route('/<int:tracker_id>', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def get_tracker(tracker_id: int):
     """
@@ -73,7 +73,7 @@ def get_tracker(tracker_id: int):
 
 
 @trackers_bp.route('/uid/<string:uid_val>', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def get_tracker_by_uid(uid_val: str):
     """
@@ -87,7 +87,7 @@ def get_tracker_by_uid(uid_val: str):
 
 
 @trackers_bp.route('/<int:tracker_id>', methods=['PUT'])
-@require_api_key
+@require_device_token
 @debug_api
 def update_tracker_api(tracker_id: int):
     """
@@ -109,7 +109,7 @@ def update_tracker_api(tracker_id: int):
 
 
 @trackers_bp.route('/uid/<string:uid_val>', methods=['PUT'])
-@require_api_key
+@require_device_token
 @debug_api
 def update_tracker_by_uid_api(uid_val: str):
     """
@@ -136,7 +136,7 @@ def update_tracker_by_uid_api(uid_val: str):
 
 
 @trackers_bp.route('/<int:tracker_id>', methods=['DELETE'])
-@require_api_key
+@require_device_token
 @debug_api
 def delete_tracker_api(tracker_id: int):
     """
@@ -156,7 +156,7 @@ def delete_tracker_api(tracker_id: int):
 
 
 @trackers_bp.route('/uid/<string:uid_val>', methods=['DELETE'])
-@require_api_key
+@require_device_token
 @debug_api
 def delete_tracker_by_uid_api(uid_val: str):
     """
@@ -187,7 +187,7 @@ def delete_tracker_by_uid_api(uid_val: str):
 # ───────────────────────────────────────────────────────────────────────────────
 
 @trackers_bp.route('/<int:tracker_id>/entries', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def list_tracker_entries(tracker_id: int):
     """
@@ -199,7 +199,7 @@ def list_tracker_entries(tracker_id: int):
 
 
 @trackers_bp.route('/<int:tracker_id>/entries', methods=['POST'])
-@require_api_key
+@require_device_token
 @debug_api
 def add_tracker_entry_api(tracker_id: int):
     """
@@ -228,7 +228,7 @@ def add_tracker_entry_api(tracker_id: int):
 # ───────────────────────────────────────────────────────────────────────────────
 
 @trackers_bp.route('/<int:tracker_id>/goals', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def list_goals_for_tracker(tracker_id: int):
     """
@@ -240,7 +240,7 @@ def list_goals_for_tracker(tracker_id: int):
 
 
 @trackers_bp.route('/<int:tracker_id>/goals', methods=['POST'])
-@require_api_key
+@require_device_token
 @debug_api
 def create_goal_for_tracker(tracker_id: int):
     data = request.json or {}
@@ -259,7 +259,7 @@ def create_goal_for_tracker(tracker_id: int):
 
 
 @trackers_bp.route('/goals/uid/<string:uid_val>', methods=['GET'])
-@require_api_key
+@require_device_token
 @debug_api
 def get_goal_by_uid_api(uid_val: str):
     """
@@ -274,7 +274,7 @@ def get_goal_by_uid_api(uid_val: str):
 
 
 @trackers_bp.route('/goals/<string:uid_val>', methods=['PUT'])
-@require_api_key
+@require_device_token
 @debug_api
 def update_goal_by_uid_api(uid_val: str):
     if not is_host_server():
@@ -303,7 +303,7 @@ def update_goal_by_uid_api(uid_val: str):
 
 
 @trackers_bp.route('/goals/<string:uid_val>', methods=['DELETE'])
-@require_api_key
+@require_device_token
 @debug_api
 def delete_goal_by_uid_api(uid_val: str):
     """
