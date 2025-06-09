@@ -51,7 +51,7 @@ def start_day_tui(stdscr):
     for tr in trackers:
         if popup_confirm(stdscr, f"Log '{tr.title}' now?"):
             value = popup_input(stdscr, f"Enter value for {tr.title}:")
-            track_repository.add_entry(
+            track_repository.add_tracker_entry(
                 tracker_id=tr.id, timestamp=datetime.now().isoformat(), value=value)
 
     # 6. Guided Pomodoro for each task
@@ -109,7 +109,7 @@ def start_day_tui(stdscr):
         for tr in trackers:
             if popup_confirm(stdscr, f"Log '{tr.title}' now?"):
                 value = popup_input(stdscr, f"Enter value for {tr.title}:")
-                track_repository.add_entry(
+                track_repository.add_tracker_entry(
                     tracker_id=tr.id, timestamp=datetime.now().isoformat(), value=value)
 
         if i < len(plan) - 1:

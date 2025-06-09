@@ -97,7 +97,7 @@ def start_day():
             if log_now:
                 # Reuse existing command
                 value = typer.prompt(f"Enter value for {tr.title}")
-                track_repository.add_entry(
+                track_repository.add_tracker_entry(
                     tracker_id=tr.id, timestamp=datetime.now().isoformat(), value=value)
                 console.print(f"[green]Logged {tr.title} ➡️ {value}[/green]")
 
@@ -187,7 +187,7 @@ def start_day():
                     f"Log [bold]{tr.title}[/bold]?", default=False)
                 if log_now:
                     value = typer.prompt(f"Enter value for {tr.title}")
-                    track_repository.add_entry(
+                    track_repository.add_tracker_entry(
                         tracker_id=tr.id, timestamp=datetime.now().isoformat(), value=value)
                     console.print(
                         f"[green]Logged {tr.title} ➡️ {value}[/green]")

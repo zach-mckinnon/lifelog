@@ -159,7 +159,6 @@ def main(stdscr, show_status: bool = True):
 
             # Now, context-sensitive key handling per tab:
             if active_screen == "H":
-                # You can add more key handling here
                 if key == ord("S"):
                     start_day_tui(stdscr)
                 elif key == ord("?"):
@@ -294,57 +293,86 @@ def draw_home(pane, h, w):
         max_h, max_w = pane.getmaxyx()
         pane.border()
         title = " Home "
+        # Center title on the top border
         safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
                     title, curses.A_BOLD)
+
         y = 2
-        safe_addstr(pane, h-2, 2, "Press 'S' to Start My Day!", curses.A_BOLD)
-        y += 2
-        safe_addstr(pane, y, 2, "Top Tasks:", curses.A_UNDERLINE)
+
+        # Top tasks
+        if y < max_h - 2:
+            safe_addstr(pane, y, 2, "Top Tasks:", curses.A_UNDERLINE)
         tasks = task_repository.query_tasks(sort="priority")[:3]
         for i, t in enumerate(tasks):
-            if y+1+i < max_h - 1:
-                safe_addstr(pane, y+1+i, 4, f"{t['title'][:max_w-8]}")
+            line_y = y + 1 + i
+            if line_y < max_h - 2:
+                safe_addstr(pane, line_y, 4, f"{t['title'][:max_w-8]}")
         y += len(tasks) + 2
-        safe_addstr(pane, y, 2, "Time:", curses.A_UNDERLINE)
+
+        # Time info
+        if y < max_h - 2:
+            safe_addstr(pane, y, 2, "Time:", curses.A_UNDERLINE)
         active = time_repository.get_active_time_entry()
         if active:
-            safe_addstr(pane, y+1, 4, f">> {active['title'][:max_w-10]}")
+            line_y = y + 1
+            if line_y < max_h - 2:
+                safe_addstr(pane, line_y, 4,
+                            f">> {active['title'][:max_w-10]}")
             y += 2
         else:
             logs = time_repository.get_all_time_logs()
-            if logs and y+1 < max_h - 1:
+            if logs:
                 logs = sorted(logs, key=lambda l: l.get(
                     'end', l.get('start', '')), reverse=True)
                 last = logs[0]
-                safe_addstr(pane,
-                            y+1, 4, f"Last: {last['title'][:max_w-10]} ({int(last.get('duration_minutes', 0))} min)")
+                line_y = y + 1
+                if line_y < max_h - 2:
+                    safe_addstr(
+                        pane, line_y, 4, f"Last: {last['title'][:max_w-18]} ({int(last.get('duration_minutes', 0))} min)")
                 y += 2
-        safe_addstr(pane, y, 2, "Recent Trackers:", curses.A_UNDERLINE)
+
+        # Recent trackers
+        if y < max_h - 2:
+            safe_addstr(pane, y, 2, "Recent Trackers:", curses.A_UNDERLINE)
         trackers = track_repository.get_all_trackers()[-2:]
         for i, t in enumerate(trackers):
-            if y+1+i < max_h - 1:
-                safe_addstr(pane, y+1+i, 4, f"{t['title'][:max_w-8]}")
-        pane.noutrefresh()
+            line_y = y + 1 + i
+            if line_y < max_h - 2:
+                safe_addstr(pane, line_y, 4, f"{t['title'][:max_w-8]}")
+        y += len(trackers) + 2
 
+        # Show weather/air/moon info at bottom (above action/status)
+        bottom_info_y = max_h - 4
         env_weather = environment_repository.get_latest_environment_data(
             'weather')
         env_air = environment_repository.get_latest_environment_data(
             'air_quality')
         env_moon = environment_repository.get_latest_environment_data('moon')
-
-        if any([env_weather, env_air, env_moon]):
+        if any([env_weather, env_air, env_moon]) and bottom_info_y > y:
             env_text = f"Weather: {env_weather.get('summary', 'N/A')} | "
             env_text += f"AQI: {env_air.get('index', 'N/A')} | "
             env_text += f"Moon: {env_moon.get('phase', 'N/A')}"
-            safe_addstr(pane, h-3, 2, env_text)
+            safe_addstr(pane, bottom_info_y, 2, env_text[:max_w-4])
 
-        y = h - 6
+        # Show paired devices just above the "Press S" footer
+        devices_y = max_h - 7
         devices = get_all_api_devices()
-        if devices:
-            safe_addstr(pane, y, 2, "Paired Devices:", curses.A_UNDERLINE)
-            for i, d in enumerate(devices[:3]):  # show top 3 by default
-                safe_addstr(pane, y+1+i, 4,
-                            f"{d['device_name']} @ {d['paired_at'][:16]}")
+        if devices and devices_y > y:
+            safe_addstr(pane, devices_y, 2,
+                        "Paired Devices:", curses.A_UNDERLINE)
+            for i, d in enumerate(devices[:3]):  # Show up to 3 devices
+                line_y = devices_y + 1 + i
+                if line_y < max_h - 2:
+                    safe_addstr(
+                        pane, line_y, 4, f"{d['device_name']} @ {d['paired_at'][:16]}")
+
+        # Footer: action/help prompt always in last visible line
+        footer_y = max_h - 2
+        safe_addstr(pane, footer_y, 2,
+                    "Press 'S' to Start My Day!", curses.A_BOLD)
+        pane.noutrefresh()
     except Exception as e:
-        safe_addstr(pane, h-2, 2, f"Home err: {e}", curses.A_BOLD)
+        # Always put error at bottom
+        max_h, _ = pane.getmaxyx()
+        safe_addstr(pane, max_h - 2, 2, f"Home err: {e}", curses.A_BOLD)
         pane.noutrefresh()
