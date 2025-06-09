@@ -3,8 +3,11 @@
 # -------------------------------------------------------------------
 
 
+from lifelog.ui_views.forms import TrackerForm, run_form, run_goal_form, GoalDetailForm
 import curses
 from datetime import datetime
+
+import npyscreen
 from lifelog.commands.report import generate_goal_report
 from lifelog.utils.db.models import Tracker, TrackerEntry
 from lifelog.utils.goal_util import get_description_for_goal_kind
@@ -12,6 +15,7 @@ from lifelog.utils.db import track_repository
 from lifelog.utils.shared_utils import add_category_to_config, get_available_categories, get_available_tags, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
+from ui_views.forms import GoalDetailForm, TrackerEntryForm, TrackerForm, run_form, run_goal_form
 
 
 def draw_trackers(pane, h, w, selected_idx, color_pair=None):
@@ -35,121 +39,106 @@ def draw_trackers(pane, h, w, selected_idx, color_pair=None):
 
 
 def add_tracker_tui(stdscr):
-    title = popup_input(stdscr, "Tracker title:")
-    if not title:
+    """Add a tracker using a form UI."""
+    data = run_form(TrackerForm)
+    if not data or not data.get("title"):
         return
-
-    type_ = popup_select_option(
-        stdscr, "Data type (int, float, bool, str):", ["int", "float", "bool", "str"])
-    if not type_:
-        return
-
-    cat = popup_select_option(
-        stdscr, "Category:", get_available_categories(), allow_new=True)
-    if cat and cat not in get_available_categories():
-        add_category_to_config(cat)
-
-    tags = tag_picker_tui(stdscr, get_available_tags())
-    notes = popup_input(stdscr, "Notes (optional):")
 
     now = datetime.now().isoformat()
-
-    # Goal setup (optional)
-    goal = None
-    if popup_confirm(stdscr, "Add a goal to this tracker?"):
-        goal = create_goal_interactive_tui(stdscr, type_)
-
     tracker = Tracker(
         id=None,
-        title=title,
-        type=type_,
-        category=cat,
+        title=data["title"],
+        type=data["type"],
+        category=data["category"],
         created=now,
-        tags=tags,
-        notes=notes,
-        goals=[goal] if goal else None,
+        tags=data["tags"],
+        notes=data["notes"],
+        goals=[]
     )
+
+    # Ask about adding a goal (optional)
+    if npyscreen.notify_yes_no("Add a goal to this tracker?", title="Goal?"):
+        goal_data = run_goal_form()
+        if goal_data:
+            tracker.goals = [goal_data]
+
     track_repository.add_tracker(tracker)
-    if goal:
-        track_repository.add_goal(tracker_id=tracker.id, goal_data=goal)
-    popup_show(stdscr, [f"Tracker '{title}' added!"])
+    npyscreen.notify_confirm(
+        f"Tracker '{tracker.title}' added!", title="Success")
 
 
 def log_entry_tui(stdscr):
-    """
-    TUI for logging a new tracker entry.
-    """
-    from lifelog.utils.shared_utils import (
-        get_available_categories,
-        popup_select_option,
-        popup_input,
-        popup_show
-    )
-    import datetime
-
-    # 1. Select tracker
+    """Add a tracker entry via a form."""
     trackers = track_repository.get_all_trackers()
     if not trackers:
-        popup_show(stdscr, ["No trackers found. Add a tracker first!"])
+        npyscreen.notify_confirm(
+            "No trackers found. Add a tracker first!", title="Error")
         return
 
-    # Make display list for selection
+    # Ask user to select a tracker (basic selection for now)
     tracker_titles = [f"{t.title} [{t.type}]" for t in trackers]
-    sel_idx = 0
-    tracker_sel = popup_select_option(
-        stdscr, "Select tracker:", tracker_titles
+    sel_idx = npyscreen.selectOne(tracker_titles, title="Select Tracker")
+    if sel_idx is None or sel_idx < 0 or sel_idx >= len(trackers):
+        return
+
+    tracker = trackers[sel_idx]
+    form = TrackerEntryForm()
+    form.tracker_title.value = f"{tracker.title} [{tracker.type}]"
+    form.edit()
+    entry_data = form.parentApp.form_data
+    if not entry_data or not entry_data.get("value"):
+        return
+
+    # Parse and validate
+    value = entry_data["value"]
+    timestamp = entry_data.get("timestamp") or datetime.now().isoformat()
+    if tracker.type == "int":
+        value = int(value)
+    elif tracker.type == "float":
+        value = float(value)
+    elif tracker.type == "bool":
+        value = value.lower() in ("1", "true", "yes", "y")
+    # else, str
+
+    entry = TrackerEntry(
+        id=None,
+        tracker_id=tracker.id,
+        timestamp=timestamp,
+        value=value,
     )
-    if not tracker_sel:
+    track_repository.add_tracker_entry(entry)
+    npyscreen.notify_confirm(f"Entry logged for '{tracker.title}'.")
+
+
+def edit_tracker_tui(stdscr, tracker_id):
+    """Edit a tracker."""
+    tracker = track_repository.get_tracker_by_id(tracker_id)
+    if not tracker:
+        npyscreen.notify_confirm(
+            f"Tracker ID {tracker_id} not found.", title="Error")
         return
 
-    # Figure out which tracker was picked
-    tracker_idx = tracker_titles.index(tracker_sel)
-    tracker = trackers[tracker_idx]
-
-    # 2. Prompt for value
-    if tracker.type == "bool":
-        value = popup_select_option(stdscr, "Value:", ["True", "False"])
-        value = 1 if value == "True" else 0
-    elif tracker.type in ("int", "float"):
-        unit = getattr(tracker, "unit", "")
-        value_prompt = f"Value ({unit}):" if unit else "Value:"
-        while True:
-            val = popup_input(stdscr, value_prompt)
-            try:
-                value = float(val)
-                if tracker.type == "int":
-                    value = int(value)
-                break
-            except (ValueError, TypeError):
-                popup_show(stdscr, ["Invalid number, try again."])
-    elif tracker.type == "str":
-        value = popup_input(stdscr, "Value (string):")
-    else:
-        popup_show(stdscr, [f"Unknown tracker type: {tracker.type}"])
+    form = TrackerForm()
+    form.title.value = tracker.title
+    form.type.value = tracker.type
+    form.category.value = tracker.category
+    form.tags.value = tracker.tags
+    form.notes.value = tracker.notes
+    form.edit()
+    data = form.parentApp.form_data
+    if not data:
         return
 
-    # 3. Timestamp (default now, allow override)
-    timestamp_str = popup_input(
-        stdscr, "Timestamp (YYYY-MM-DD HH:MM, blank for now):")
-    if timestamp_str:
-        try:
-            timestamp = datetime.datetime.fromisoformat(timestamp_str)
-        except Exception:
-            popup_show(stdscr, ["Invalid date format, using now."])
-            timestamp = datetime.datetime.now()
+    updates = {}
+    for key in ["title", "type", "category", "tags", "notes"]:
+        if data.get(key) != getattr(tracker, key):
+            updates[key] = data[key]
+    if updates:
+        track_repository.update_tracker(tracker.id, updates)
+        npyscreen.notify_confirm(
+            f"Tracker '{tracker.title}' updated!", title="Updated")
     else:
-        timestamp = datetime.datetime.now()
-
-    # 4. Save entry
-    try:
-        track_repository.add_tracker_entry(
-            tracker_id=tracker.id,
-            timestamp=timestamp.isoformat(),
-            value=value
-        )
-        popup_show(stdscr, [f"Entry logged for {tracker.title}!"])
-    except Exception as e:
-        popup_show(stdscr, [f"Failed to log entry: {e}"])
+        npyscreen.notify_confirm("No changes made.")
 
 
 def delete_tracker_tui(stdscr, sel):
@@ -163,38 +152,109 @@ def delete_tracker_tui(stdscr, sel):
         popup_show(stdscr, [f"Tracker '{tracker.title}' deleted."])
 
 
-def edit_tracker_tui(stdscr, sel):
-    tracker = track_repository.get_tracker_by_id(sel)
+def edit_tracker_tui(stdscr, tracker_id):
+    """Edit a tracker and optionally add/edit its goals."""
+    tracker = track_repository.get_tracker_by_id(tracker_id)
     if not tracker:
-        popup_show(stdscr, [f"Tracker ID {sel} not found."])
+        npyscreen.notify_confirm(
+            f"Tracker ID {tracker_id} not found.", title="Error")
         return
 
-    new_title = popup_input(
-        stdscr, f"Title [{tracker.title}]:") or tracker.title
-    cat = popup_select_option(
-        stdscr, f"Category [{tracker.category or '-'}]:",
-        get_available_categories(), allow_new=True) or tracker.category
-    if cat and cat not in get_available_categories():
-        add_category_to_config(cat)
-    tags = tag_picker_tui(stdscr, get_available_tags()) or tracker.tags
-    notes = popup_input(
-        stdscr, f"Notes [{tracker.notes or ''}]:") or tracker.notes
+    # --- Run the Tracker Form
+    form = TrackerForm()
+    form.title.value = tracker.title
+    form.type.value = tracker.type
+    form.category.value = tracker.category
+    form.tags.value = tracker.tags
+    form.notes.value = tracker.notes
+    form.edit()
+    data = form.parentApp.form_data
+    if not data:
+        return
 
+    # Update tracker fields if changed
     updates = {}
-    if new_title != tracker.title:
-        updates["title"] = new_title
-    if cat != tracker.category:
-        updates["category"] = cat
-    if tags != tracker.tags:
-        updates["tags"] = tags
-    if notes != tracker.notes:
-        updates["notes"] = notes
-
+    for key in ["title", "type", "category", "tags", "notes"]:
+        if data.get(key) != getattr(tracker, key):
+            updates[key] = data[key]
     if updates:
         track_repository.update_tracker(tracker.id, updates)
-        popup_show(stdscr, [f"Tracker '{new_title}' updated!"])
+        npyscreen.notify_confirm(
+            f"Tracker '{tracker.title}' updated!", title="Updated")
     else:
-        popup_show(stdscr, ["No changes made."])
+        npyscreen.notify_confirm("No changes made.")
+
+    # --- Prompt for goal edit/add
+    if npyscreen.notify_yes_no("Would you like to add or edit this tracker's goals?", title="Goals"):
+        # Fetch current goals
+        goals = track_repository.get_goals_for_tracker(tracker.id)
+        goal_titles = [g.get("title", f"Goal {i+1}")
+                       for i, g in enumerate(goals)]
+        goal_titles.append("[Add new goal]")
+        goal_titles.append("[Done]")
+        while True:
+            sel = npyscreen.selectOne(
+                goal_titles, title="Select Goal to Edit/Add")
+            if sel is None or sel < 0 or sel >= len(goal_titles):
+                break
+            # If [Add new goal]
+            if sel == len(goal_titles)-2:
+                goal_data = run_goal_form()
+                if goal_data:
+                    track_repository.add_goal(
+                        tracker_id=tracker.id, goal_data=goal_data)
+                    npyscreen.notify_confirm("Goal added!", title="Success")
+                continue
+            # If [Done]
+            elif sel == len(goal_titles)-1:
+                break
+            # Else edit the selected goal
+            else:
+                goal = goals[sel]
+                # Use GoalDetailForm with pre-filled data
+
+                class EditGoalApp(npyscreen.NPSAppManaged):
+                    def onStart(selfx):
+                        selfx.goal_kind = goal.get("kind")
+                        form = selfx.addForm(
+                            "MAIN", GoalDetailForm, name="Edit Goal")
+                        form.title.value = goal.get("title", "")
+                        period_val = goal.get("period", "")
+                        if period_val in [p for p in form.period.values]:
+                            form.period.value = form.period.values.index(
+                                period_val)
+                        else:
+                            form.period.value = 0
+                        form.amount.value = str(goal.get("amount") or "")
+                        form.unit.value = str(goal.get("unit") or "")
+                        form.min_amount.value = str(
+                            goal.get("min_amount") or "")
+                        form.max_amount.value = str(
+                            goal.get("max_amount") or "")
+                        form.mode.value = str(goal.get("mode") or "")
+                        form.target.value = str(goal.get("target") or "")
+                        form.current.value = str(goal.get("current") or "")
+                        form.target_streak.value = str(
+                            goal.get("target_streak") or "")
+                        form.target_percentage.value = str(
+                            goal.get("target_percentage") or "")
+                        form.current_percentage.value = str(
+                            goal.get("current_percentage") or "")
+                        form.old_behavior.value = str(
+                            goal.get("old_behavior") or "")
+                        form.new_behavior.value = str(
+                            goal.get("new_behavior") or "")
+                        form.display()
+
+                app = EditGoalApp()
+                app.run()
+                updated_data = getattr(app, 'form_data', None)
+                if updated_data:
+                    track_repository.update_goal(goal["id"], updated_data)
+                    npyscreen.notify_confirm("Goal updated!", title="Updated")
+                else:
+                    npyscreen.notify_confirm(
+                        "No changes made.", title="Edit Goal")
 
 
 def log_tracker_entry_tui(stdscr, sel):
@@ -502,125 +562,78 @@ def show_goals_help_tui(stdscr):
     popup_show(stdscr, lines, title=" Goal Types ")
 
 
-def add_or_edit_goal_tui(stdscr, tracker_sel, edit_goal=None):
+def add_goal_tui(stdscr, tracker_id):
+    """Add a goal to a tracker."""
+    tracker = track_repository.get_tracker_by_id(tracker_id)
+    if not tracker:
+        npyscreen.notify_confirm(
+            f"Tracker ID {tracker_id} not found.", title="Error")
+        return
+    goal_data = run_goal_form()  # launches empty form
+    if goal_data:
+        track_repository.add_goal(tracker_id=tracker.id, goal_data=goal_data)
+        npyscreen.notify_confirm(
+            f"Goal added to '{tracker.title}'", title="Success")
+
+
+def edit_goal_tui(stdscr, tracker_id, goal_id):
     """
-    Popup-based wizard to create or edit a goal dict matching your DB schema.
-    If edit_goal is None, creates a new goal. If passed, edits existing goal.
+    Edit an existing goal for a tracker using the npyscreen GoalDetailForm.
     """
-    # --- Fetch tracker and set initial fields ---
-    try:
-        trackers = track_repository.get_all_trackers()
-        t = trackers[tracker_sel]
-        goal = edit_goal.copy() if edit_goal else {}
+    tracker = track_repository.get_tracker_by_id(tracker_id)
+    if not tracker:
+        npyscreen.notify_confirm(
+            f"Tracker ID {tracker_id} not found.", title="Error")
+        return
+    goal = track_repository.get_goal_by_id(goal_id)
+    if not goal:
+        npyscreen.notify_confirm(
+            f"Goal ID {goal_id} not found.", title="Error")
+        return
 
-        # 1. Pick kind (with help)
-        kind = popup_input(
-            stdscr,
-            f"Kind (sum/count/bool/streak/duration/milestone/reduction/range/percentage/replacement)"
-            f" [{goal.get('kind','count')}] :"
-        ) or goal.get("kind", "count")
-        popup_show(stdscr, [get_description_for_goal_kind(kind)],
-                   title="About this goal kind")
+    # Define a custom App to prefill GoalDetailForm
+    class EditGoalApp(npyscreen.NPSAppManaged):
+        def onStart(selfx):
+            # Set kind for dynamic field logic
+            selfx.goal_kind = goal.get("kind")
+            form = selfx.addForm("MAIN", GoalDetailForm, name="Edit Goal")
 
-        # 2. Title
-        title = popup_input(
-            stdscr, f"Title [{goal.get('title','')}] :") or goal.get("title", "")
-        # 3. Period (day/week/month)
-        period = popup_input(
-            stdscr, f"Period (day/week/month) [{goal.get('period','day')}] :") or goal.get("period", "day")
-
-        # --- Fields by kind ---
-        data = {
-            "title": title,
-            "kind": kind,
-            "period": period,
-        }
-        # Numeric goals
-        if kind in ("sum", "count", "reduction", "duration"):
-            amt = popup_input(
-                stdscr, f"Target amount [{goal.get('amount','')}] :")
-            unit = popup_input(stdscr, f"Unit [{goal.get('unit','')}] :")
-            if amt:
-                data["amount"] = float(amt)
-            if unit:
-                data["unit"] = unit or None
-        # Streak
-        if kind == "streak":
-            target_streak = popup_input(
-                stdscr, f"Target streak [{goal.get('target_streak','')}] :")
-            if target_streak:
-                data["target_streak"] = int(target_streak)
-        # Range
-        if kind == "range":
-            min_amt = popup_input(
-                stdscr, f"Min amount [{goal.get('min_amount','')}] :")
-            max_amt = popup_input(
-                stdscr, f"Max amount [{goal.get('max_amount','')}] :")
-            unit = popup_input(stdscr, f"Unit [{goal.get('unit','')}] :")
-            mode = popup_input(stdscr, f"Mode [{goal.get('mode','')}] :")
-            if min_amt:
-                data["min_amount"] = float(min_amt)
-            if max_amt:
-                data["max_amount"] = float(max_amt)
-            if unit:
-                data["unit"] = unit or None
-            if mode:
-                data["mode"] = mode or None
-        # Milestone
-        if kind == "milestone":
-            target = popup_input(stdscr, f"Target [{goal.get('target','')}] :")
-            current = popup_input(
-                stdscr, f"Current [{goal.get('current','0')}] :")
-            unit = popup_input(stdscr, f"Unit [{goal.get('unit','')}] :")
-            if target:
-                data["target"] = float(target)
-            if current:
-                data["current"] = float(current)
-            if unit:
-                data["unit"] = unit or None
-        # Percentage
-        if kind == "percentage":
-            target_pct = popup_input(
-                stdscr, f"Target % [{goal.get('target_percentage','')}] :")
-            current_pct = popup_input(
-                stdscr, f"Current % [{goal.get('current_percentage','0')}] :")
-            if target_pct:
-                data["target_percentage"] = float(target_pct)
-            if current_pct:
-                data["current_percentage"] = float(current_pct)
-        # Bool (habit)
-        if kind == "bool":
-            data["amount"] = True
-        # Replacement
-        if kind == "replacement":
-            old = popup_input(
-                stdscr, f"Old Behavior [{goal.get('old_behavior','')}] :")
-            new = popup_input(
-                stdscr, f"New Behavior [{goal.get('new_behavior','')}] :")
-            amt = popup_input(stdscr, f"Amount [{goal.get('amount','1')}] :")
-            if old:
-                data["old_behavior"] = old
-            if new:
-                data["new_behavior"] = new
-            if amt:
-                data["amount"] = float(amt)
-
-        # --- Save or Update ---
-        try:
-            if edit_goal:
-                # Remove then re-add to update
-                track_repository.delete_goal(edit_goal["id"])
-                track_repository.add_goal(t["id"], {**edit_goal, **data})
-                popup_show(stdscr, ["Goal updated!"])
+            # Prefill main fields
+            form.title.value = goal.get("title", "")
+            period_val = goal.get("period", "")
+            if period_val in [p.value for p in form.period.values]:
+                form.period.value = form.period.values.index(period_val)
             else:
-                track_repository.add_goal(t["id"], data)
-                popup_show(stdscr, [f"Goal added to '{t['title']}'"])
-        except Exception as e:
-            popup_show(stdscr, [f"Error saving goal: {e}"])
-    except ValueError as e:
-        popup_show(stdscr, [f"Error: {e}"])
-    except Exception as e:
-        popup_show(stdscr, [f"Unexpected error: {e}"])
+                form.period.value = 0
+
+            # Prefill all possible fields (only the relevant ones will be shown)
+            form.amount.value = str(goal.get("amount") or "")
+            form.unit.value = str(goal.get("unit") or "")
+            form.min_amount.value = str(goal.get("min_amount") or "")
+            form.max_amount.value = str(goal.get("max_amount") or "")
+            form.mode.value = str(goal.get("mode") or "")
+            form.target.value = str(goal.get("target") or "")
+            form.current.value = str(goal.get("current") or "")
+            form.target_streak.value = str(goal.get("target_streak") or "")
+            form.target_percentage.value = str(
+                goal.get("target_percentage") or "")
+            form.current_percentage.value = str(
+                goal.get("current_percentage") or "")
+            form.old_behavior.value = str(goal.get("old_behavior") or "")
+            form.new_behavior.value = str(goal.get("new_behavior") or "")
+
+            form.display()
+
+    # Launch form and collect result
+    app = EditGoalApp()
+    app.run()
+    updated_data = getattr(app, 'form_data', None)
+    if updated_data:
+        # Overwrite goal in repo
+        track_repository.update_goal(goal_id, updated_data)
+        npyscreen.notify_confirm("Goal updated!", title="Updated")
+    else:
+        npyscreen.notify_confirm("No changes made.", title="Edit Goal")
 
 
 def delete_goal_tui(stdscr, tracker_sel):

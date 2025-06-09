@@ -1,8 +1,7 @@
 # -------------------------------------------------------------------
 # Agenda view: calendar + top‐priority tasks
 # -------------------------------------------------------------------
-
-
+import npyscreen
 import curses
 from dataclasses import asdict
 from datetime import datetime
@@ -10,14 +9,24 @@ from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.commands.task_module import calculate_priority, create_due_alert
 from lifelog.utils.db import task_repository, time_repository
 from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_statuses, get_available_tags, validate_task_inputs
-from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
-
+from lifelog.ui_views.popups import popup_confirm, popup_error, popup_input, popup_multiline_input, popup_select_option, popup_show
+from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
+from lifelog.utils.shared_utils import (
+    get_available_categories, get_available_projects, get_available_tags
+)
+from lifelog.commands.task_module import calculate_priority, validate_task_inputs
+from lifelog.utils.db.models import Task
 
 import calendar
 import re
 from datetime import datetime
 
-from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
+from lifelog.ui_views.forms import TaskCloneForm, TaskEditForm, TaskForm, TaskViewForm, run_form
+
+
+# Module‐level state for task filter:
+TASK_FILTERS = ["backlog", "active", "done"]
+current_filter_idx = 0
 
 
 def draw_agenda(pane, h, w, selected_idx):
@@ -127,143 +136,188 @@ def draw_agenda(pane, h, w, selected_idx):
         return 0
 
 
-def popup_recurrence(stdscr):
-    # Define prompts
-    prompt = "Add recurrence rule?"
-    options = "[y] Yes    [n] No"
-    info_line = "Enter the interval to recur at. If you need specific weekdays, choose 'week'."
-    input_prompt = "[(d)ay, (w)eek, (m)onth, (y)ear]: "
-
-    # Calculate window size
-    content_lines = [prompt, options, info_line, input_prompt]
-    max_line = max(len(l) for l in content_lines)
-    win_w = max(60, max_line + 4)
-    win_h = 7
-    h, w = stdscr.getmaxyx()
-    starty = max((h - win_h) // 2, 0)
-    startx = max((w - win_w) // 2, 0)
-
-    win = curses.newwin(win_h, win_w, starty, startx)
-    win.keypad(True)
-    win.border()
-    win.addstr(1, 2, prompt[:win_w-4], curses.A_BOLD)
-    win.addstr(2, 2, options[:win_w-4])
-    win.addstr(3, 2, info_line[:win_w-4])
-    win.addstr(4, 2, input_prompt[:win_w-4])
-    win.refresh()
-
-    curses.echo()
-    inp = ""
-    while True:
-        c = win.getch(4, 2 + len(input_prompt) + len(inp))
-        if c in (10, 13):  # Enter
-            break
-        if c in (27,):  # ESC
-            inp = ""
-            break
-        if c in (curses.KEY_BACKSPACE, 127, 8):
-            if inp:
-                inp = inp[:-1]
-                win.addstr(4, 2 + len(input_prompt) + len(inp), ' ')
-                win.move(4, 2 + len(input_prompt) + len(inp))
-        elif 32 <= c <= 126 and len(inp) < win_w - len(input_prompt) - 4:
-            inp += chr(c)
-            win.addstr(4, 2 + len(input_prompt) + len(inp) - 1, chr(c))
-        # Prevent typing past the window edge!
-        win.refresh()
-
-    curses.noecho()
-    win.clear()
-    stdscr.touchwin()
-    stdscr.refresh()
-    return inp.strip() if inp else None
-
-
-def add_task_tui(stdscr):
-    """Prompt for all task fields using the dataclass model, with validation and dropdowns."""
-    fields = get_task_fields()
-    input_data = {}
-
-    for field in fields:
-        if field == "created":
-            continue
-        if field == "title":
-            val = popup_input(stdscr, "Title (max 60 chars):", max_length=60)
-        elif field == "category":
-            val = popup_select_option(
-                stdscr, "Category:", get_available_categories(), allow_new=True)
-            if val and val not in get_available_categories():
-                add_category_to_config(val)
-        elif field == "project":
-            val = popup_select_option(
-                stdscr, "Project:", get_available_projects(), allow_new=True)
-            if val and val not in get_available_projects():
-                add_project_to_config(val)
-        elif field == "status":
-            val = popup_select_option(
-                stdscr, "Status:", get_available_statuses())
-        elif field == "priority":
-            val = 0
-        elif field == "tags":
-            tag_list = tag_picker_tui(stdscr, get_available_tags())
-            val = tag_list
-            if val:
-                for tag in (val.split(",") if isinstance(val, str) else val):
-                    add_tag_to_config(tag)
-        elif field == "notes":
-            val = popup_multiline_input(stdscr, "Notes (multi-line allowed):")
-        else:
-            val = popup_input(stdscr, f"{field.capitalize()}:")
-        input_data[field] = val if val else None
-
-    input_data["created"] = datetime.now().isoformat()
-    input_data["priority"] = calculate_priority(input_data)
+# --- Main Add Task using Form ---
+def add_task_tui(_stdscr=None):
+    """Launch TaskForm to add a new task (all fields, recurrence, etc)."""
+    task_data = run_form(TaskForm)
+    if not task_data:
+        return  # User cancelled
     try:
-        validate_task_inputs(
-            title=input_data.get("title", ""),
-            importance=int(input_data.get("importance")
-                           or 0) if input_data.get("importance") else None,
-            priority=float(input_data.get("priority")
-                           or 0) if input_data.get("priority") else None,
-        )
-        task = Task(**input_data)
+        task = Task(**task_data)
+        task_repository.add_task(task)
+        npyscreen.notify_confirm(
+            f"Task '{task.title}' added!", title="Success")
     except Exception as e:
-        popup_show(stdscr, [f"Invalid input: {e}"])
-        return
-    task_repository.add_task(task)
-    popup_show(stdscr, [f"Task '{task.title}' added!"])
+        npyscreen.notify_confirm(str(e), title="Error")
+
+# --- Quick Add Task (keep popup for simplicity, but handle errors nicely) ---
 
 
 def quick_add_task_tui(stdscr):
-    """Add a task with just a title."""
-    title = popup_input(stdscr, "Quick Task Title:", max_length=60)
-    if not title:
-        popup_show(stdscr, ["Title required."])
-        return
+    try:
+        title = popup_input(
+            stdscr, "Quick Task Title (required):", max_length=60, required=True)
+        if not title:
+            popup_error(stdscr, "A task title is required.")
+            return
+        now = datetime.now().isoformat()
+        task = Task(title=title, created=now)
+        task_repository.add_task(task)
+        popup_show(stdscr, [f"Quick Task '{title}' added!"], title="Success")
+    except Exception as e:
+        popup_error(stdscr, f"Could not add task: {e}")
 
-    now = datetime.now().isoformat()
-    task = Task(title=title, created=now)
-    task_repository.add_task(task)
-    popup_show(stdscr, [f"Quick Task '{title}' added!"])
+# --- Batch Add Tasks (multiline popup) ---
 
 
-def clone_task_tui(stdscr, sel):
+def batch_add_tasks_tui(stdscr):
+    try:
+        tasks_text = popup_multiline_input(
+            stdscr,
+            "Batch Add Tasks (One per line, Ctrl+D to finish):",
+            initial="",
+            max_lines=10
+        )
+        if not tasks_text:
+            popup_show(stdscr, ["No tasks entered."], title="Batch Add")
+            return
+        lines = [l.strip() for l in tasks_text.splitlines() if l.strip()]
+        if not lines:
+            popup_show(stdscr, ["No valid tasks entered."], title="Batch Add")
+            return
+        count = 0
+        for line in lines:
+            now = datetime.now().isoformat()
+            task = Task(title=line, created=now)
+            try:
+                task_repository.add_task(task)
+                count += 1
+            except Exception as e:
+                popup_error(stdscr, f"Could not add '{line}': {e}")
+        popup_show(stdscr, [f"Added {count} tasks!"],
+                   title="Batch Add Complete")
+    except Exception as e:
+        popup_error(stdscr, f"Batch add failed: {e}")
+
+# --- Clone Task with Form ---
+
+
+def clone_task_tui(_stdscr, sel):
     tasks = task_repository.get_all_tasks()
     t = tasks[sel]
-    new_title = popup_input(stdscr, f"Clone Title [{t.title}]:") or t.title
-    new_due = popup_input(stdscr, f"Due [{t.due or '-'}]:") or t.due
+    # Use the modular TaskCloneForm, pre-filling values:
+
+    class App(npyscreen.NPSAppManaged):
+        def onStart(selfx):
+            form = selfx.addForm("MAIN", TaskCloneForm, name="Clone Task")
+            form.title.value = t.title
+            form.category.value = t.category
+            form.project.value = t.project
+            form.due.value = t.due if t.due else ""
+            if hasattr(form.notes, "values"):
+                form.notes.values = t.notes.splitlines() if t.notes else [""]
+            else:
+                form.notes.value = t.notes or ""
+            form.tags.value = t.tags or ""
+            rec = t.recurrence or {}
+            if rec and rec.get("repeat"):
+                form.recur_enabled.value = [1]
+                form.recur_everyX.value = str(rec.get("everyX", 1))
+                form.recur_unit.value = rec.get("unit", "day")
+                form.recur_days.value = ",".join(
+                    str(d) for d in rec.get("daysOfWeek", []))
+                form.recur_first_of_month.value = [
+                    1] if rec.get("onFirstOfMonth") else [0]
+            else:
+                form.recur_enabled.value = [0]
+    app = App()
+    app.run()
+    task_data = getattr(app, 'form_data', None)
+    if not task_data:
+        return
     now = datetime.now().isoformat()
-    task_dict = asdict(t)
-    task_dict["title"] = new_title
-    task_dict["due"] = new_due
-    task_dict["created"] = now
-    task_dict.pop("id", None)
-    try:
-        task = Task(**task_dict)
-        task_repository.add_task(task)
-        popup_show(stdscr, [f"Task cloned as '{new_title}'"])
-    except Exception as e:
-        popup_show(stdscr, [f"Error: {e}"])
+    # Do NOT clone start/stop/time-tracking fields!
+    task = Task(**{**task_data, "created": now,
+                "priority": calculate_priority(task_data), "status": "backlog"})
+    task_repository.add_task(task)
+    npyscreen.notify_confirm(f"Task cloned as '{task.title}'", title="Cloned")
+
+# --- Edit Task with Form ---
+
+
+def edit_task_tui(_stdscr, sel):
+    tasks = task_repository.get_all_tasks()
+    t = tasks[sel]
+    # Use modular TaskEditForm, pre-filling
+
+    class App(npyscreen.NPSAppManaged):
+        def onStart(selfx):
+            form = selfx.addForm("MAIN", TaskEditForm, name="Edit Task")
+            form.title.value = t.title
+            form.category.value = t.category
+            form.project.value = t.project
+            form.due.value = t.due if t.due else ""
+            if hasattr(form.notes, "values"):
+                form.notes.values = t.notes.splitlines() if t.notes else [""]
+            else:
+                form.notes.value = t.notes or ""
+            form.tags.value = t.tags or ""
+            rec = t.recurrence or {}
+            if rec and rec.get("repeat"):
+                form.recur_enabled.value = [1]
+                form.recur_everyX.value = str(rec.get("everyX", 1))
+                form.recur_unit.value = rec.get("unit", "day")
+                form.recur_days.value = ",".join(
+                    str(d) for d in rec.get("daysOfWeek", []))
+                form.recur_first_of_month.value = [
+                    1] if rec.get("onFirstOfMonth") else [0]
+            else:
+                form.recur_enabled.value = [0]
+    app = App()
+    app.run()
+    task_data = getattr(app, 'form_data', None)
+    if not task_data:
+        return
+    task = Task(**{**asdict(t), **task_data})
+    task_repository.update_task(t.id, asdict(task))
+    npyscreen.notify_confirm(f"Task #{t.id} updated!", title="Updated")
+
+# --- View Task with Form (read-only) ---
+
+
+def view_task_tui(_stdscr, sel):
+    tasks = task_repository.get_all_tasks()
+    t = tasks[sel]
+
+    class App(npyscreen.NPSAppManaged):
+        def onStart(selfx):
+            form = selfx.addForm("MAIN", TaskViewForm, name="View Task")
+            form.title.value = t.title
+            form.category.value = t.category
+            form.project.value = t.project
+            form.due.value = t.due if t.due else ""
+            if hasattr(form.notes, "values"):
+                form.notes.values = t.notes.splitlines() if t.notes else [""]
+            else:
+                form.notes.value = t.notes or ""
+            form.tags.value = t.tags or ""
+            rec = t.recurrence or {}
+            if rec and rec.get("repeat"):
+                form.recur_enabled.value = [1]
+                form.recur_everyX.value = str(rec.get("everyX", 1))
+                form.recur_unit.value = rec.get("unit", "day")
+                form.recur_days.value = ",".join(
+                    str(d) for d in rec.get("daysOfWeek", []))
+                form.recur_first_of_month.value = [
+                    1] if rec.get("onFirstOfMonth") else [0]
+            else:
+                form.recur_enabled.value = [0]
+            # Make all fields readonly:
+            for f in (form.title, form.category, form.project, form.due, form.notes, form.tags,
+                      form.recur_enabled, form.recur_everyX, form.recur_unit, form.recur_days, form.recur_first_of_month):
+                f.editable = False
+    app = App()
+    app.run()
 
 
 def focus_mode_tui(stdscr, sel):
@@ -432,52 +486,6 @@ def delete_task_tui(stdscr, sel):
             log_exception("delete_task_tui", e)
 
 
-def edit_task_tui(stdscr, sel):
-    """Edit ALL fields of the selected task using the model."""
-    tasks = task_repository.get_all_tasks()
-    t = tasks[sel]
-    fields = get_task_fields()
-    input_data = {}
-    for field in fields:
-        if field == "created":
-            input_data[field] = t.created.isoformat() if t.created else None
-            continue
-        old_val = getattr(t, field, None) or ""
-        if field == "category":
-            val = popup_select_option(
-                stdscr, f"Category [{old_val}]:", get_available_categories(), allow_new=True)
-            if val and val not in get_available_categories():
-                add_category_to_config(val)
-        elif field == "project":
-            val = popup_select_option(
-                stdscr, f"Project [{old_val}]:", get_available_projects(), allow_new=True)
-            if val and val not in get_available_projects():
-                add_project_to_config(val)
-        elif field == "status":
-            val = popup_select_option(
-                stdscr, f"Status [{old_val}]:", get_available_statuses())
-        elif field == "tags":
-            tag_list = tag_picker_tui(stdscr, get_available_tags())
-            val = tag_list
-            if val:
-                for tag in (val.split(",") if isinstance(val, str) else val):
-                    add_tag_to_config(tag)
-        elif field == "notes":
-            val = popup_multiline_input(
-                stdscr, f"Notes [{old_val[:20]}...]:", initial=old_val)
-        else:
-            val = popup_input(stdscr, f"{field.capitalize()} [{old_val}]:")
-        input_data[field] = val if val else old_val
-
-        input_data["priority"] = calculate_priority(input_data)
-    try:
-        task = Task(**input_data)
-        task_repository.update_task(t.id, asdict(task))
-        popup_show(stdscr, [f"Task #{t.id} updated!"])
-    except Exception as e:
-        popup_show(stdscr, [f"Error updating task: {e}"])
-
-
 def edit_recurrence_tui(stdscr, sel):
     """
     Prompts the user to view and edit recurrence settings for the selected task.
@@ -577,24 +585,19 @@ def edit_recurrence_tui(stdscr, sel):
 
 def edit_notes_tui(stdscr, sel):
     """
-    Prompt the user to view/edit notes for the selected task.
+    Edit notes for the selected task, multi-line popup for convenience.
     """
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
     t = tasks[sel]
     current = t.get("notes") or ""
-    # Prompt multiline notes (single-line here for simplicity)
-    note = popup_input(stdscr, f"Notes [{current}]:")
+    note = popup_multiline_input(
+        stdscr, "Edit Notes (Ctrl+D=save, ESC=cancel):", initial=current)
     try:
         task_repository.update_task(t["id"], {"notes": note or None})
         popup_show(stdscr, ["Notes updated"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
         log_exception("edit_task_notes_tui", e)
-
-
-# Module‐level state for task filter:
-TASK_FILTERS = ["backlog", "active", "done"]
-current_filter_idx = 0
 
 
 def cycle_task_filter(stdscr):
@@ -607,27 +610,16 @@ def cycle_task_filter(stdscr):
     popup_show(stdscr, [f"Filter: {TASK_FILTERS[current_filter_idx]}"])
 
 
-def view_task_tui(stdscr, sel):
-    tasks = task_repository.get_all_tasks()
-    t = tasks[sel]
-    fields = get_task_fields()
-    display_lines = [
-        f"{field.capitalize()}: {getattr(t, field) or '-'}" for field in fields]
-    popup_show(stdscr, display_lines, title=" Task Details ")
-
-
 def start_task_tui(stdscr, sel):
     """
-    Starts timing the selected task, allowing user to review and update relevant fields.
+    Starts timing the selected task. Optionally lets user update tags/notes.
     """
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
     t = tasks[sel]
-
-    # Prompt to optionally update tags/notes before starting
     new_tags = popup_input(
         stdscr, f"Tags [{t.get('tags') or ''}]:") or t.get("tags")
-    new_notes = popup_input(
-        stdscr, f"Notes [{t.get('notes') or ''}]:") or t.get("notes")
+    new_notes = popup_multiline_input(
+        stdscr, "Notes (optional):", initial=t.get("notes") or "") or t.get("notes")
 
     updates = {}
     if new_tags is not None:
@@ -635,12 +627,10 @@ def start_task_tui(stdscr, sel):
     if new_notes is not None:
         updates["notes"] = new_notes
 
-    # Mark task as active and set start time
     now_iso = datetime.now().isoformat()
     updates["status"] = "active"
     updates["start"] = now_iso
 
-    # Update task in repository
     try:
         task_repository.update_task(t["id"], updates)
         time_repository.start_time_entry(
@@ -660,7 +650,7 @@ def start_task_tui(stdscr, sel):
 
 def stop_task_tui(stdscr):
     """
-    Stops the current active task and time entry, optionally letting user add notes/tags.
+    Stops the current active task and time entry. Optionally lets user update tags/notes.
     """
     active = time_repository.get_active_time_entry()
     if not active or not active.get("task_id"):
@@ -673,11 +663,10 @@ def stop_task_tui(stdscr):
         popup_show(stdscr, ["Active task not found"])
         return
 
-    # Prompt user to update tags/notes on stop
     new_tags = popup_input(
         stdscr, f"Tags [{task.get('tags') or ''}]:") or task.get("tags")
-    new_notes = popup_input(
-        stdscr, f"Notes [{task.get('notes') or ''}]:") or task.get("notes")
+    new_notes = popup_multiline_input(
+        stdscr, "Notes (optional):", initial=task.get("notes") or "") or task.get("notes")
 
     updates = {}
     if new_tags is not None:
@@ -689,9 +678,7 @@ def stop_task_tui(stdscr):
     now_iso = datetime.now().isoformat()
 
     try:
-        # Stop timing
         time_repository.stop_active_time_entry(end_time=now_iso)
-        # Update the task fields
         task_repository.update_task(tid, updates)
         popup_show(stdscr, [f"Paused '{task['title']}'"])
     except Exception as e:
@@ -706,11 +693,10 @@ def done_task_tui(stdscr, sel):
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
     t = tasks[sel]
 
-    # Prompt to update tags/notes on completion
     new_tags = popup_input(
         stdscr, f"Tags [{t.get('tags') or ''}]:") or t.get("tags")
-    new_notes = popup_input(
-        stdscr, f"Notes [{t.get('notes') or ''}]:") or t.get("notes")
+    new_notes = popup_multiline_input(
+        stdscr, "Notes (optional):", initial=t.get("notes") or "") or t.get("notes")
 
     updates = {
         "tags": new_tags,
@@ -720,11 +706,9 @@ def done_task_tui(stdscr, sel):
     }
 
     try:
-        # Stop time entry if this task is active
         active = time_repository.get_active_time_entry()
         if active and active.get("task_id") == t["id"]:
             time_repository.stop_active_time_entry(end_time=updates["end"])
-        # Update the task
         task_repository.update_task(t["id"], updates)
         popup_show(stdscr, [f"Task '{t['title']}' marked done"])
     except Exception as e:

@@ -10,6 +10,7 @@ from lifelog.utils.db import time_repository
 from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, get_available_categories, get_available_projects, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import safe_addstr
+from lifelog.ui_views.forms import TimeEntryForm, run_form
 
 TIME_PERIODS = {'d': 'day', 'w': 'week', 'm': 'month', 'a': 'all'}
 
@@ -142,60 +143,102 @@ def start_time_tui(stdscr):
     popup_confirm(stdscr, f"Started '{title}'")
 
 
-def add_manual_time_entry_tui(stdscr):
-    title = popup_input(stdscr, "Activity Title:")
-    if not title:
+def add_manual_time_entry_tui(_stdscr=None):
+    """
+    Launches the TimeEntryForm for manual time entry.
+    """
+    entry_data = run_form(TimeEntryForm)
+    if not entry_data:
         return
-
-    cat = popup_select_option(
-        stdscr, "Category:", get_available_categories(), allow_new=True)
-    if cat and cat not in get_available_categories():
-        add_category_to_config(cat)
-
-    proj = popup_select_option(
-        stdscr, "Project:", get_available_projects(), allow_new=True)
-    if proj and proj not in get_available_projects():
-        add_project_to_config(proj)
-
-    tags = popup_input(stdscr, "Tags (comma, optional):")
-    notes = popup_multiline_input(stdscr, "Notes (optional):")
-    task_id = popup_input(stdscr, "Attach to task ID [optional]:")
-
-    start_str = popup_input(
-        stdscr, "Start time (e.g. '2025-05-28T14:00' or '1h ago'):")
-    end_str = popup_input(
-        stdscr, "End time (e.g. '2025-05-28T15:00' or 'now'):")
-    distracted_str = popup_input(stdscr, "Distracted minutes [optional]:")
-    distracted = float(distracted_str) if distracted_str else 0
-
     try:
-        start_dt = parse_date_string(start_str)
-        end_dt = parse_date_string(end_str)
-        if end_dt <= start_dt:
-            popup_show(stdscr, ["End time must be after start time!"])
-            return
-    except Exception as e:
-        popup_show(stdscr, [f"Invalid time: {e}"])
-        return
+        # Parse times
+        start_dt = parse_date_string(entry_data["start"]) if entry_data.get(
+            "start") else datetime.now()
+        end_dt = parse_date_string(
+            entry_data["end"]) if entry_data.get("end") else None
+        distracted = float(entry_data.get("distracted") or 0)
+        duration = (end_dt - start_dt).total_seconds() / 60 if end_dt else None
 
-    log = TimeLog(
-        title=title,
-        start=start_dt,
-        end=end_dt,
-        category=cat or None,
-        project=proj or None,
-        tags=tags or None,
-        notes=notes or None,
-        task_id=int(task_id) if task_id else None,
-        duration_minutes=(end_dt - start_dt).total_seconds() / 60,
-        distracted_minutes=distracted
-    )
-
-    try:
+        log = TimeLog(
+            title=entry_data["title"],
+            category=entry_data.get("category"),
+            project=entry_data.get("project"),
+            tags=entry_data.get("tags"),
+            notes=entry_data.get("notes"),
+            task_id=int(entry_data.get("task_id")) if entry_data.get(
+                "task_id") else None,
+            start=start_dt,
+            end=end_dt,
+            duration_minutes=duration,
+            distracted_minutes=distracted
+        )
         time_repository.add_time_entry(log)
-        popup_show(stdscr, [f"Time entry '{title}' added"])
+        # npyscreen's notify_confirm is best for feedback, since we're using forms now
+        import npyscreen
+        npyscreen.notify_confirm(
+            f"Time entry '{log.title}' added", title="Success")
     except Exception as e:
-        popup_show(stdscr, [f"Error: {e}"])
+        import npyscreen
+        npyscreen.notify_confirm(f"Error: {e}", title="Time Entry Error")
+
+
+def edit_time_entry_tui(_stdscr, sel):
+    logs = time_repository.get_all_time_logs(
+        since=datetime.now()-timedelta(days=365))
+    entry = logs[sel]
+
+    # Pre-fill form with existing entry data
+    class App(npyscreen.NPSAppManaged):
+        def onStart(selfx):
+            form = selfx.addForm("MAIN", TimeEntryForm, name="Edit Time Entry")
+            form.title.value = entry.title
+            form.category.value = entry.category
+            form.project.value = entry.project
+            form.tags.value = entry.tags or ""
+            if hasattr(form.notes, "values"):
+                form.notes.values = entry.notes.splitlines() if entry.notes else [
+                    ""]
+            else:
+                form.notes.value = entry.notes or ""
+            form.task_id.value = str(entry.task_id) if entry.task_id else ""
+            form.start.value = entry.start.strftime(
+                "%Y-%m-%d %H:%M") if entry.start else ""
+            form.end.value = entry.end.strftime(
+                "%Y-%m-%d %H:%M") if entry.end else ""
+            form.distracted.value = str(entry.distracted_minutes or "")
+
+    app = App()
+    app.run()
+    new_data = getattr(app, 'form_data', None)
+    if not new_data:
+        return
+
+    try:
+        start_dt = parse_date_string(
+            new_data["start"]) if new_data.get("start") else entry.start
+        end_dt = parse_date_string(
+            new_data["end"]) if new_data.get("end") else entry.end
+        distracted = float(new_data.get("distracted") or 0)
+        time_repository.update_time_entry(
+            entry.id,
+            title=new_data["title"],
+            category=new_data.get("category"),
+            project=new_data.get("project"),
+            tags=new_data.get("tags"),
+            notes=new_data.get("notes"),
+            task_id=int(new_data.get("task_id")) if new_data.get(
+                "task_id") else None,
+            start=start_dt,
+            end=end_dt,
+            distracted_minutes=distracted,
+            duration_minutes=(end_dt - start_dt).total_seconds() /
+            60 if start_dt and end_dt else entry.duration_minutes
+        )
+        import npyscreen
+        npyscreen.notify_confirm(f"Updated entry #{entry.id}", title="Updated")
+    except Exception as e:
+        import npyscreen
+        npyscreen.notify_confirm(f"Error: {e}", title="Edit Entry Error")
 
 
 def add_distracted_time_tui(stdscr):
@@ -217,35 +260,6 @@ def add_distracted_time_tui(stdscr):
     new_distracted = time_repository.add_distracted_minutes_to_active(mins)
     popup_show(stdscr, [
                f"Added {mins} distracted min (Total distracted: {new_distracted} min)"])
-
-
-def edit_time_entry_tui(stdscr, sel):
-    logs = time_repository.get_all_time_logs(
-        since=datetime.now()-timedelta(days=365))
-    entry = logs[sel]
-    new_tags = popup_input(stdscr, f"Tags [{entry.tags or '-'}]:")
-    new_notes = popup_multiline_input(stdscr, f"Notes [{entry.notes or '-'}]:")
-    new_distracted_str = popup_input(
-        stdscr, f"Distracted minutes [{entry.distracted_minutes or 0}]:")
-    try:
-        new_distracted = float(
-            new_distracted_str) if new_distracted_str else entry.distracted_minutes or 0
-        time_repository.update_time_entry(
-            entry.id,
-            tags=new_tags or None,
-            notes=new_notes or None,
-            distracted_minutes=new_distracted
-        )
-        popup_show(stdscr, [f"Updated entry #{entry.id}"])
-    except Exception as e:
-        popup_show(stdscr, [f"Error: {e}"])
-
-    try:
-        time_repository.update_time_entry(
-            entry.id, tags=new_tags or None, notes=new_notes or None)
-        popup_show(stdscr, [f"Updated entry #{entry.id}"])
-    except Exception as e:
-        popup_show(stdscr, [f"Error: {e}"])
 
 
 def delete_time_entry_tui(stdscr, sel):
