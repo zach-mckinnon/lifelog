@@ -638,6 +638,8 @@ def start_api(
         console.print("[yellow]Docker deployment files detected.[/yellow]")
         console.print("It's recommended to start your server using Docker:")
         console.print(
+            f"  Use llog docker or directly start the container with:")
+        console.print(
             f"  cd {cf.BASE_DIR / 'docker'} && docker compose up -d --build")
         # Optionally: exit or prompt the user to continue
         if not typer.confirm("Continue starting server directly anyway?", default=False):
