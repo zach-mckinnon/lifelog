@@ -483,7 +483,6 @@ CMD ["gunicorn", "--bind", "0.0.0.0:5000", "lifelog.app:app"]
     # ── docker-compose.yml ──────────────────────────────────────────────────
     home_path = str(Path.home())
     compose_content = f'''\
-version: "3.8"
 services:
   lifelog-api:
     build: .

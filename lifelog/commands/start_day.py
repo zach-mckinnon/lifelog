@@ -71,7 +71,7 @@ def start_day():
     total_minutes = 0
     for task in today_tasks:
         mins = typer.prompt(
-            f"How many minutes do you want to spend on [bold]{task.title}[/bold]? (Pomodoro = 25min)",
+            f"How many minutes do you want to spend on [bold]{task.title}[/bold]?",
             default="25"
         )
         try:
@@ -85,7 +85,7 @@ def start_day():
 
     if total_minutes > 480:
         console.print(
-            "[bold yellow]⚠️ You planned more than 8 hours! Consider narrowing your focus.[/bold yellow]")
+            "[bold yellow]⚠️ You planned more than 8 hours! Consider narrowing your focus to prevent burnout. You can always do more after your day plan is over![/bold yellow]")
 
     # Step 4: Prompt for tracker log at start
     trackers = get_all_trackers()
@@ -108,16 +108,26 @@ def start_day():
         console.rule(
             f"[bold magenta]Task {i}/{len(focus_plan)}: {task.title}[/bold magenta]")
         console.print(
-            f"Focus time: [bold]{minutes}[/bold] minutes. Press Enter to start.")
+            f"Total focus time: [bold]{minutes}[/bold] minutes. Press Enter to start.")
         typer.prompt("Ready?")
 
-        pomodoro_length = 25
-        sessions_needed = (minutes + pomodoro_length - 1) // pomodoro_length
+        # Decide Pomodoro pattern:
+        if minutes <= 120:
+            focus_length = 25
+            break_length = 5
+        else:
+            focus_length = 45
+            break_length = 10
+        console.print(
+            f"[blue]We'll use {focus_length} min focus, {break_length} min break cycles.[/blue]")
+
+        # Calculate sessions:
+        sessions_needed = (minutes + focus_length - 1) // focus_length
         minutes_left = minutes
         distracted_total = 0
 
         for session in range(sessions_needed):
-            session_time = min(pomodoro_length, minutes_left)
+            session_time = min(focus_length, minutes_left)
             console.print(
                 f"[blue]Pomodoro {session+1}/{sessions_needed} for {session_time} min[/blue]")
             pomodoro_timer(session_time)
@@ -133,18 +143,24 @@ def start_day():
             if session < sessions_needed - 1:
                 console.print(Panel(get_feedback_saying(
                     "transition_break"), style="yellow"))
-                typer.prompt("Take a 5-min break! Press Enter to continue.")
+                console.print(
+                    f"Take a {break_length}-min break! Press Enter to continue when ready.")
+                typer.prompt(f"Press Enter after your break.")
 
             minutes_left -= session_time
 
         # If distracted time > 0, run makeup Pomodoro(s)
         if distracted_total > 0:
+            # Always use same session length as above
             extra_sessions = (distracted_total +
-                              pomodoro_length - 1) // pomodoro_length
+                              focus_length - 1) // focus_length
             console.print(
                 f"[red]You were distracted for {distracted_total} minutes. Let's make up for it![/red]")
-            for _ in range(extra_sessions):
-                pomodoro_timer(pomodoro_length)
+            for es in range(extra_sessions):
+                # Last session may be shorter than full
+                session_time = min(focus_length, distracted_total)
+                pomodoro_timer(session_time)
+                distracted_total -= session_time
                 typer.prompt(
                     "Pomodoro done! Take a break and press Enter to continue.")
 
