@@ -486,7 +486,9 @@ CMD ["gunicorn", "--bind", "0.0.0.0:5000", "lifelog.app:app"]
     compose_content = f'''\
 services:
   lifelog-api:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     image: lifelog-api:latest
     container_name: lifelog-api
     ports:
