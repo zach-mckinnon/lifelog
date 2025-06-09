@@ -26,6 +26,7 @@ from lifelog.ui_views.ui_helpers import (
     safe_addstr,
 )
 from lifelog.ui_views.popups import popup_confirm, popup_error, show_help_popup
+from lifelog.ui_views.start_day_ui import start_day_tui
 from lifelog.ui_views.reports_ui import draw_report, run_clinical_insights, run_daily_tracker, run_insights, run_summary_time, run_summary_trackers, draw_burndown
 from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_filter, delete_task_tui, done_task_tui, draw_agenda,  edit_notes_tui, edit_recurrence_tui, edit_task_tui, focus_mode_tui, quick_add_task_tui, set_task_reminder_tui, start_task_tui, stop_task_tui, view_task_tui
 from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entry_tui, draw_time, edit_time_entry_tui, set_time_period, start_time_tui, status_time_tui, stop_time_tui, stopwatch_tui, summary_time_tui, view_time_entry_tui
@@ -157,7 +158,13 @@ def main(stdscr, show_status: bool = True):
                 continue
 
             # Now, context-sensitive key handling per tab:
-            if active_screen == "TSK":
+            if active_screen == "H":
+                # You can add more key handling here
+                if key == ord("S"):
+                    start_day_tui(stdscr)
+                elif key == ord("?"):
+                    show_help_popup(stdscr, current)
+            elif active_screen == "TSK":
                 max_idx = len(task_repository.query_tasks(
                     status=None, show_completed=False, sort="priority")) - 1
                 if key == curses.KEY_DOWN:
@@ -290,6 +297,8 @@ def draw_home(pane, h, w):
         safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
                     title, curses.A_BOLD)
         y = 2
+        safe_addstr(pane, h-2, 2, "Press 'S' to Start My Day!", curses.A_BOLD)
+        y += 2
         safe_addstr(pane, y, 2, "Top Tasks:", curses.A_UNDERLINE)
         tasks = task_repository.query_tasks(sort="priority")[:3]
         for i, t in enumerate(tasks):
