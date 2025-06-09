@@ -462,6 +462,83 @@ def save_first_command_flag(date_str: str):
         console.print(f"[red]⚠️ Failed to save command flag: {e}[/red]")
 
 
+@app.command("get-server-url")
+def get_server_url():
+    """
+    Print the correct API server URL for pairing client devices.
+    """
+    import platform
+    import socket
+    import yaml
+
+    config = cf.load_config()
+    docker_dir = cf.BASE_DIR / "docker"
+    compose_file = docker_dir / "docker-compose.yml"
+
+    # 1. Check for Docker Compose and a running container
+    docker_used = False
+    if compose_file.exists():
+        try:
+            import subprocess
+            # Is Docker running and container up?
+            result = subprocess.run(
+                ["docker", "compose", "-f",
+                    str(compose_file), "ps", "-q", "lifelog-api"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            if result.stdout.strip():
+                docker_used = True
+        except Exception as e:
+            pass  # fallback
+
+    # 2. If Docker is being used, parse docker-compose for port
+    if docker_used:
+        try:
+            with open(compose_file, "r") as f:
+                compose = yaml.safe_load(f)
+            # Get the mapped port (default is 5000:5000)
+            ports = compose["services"]["lifelog-api"]["ports"]
+            port_mapping = ports[0] if ports else "5000:5000"
+            host_port = port_mapping.split(":")[0]
+        except Exception:
+            host_port = "5000"
+
+        # Try to determine host IP address on LAN
+        try:
+            # Get LAN IP, not localhost
+            hostname = socket.gethostname()
+            host_ip = socket.gethostbyname(hostname)
+            # Avoid loopback
+            if host_ip.startswith("127."):
+                # Use another trick (works on Linux/Mac)
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                try:
+                    s.connect(("8.8.8.8", 80))
+                    host_ip = s.getsockname()[0]
+                except Exception:
+                    host_ip = "127.0.0.1"
+                finally:
+                    s.close()
+        except Exception:
+            host_ip = "127.0.0.1"
+
+        url = f"http://{host_ip}:{host_port}"
+        console.print(
+            f"[bold green]API server running in Docker.[/bold green]")
+        console.print(f"[cyan]URL for client devices: {url}[/cyan]")
+        return
+
+    # 3. Fallback: Use config value or localhost
+    server_url = (
+        config.get("deployment", {}).get(
+            "server_url") or "http://localhost:5000"
+    )
+    console.print(f"[bold green]API server running locally.[/bold green]")
+    console.print(f"[cyan]URL for client devices: {server_url}[/cyan]")
+
+
 @app.command("docker")
 def docker_cmd(
     action: Annotated[str, typer.Argument(
