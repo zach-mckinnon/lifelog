@@ -30,6 +30,11 @@ def health_check():
     }), 200
 
 
+@app.route("/api/status")
+def api_status():
+    return "OK", 200
+
+
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=5000)
