@@ -665,8 +665,8 @@ def start_api(
 
     # ---- Start in background ----
     try:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
+        subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
+
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
