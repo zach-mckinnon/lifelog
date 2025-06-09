@@ -467,7 +467,6 @@ def get_server_url():
     """
     Print the correct API server URL for pairing client devices.
     """
-    import platform
     import socket
     import yaml
 
