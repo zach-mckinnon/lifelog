@@ -5,27 +5,26 @@ description = "A terminal-based health, habit, task, life tracker."
 authors = [{ name = "Zach McKinnon" }]
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.8"
 dependencies = [
-    "flask==3.1.1",
-    "typer==0.16.0",
-    "rich==14.0.0",
-    "termplotlib==0.3.9",
-    "numpy==2.3.0",
-    "requests==2.32.4",
-    "scipy==1.15.3",
-    "tomlkit==0.13.3",
-    "pandas==2.3.0",
-    "toml==0.10.2",
-    "plotext==5.3.2",
-    # Not present in requirements.txt but in your original:
+    # Universal
+    "typer",
+    "rich",
+    "termplotlib",
+    "numpy",
+    "requests",
+    "scipy",
+    "tomlkit",
+    "pandas",
+    "toml",
     "plotille",
+    "plotext",
     "pydantic",
-    # OS-specific dependencies
+    "flask",
+    "npyscreen",
+
+    # Windows only
     "windows-curses; sys_platform == 'win32'",
     "pywin32; sys_platform == 'win32'",
-    # Optional: npyscreen is in your requirements.txt. If you use it, add it:
-    "npyscreen==4.10.5",
 ]
 requires-python = ">=3.8"
 
