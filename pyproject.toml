@@ -21,6 +21,7 @@ dependencies = [
     "pydantic",
     "flask",
     "npyscreen",
+    "pyyaml", 
 
     # Windows only
     "windows-curses; sys_platform == 'win32'",
