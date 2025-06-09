@@ -20,7 +20,8 @@ A command-line interface for tracking habits, time, tasks, and environmental dat
 This CLI allows users to log their daily activities, manage tasks, and sync environmental data.
 '''
 import curses
-from datetime import datetime, time
+from datetime import datetime
+import time
 from pathlib import Path
 import sqlite3
 import subprocess
