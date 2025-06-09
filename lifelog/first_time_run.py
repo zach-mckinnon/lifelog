@@ -265,7 +265,7 @@ def setup_location(config):
 
 
 def mask_key(key: str) -> str:
-    # Show only first 2 and last 4 chars, mask the rest
+    """Show only first 2 and last 4 characters of key, mask the rest"""
     if not key or len(key) < 6:
         return "*" * len(key)
     return f"{key[:2]}{'*'*(len(key)-6)}{key[-4:]}"
@@ -279,53 +279,54 @@ def setup_ai(config):
         style="magenta"
     ))
 
-    if typer.confirm("Would you like to enable AI features?", default=True):
-        setup_encryption(config)
+    if not typer.confirm("Would you like to enable AI features?", default=True):
+        console.print("[yellow]AI setup skipped.[/yellow]")
+        return
 
-        console.print("\n[bold]Available AI Providers:[/bold]")
-        console.print("1. [cyan]OpenAI[/cyan] (ChatGPT)")
-        console.print("2. [yellow]Google[/yellow] (Gemini)")
-        console.print("3. [green]Anthropic[/green] (Claude)")
+    setup_encryption(config)
 
-        choice = typer.prompt("Select provider (1-3)", type=int)
-        providers = {1: "openai", 2: "google", 3: "anthropic"}
-        provider_name = providers.get(choice, "openai")
+    console.print("\n[bold]Available AI Providers:[/bold]")
+    console.print("1. [cyan]OpenAI[/cyan] (ChatGPT)")
+    console.print("2. [yellow]Google[/yellow] (Gemini)")
+    console.print("3. [green]Anthropic[/green] (Claude)")
 
-        # Loop until they give a non-blank key or skip
-        while True:
-            api_key = typer.prompt("Enter your API key",
-                                   hide_input=True).strip()
-            if not api_key:
-                retry = typer.confirm(
-                    "[red]Your key is blank![/red]\n"
-                    "Do you want to try again?", default=True
-                )
-                if not retry:
-                    console.print("[yellow]AI setup skipped.[/yellow]")
-                    return
+    choice = typer.prompt("Select provider (1-3)", type=int)
+    providers = {1: "openai", 2: "google", 3: "anthropic"}
+    provider_name = providers.get(choice, "openai")
+
+    # Key input loop
+    while True:
+        api_key = typer.prompt("Enter your API key", hide_input=True).strip()
+
+        if not api_key:
+            console.print("[red]Your key is blank![/red]")
+            if typer.confirm("Do you want to try again?", default=True):
+                continue
             else:
-                break
+                console.print("[yellow]AI setup skipped.[/yellow]")
+                return
 
-        # Show a masked preview
+        # Show that something was entered, but never reveal the full key
         masked = mask_key(api_key)
         console.print(
             f"[cyan]Key entered:[/cyan] {masked} ([bold]length:[/bold] {len(api_key)} chars)")
 
         # Confirm with user before saving
-        if not typer.confirm("Does this look correct? (Your actual key will remain hidden)", default=True):
+        if typer.confirm("Does this look correct? (Your actual key will remain hidden)", default=True):
+            break
+        else:
             console.print(
-                "[yellow]AI setup cancelled. Start again if needed.[/yellow]")
-            return
+                "[yellow]Let's try entering your API key again.[/yellow]")
 
-        # Encrypt and store
-        encrypted_key = encrypt_data(config, api_key)
-        config["ai"] = {
-            "provider": provider_name,
-            "api_key": encrypted_key,
-            "enabled": True
-        }
-        console.print(
-            f"\n[green]✓ AI credentials for {provider_name} encrypted and stored[/green]")
+    # Encrypt and store
+    encrypted_key = encrypt_data(config, api_key)
+    config["ai"] = {
+        "provider": provider_name,
+        "api_key": encrypted_key,
+        "enabled": True
+    }
+    console.print(
+        f"\n[green]✓ AI credentials for {provider_name} encrypted and stored[/green]")
 
 
 def setup_api(config):
