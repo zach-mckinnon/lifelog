@@ -43,6 +43,7 @@ from rich.table import Table
 from lifelog.utils.db.db_helper import auto_sync, should_sync
 from lifelog.utils import hooks as hooks_util
 from lifelog.utils import log_utils
+from lifelog.commands import start_day
 
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
@@ -61,6 +62,8 @@ sync_app.command()(environmental_sync.weather)
 sync_app.command()(environmental_sync.air)
 sync_app.command()(environmental_sync.moon)
 sync_app.command()(environmental_sync.satellite)
+app.add_typer(start_day.app, name="start-day",
+              help="Guided, motivational start-of-day routine")
 
 app.add_typer(sync_app, name="sync", help="Fetch external environmental data")
 
