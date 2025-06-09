@@ -20,12 +20,13 @@ A command-line interface for tracking habits, time, tasks, and environmental dat
 This CLI allows users to log their daily activities, manage tasks, and sync environmental data.
 '''
 import curses
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 import sqlite3
 import subprocess
 import sys
 from typing import Annotated
+import requests
 import typer
 
 from lifelog.first_time_run import LOGO_SMALL, run_wizard
@@ -589,6 +590,30 @@ def docker_cmd(
     subprocess.run(docker_args, cwd=str(DOCKER_DIR))
 
 
+def is_server_up(host, port):
+    try:
+        resp = requests.get(f"http://{host}:{port}/api/status", timeout=1)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def is_running_in_docker():
+    # True if inside Docker container
+    return (
+        Path("/.dockerenv").exists() or
+        (Path("/proc/1/cgroup").exists()
+         and "docker" in Path("/proc/1/cgroup").read_text())
+    )
+
+
+def docker_deployment_exists():
+    # True if docker deployment files are present
+    from lifelog.config.config_manager import BASE_DIR
+    docker_dir = BASE_DIR / "docker"
+    return (docker_dir / "Dockerfile").exists() and (docker_dir / "docker-compose.yml").exists()
+
+
 @app.command("api-start")
 def start_api(
     host: str = typer.Option("127.0.0.1", help="Host to bind to"),
@@ -596,33 +621,63 @@ def start_api(
     debug: bool = typer.Option(False, help="Enable debug mode"),
     prod: bool = typer.Option(False, "--prod", help="Use production server")
 ):
-    """Start the REST API server"""
     import os
     from lifelog.app import app
 
-    # Ensure initialization
     initialize_application()
 
+    # ---- Check if already running ----
+    if is_server_up(host, port):
+        console.print(
+            f"[yellow]Server already running at http://{host}:{port}[/yellow]")
+        return
+    if is_running_in_docker():
+        console.print("[cyan]Detected Docker environment.[/cyan]")
+        # You might want to behave differently or just print info
+    elif docker_deployment_exists():
+        console.print("[yellow]Docker deployment files detected.[/yellow]")
+        console.print("It's recommended to start your server using Docker:")
+        console.print(
+            f"  cd {cf.BASE_DIR / 'docker'} && docker compose up -d --build")
+        # Optionally: exit or prompt the user to continue
+        if not typer.confirm("Continue starting server directly anyway?", default=False):
+            return
+    # ---- Build command ----
     if prod or os.getenv("FLASK_ENV") == "production":
-        console.print(
-            "[green]🚀 Starting PRODUCTION server with gunicorn[/green]")
-        try:
-            subprocess.run([
-                "gunicorn",
-                "-b", f"{host}:{port}",
-                "-w", "4",
-                "--timeout", "120",
-                "lifelog.app:app"
-            ])
-        except FileNotFoundError:
-            console.print(
-                "[red]Error: gunicorn not installed. Install with 'pip install gunicorn'[/red]")
-            sys.exit(1)
+        cmd = [
+            "gunicorn",
+            "-b", f"{host}:{port}",
+            "-w", "4",
+            "--timeout", "120",
+            "lifelog.app:app"
+        ]
     else:
-        console.print(
-            f"[green]🚀 Starting DEVELOPMENT server at http://{host}:{port}[/green]")
-        os.environ["FLASK_ENV"] = "development" if debug else "production"
-        app.run(host=host, port=port, debug=debug)
+        cmd = [sys.executable, "-m", "flask", "run",
+               "--host", host, "--port", str(port)]
+        if debug:
+            os.environ["FLASK_ENV"] = "development"
+
+    # ---- Start in background ----
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+    # ---- Wait for the server to start ----
+    for _ in range(10):  # Try for up to ~5 seconds
+        if is_server_up(host, port):
+            break
+        time.sleep(0.5)
+    else:
+        console.print("[red]Server failed to start.[/red]")
+        return
+
+    # ---- Show server info ----
+    console.print(f"[green]🚀 Server started at http://{host}:{port}[/green]")
+    console.print(
+        "To stop the server, use your OS process manager or Docker (if running in Docker).")
 
 
 @app.command("sync")
