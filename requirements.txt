@@ -15,4 +15,3 @@ plotille
 pydantic
 pyyaml
 gunicorn
-lifelog 

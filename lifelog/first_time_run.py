@@ -434,7 +434,6 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
             "pydantic\n"
             "pyyaml\n"
             "gunicorn\n"
-            "lifelog\n"
         )
         requirements_path.write_text(requirements, encoding="utf-8")
 
