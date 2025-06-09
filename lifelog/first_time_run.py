@@ -399,7 +399,9 @@ def setup_api(config):
 
 
 def generate_docker_files(base_path: Optional[Path] = None) -> None:
-    # Resolve target directory
+    from pathlib import Path
+    import typer
+
     base_path = (base_path or Path.home() / ".lifelog").expanduser().resolve()
     docker_dir = base_path / "docker"
     docker_dir.mkdir(parents=True, exist_ok=True)
@@ -410,46 +412,98 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
             print("Skipped Docker file generation.")
             return
 
+    # --- Write a requirements.txt (if needed) ---
+    requirements_path = base_path / "requirements.txt"
+    if not requirements_path.exists():
+        # The essentials for your server, adjust if you use more packages
+        requirements = (
+            "flask\n"
+            "npyscreen\n"
+            "numpy\n"
+            "pandas\n"
+            "plotext\n"
+            "python_dateutil\n"
+            "requests\n"
+            "rich\n"
+            "scipy\n"
+            "termplotlib\n"
+            "toml\n"
+            "tomlkit\n"
+            "typer\n"
+            "plotille\n"
+            "pydantic\n"
+            "pyyaml\n"
+            "gunicorn\n"
+            "lifelog\n"
+        )
+        requirements_path.write_text(requirements, encoding="utf-8")
+
     # ── Dockerfile ──────────────────────────────────────────────────────────
-    dockerfile_content = (
-        "FROM python:3.9\n\n"
-        "# Install system dependencies\n"
-        "RUN apt-get update && \\\n"
-        "    apt-get install -y --no-install-recommends \\\n"
-        "        libcairo2 \\\n"
-        "        libgirepository1.0-dev \\\n"
-        "        python3-gi \\\n"
-        "        pkg-config \\\n"
-        "        build-essential \\\n"
-        "    && rm -rf /var/lib/apt/lists/*\n\n"
-        "# Install Python dependencies\n"
-        "RUN pip install --no-cache-dir lifelog flask gunicorn\n\n"
-        "# Create non-root user and set up environment\n"
-        "RUN useradd -m lifelogserver && \\\n"
-        "    mkdir -p /home/lifelogserver/app && \\\n"
-        "    chown -R lifelogserver:lifelogserver /home/lifelogserver\n\n"
-        "USER lifelogserver\n"
-        "WORKDIR /home/lifelogserver/app\n\n"
-        "EXPOSE 5000\n\n"
-        'CMD ["llog", "api-start", "--host", "0.0.0.0", "--port", "5000"]\n'
-    )
+    dockerfile_content = '''\
+FROM python:3.8-slim-buster AS builder
+
+WORKDIR /app
+
+RUN apt-get update && \\
+    apt-get install -y --no-install-recommends \\
+        build-essential \\
+        pkg-config \\
+        cmake \\
+        libcairo2 \\
+        libgirepository1.0-dev \\
+        python3-gi \\
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Final image
+FROM python:3.8-slim-buster
+
+WORKDIR /home/lifelogserver/app
+
+COPY --from=builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY . .
+
+RUN useradd -m lifelogserver && \\
+    chown -R lifelogserver:lifelogserver /home/lifelogserver
+
+USER lifelogserver
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=5s \\
+  CMD curl --fail http://localhost:5000/api/health || exit 1
+
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "lifelog.app:app"]
+'''
+
     # ── docker-compose.yml ──────────────────────────────────────────────────
     home_path = str(Path.home())
-    compose_content = (
-        "services:\n"
-        "  lifelog-api:\n"
-        "    build: .\n"
-        "    image: docker-lifelog-api\n"
-        "    container_name: lifelog-api\n"
-        "    ports:\n"
-        "      - \"5000:5000\"\n"
-        "    volumes:\n"
-        f"      - \"{home_path}/.lifelog:/home/lifelogserver/.lifelog\"\n"
-        "    restart: unless-stopped\n"
-        "    environment:\n"
-        "      - TZ=America/Los_Angeles\n"
-        "      - FLASK_ENV=production\n"
-    )
+    compose_content = f'''\
+version: "3.8"
+services:
+  lifelog-api:
+    build: .
+    image: lifelog-api:latest
+    container_name: lifelog-api
+    ports:
+      - "5000:5000"
+    volumes:
+      - "{home_path}/.lifelog:/home/lifelogserver/.lifelog"
+    restart: unless-stopped
+    environment:
+      TZ: "America/Los_Angeles"
+      FLASK_ENV: "production"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+'''
 
     # Write files
     (docker_dir / "Dockerfile").write_text(dockerfile_content, encoding="utf-8")
