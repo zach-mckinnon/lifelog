@@ -413,7 +413,7 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
             return
 
     # --- Write a requirements.txt (if needed) ---
-    requirements_path = base_path / "requirements.txt"
+    requirements_path = docker_dir / "requirements.txt"
     if not requirements_path.exists():
         # The essentials for your server, adjust if you use more packages
         requirements = (
