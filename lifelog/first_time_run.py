@@ -264,6 +264,13 @@ def setup_location(config):
     config["location"] = {"zip": zip_code}
 
 
+def mask_key(key: str) -> str:
+    # Show only first 2 and last 4 chars, mask the rest
+    if not key or len(key) < 6:
+        return "*" * len(key)
+    return f"{key[:2]}{'*'*(len(key)-6)}{key[-4:]}"
+
+
 def setup_ai(config):
     """Guide user through AI setup with encrypted credentials"""
     console.print(Panel(
@@ -273,7 +280,6 @@ def setup_ai(config):
     ))
 
     if typer.confirm("Would you like to enable AI features?", default=True):
-        # Ensure encryption is set up
         setup_encryption(config)
 
         console.print("\n[bold]Available AI Providers:[/bold]")
@@ -282,20 +288,42 @@ def setup_ai(config):
         console.print("3. [green]Anthropic[/green] (Claude)")
 
         choice = typer.prompt("Select provider (1-3)", type=int)
-        api_key = typer.prompt("Enter your API key", hide_input=True)
-
         providers = {1: "openai", 2: "google", 3: "anthropic"}
         provider_name = providers.get(choice, "openai")
 
-        # Encrypt the API key before storing
-        encrypted_key = encrypt_data(config, api_key)
+        # Loop until they give a non-blank key or skip
+        while True:
+            api_key = typer.prompt("Enter your API key",
+                                   hide_input=True).strip()
+            if not api_key:
+                retry = typer.confirm(
+                    "[red]Your key is blank![/red]\n"
+                    "Do you want to try again?", default=True
+                )
+                if not retry:
+                    console.print("[yellow]AI setup skipped.[/yellow]")
+                    return
+            else:
+                break
 
+        # Show a masked preview
+        masked = mask_key(api_key)
+        console.print(
+            f"[cyan]Key entered:[/cyan] {masked} ([bold]length:[/bold] {len(api_key)} chars)")
+
+        # Confirm with user before saving
+        if not typer.confirm("Does this look correct? (Your actual key will remain hidden)", default=True):
+            console.print(
+                "[yellow]AI setup cancelled. Start again if needed.[/yellow]")
+            return
+
+        # Encrypt and store
+        encrypted_key = encrypt_data(config, api_key)
         config["ai"] = {
             "provider": provider_name,
             "api_key": encrypted_key,
             "enabled": True
         }
-
         console.print(
             f"\n[green]✓ AI credentials for {provider_name} encrypted and stored[/green]")
 
@@ -388,6 +416,10 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
         "RUN apt-get update && \\\n"
         "    apt-get install -y --no-install-recommends \\\n"
         "        libcairo2 \\\n"
+        "        libgirepository1.0-dev \\\n"
+        "        python3-gi \\\n"
+        "        pkg-config \\\n"
+        "        build-essential \\\n"
         "    && rm -rf /var/lib/apt/lists/*\n\n"
         "# Install Python dependencies\n"
         "RUN pip install --no-cache-dir lifelog flask gunicorn\n\n"
