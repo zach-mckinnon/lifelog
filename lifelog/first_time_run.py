@@ -453,7 +453,7 @@ RUN apt-get update && \\
         python3-gi \\
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -466,8 +466,10 @@ COPY --from=builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY . .
 
+RUN pip install .
+
 RUN useradd -m lifelogserver && \\
-    chown -R lifelogserver:lifelogserver /home/lifelogserver
+     chown -R lifelogserver:lifelogserver /app
 
 USER lifelogserver
 
