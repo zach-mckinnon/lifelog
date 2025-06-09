@@ -22,6 +22,7 @@ dependencies = [
     "flask",
     "npyscreen",
     "pyyaml", 
+    "gunicorn",
 
     # Windows only
     "windows-curses; sys_platform == 'win32'",
