@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import socket
 import sys
 from typing import Optional
 import requests
@@ -517,6 +518,16 @@ services:
     print("\nRun:\n  cd ~/.lifelog/docker && docker compose up -d --build\n")
 
 
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    finally:
+        s.close()
+    return ip
+
+
 def setup_deployment(config):
     """Guide user through deployment mode selection and API pairing/setup"""
     console.print(Panel(
@@ -546,12 +557,14 @@ def setup_deployment(config):
 
     elif choice == 2:
         # Host/server: enable API, generate credentials, print next steps
+        host_ip = get_local_ip()
         config["deployment"] = {
             "mode": "server",
-            "server_url": "http://localhost:5000",
+            "server_url": f"http://{host_ip}:5000",
             "host_server": True
         }
-        console.print("[cyan]✓ Server/Host mode selected.[/cyan]")
+        console.print(
+            f"[cyan]✓ Server/Host mode selected. Server URL: http://{host_ip}:5000[/cyan]")
 
         # Setup API server (credentials, Docker, etc.)
         setup_api(config)
