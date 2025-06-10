@@ -49,7 +49,7 @@ due_option = typer.Option(
 
 impt_option = typer.Option(
     None,
-    "-i", "--impt",
+    "-i", "--importance",
     help="Importance level of task from 1 (lowest priority) to 5 (highest priority). Used in the priority calculation to prioritize tasks.",
     show_default=False,
 )

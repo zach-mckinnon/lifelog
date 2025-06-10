@@ -366,9 +366,21 @@ def get_available_categories() -> list:
 def add_category_to_config(category: str, description: str = ""):
     config = cf.load_config()
     cats = config.get("categories", {})
+    cat_importances = config.get("category_importance", {})
+
     if category not in cats:
         cats[category] = description
+
+        # Prompt for importance multiplier
+        multiplier = typer.prompt(
+            f"Enter importance multiplier for '{category}' (1.0 = normal)",
+            default=1.0,
+            type=float
+        )
+        cat_importances[category] = multiplier
+
         config["categories"] = cats
+        config["category_importance"] = cat_importances
         cf.save_config(config)
 
 

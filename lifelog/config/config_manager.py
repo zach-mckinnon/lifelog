@@ -115,17 +115,11 @@ def is_docker_running():
         return False
 
 
-def get_category_importance(category: str) -> float:
-    """
-    Get the importance multiplier for a category from config.
-    Returns 1.0 if not set.
-    """
+def get_category_importance(category_name: str) -> float:
+    """Get importance multiplier for a category"""
     config = load_config()
-    cat_impt = config.get("category_importance", {}) or {}
-    try:
-        return float(cat_impt.get(category, 1.0))
-    except Exception:
-        return 1.0
+    cat_importances = config.get("category_importance", {})
+    return cat_importances.get(category_name, 1.0)
 
 
 def set_config_value(section: str, key: str, value: Any):

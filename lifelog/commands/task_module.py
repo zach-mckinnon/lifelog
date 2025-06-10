@@ -49,7 +49,7 @@ def add(
                                 help="The title of the task you need to get done."),
     category: Optional[str] = category_option,
     project: Optional[str] = project_option,
-    impt: Optional[int] = impt_option,
+    importance: Optional[int] = impt_option,
     due: Optional[str] = due_option,
     recur: Optional[bool] = recur_option,
     args: Optional[List[str]] = typer.Argument(
@@ -117,7 +117,7 @@ def add(
         "title": title,
         "project": project,
         "category": category,
-        "importance": impt if impt else 1,
+        "importance": importance if importance else 1,
         "created": now.isoformat(),
         "due": due_dt.isoformat() if due_dt else None,
         "status": "backlog",
@@ -142,7 +142,7 @@ def add(
     try:
         validate_task_inputs(
             title=title,
-            importance=impt,
+            importance=importance,
             priority=task_data.get("priority"),
         )
 
@@ -169,7 +169,7 @@ def list(
         "", help="Search by task title contains"),
     category: Optional[str] = category_option,
     project: Optional[str] = project_option,
-    impt: Optional[int] = impt_option,
+    importance: Optional[int] = impt_option,
     due: Optional[str] = due_option,
     sort: Optional[str] = typer.Option(
         "priority", help="Sort by 'priority', 'due', 'created', 'id'."),
@@ -187,7 +187,7 @@ def list(
         title_contains=title,
         category=category,
         project=project,
-        importance=impt,
+        importance=importance,
         due_contains=due,
         status=status,
         show_completed=show_completed,
@@ -358,7 +358,7 @@ def modify(
         None, help="Optional: +tags Notes..."),
     project: Optional[str] = project_option,
     category: Optional[str] = category_option,
-    impt: Optional[int] = impt_option,
+    importance: Optional[int] = impt_option,
     due: Optional[str] = due_option,
     recur: Optional[bool] = recur_option,
 ):
@@ -393,8 +393,8 @@ def modify(
         except Exception as e:
             console.print(f"[bold red]❌ Invalid due date: {e}[/bold red]")
             raise typer.Exit(code=1)
-    if impt is not None:
-        updates["importance"] = impt
+    if importance is not None:
+        updates["importance"] = importance
     if tags:
         updates["tags"] = ",".join(tags)
     if notes:
@@ -425,7 +425,7 @@ def modify(
     try:
         validate_task_inputs(
             title=title,
-            importance=impt,
+            importance=importance,
             priority=updates.get("priority"),
         )
 
@@ -926,12 +926,12 @@ def calculate_priority(task):
     }
     now = datetime.now()
     score = 0
-    importance = task.get("impt", 1)
+    importance = task.get("importance", 1)
 
     # Category importance multiplier
     cat = task.get("category", None)
     cat_impt = cf.get_category_importance(cat) if cat else 1.0
-    importance = importance * cat_impt
+    importance *= cat_impt
 
     score += importance * coeff["importance"]
 
