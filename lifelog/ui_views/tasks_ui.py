@@ -5,16 +5,12 @@ import npyscreen
 import curses
 from dataclasses import asdict
 from datetime import datetime
-from lifelog.utils.db.models import Task, get_task_fields
+from lifelog.utils.db.models import Task
 from lifelog.commands.task_module import calculate_priority, create_due_alert
 from lifelog.utils.db import task_repository, time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_statuses, get_available_tags, validate_task_inputs
-from lifelog.ui_views.popups import popup_confirm, popup_error, popup_input, popup_multiline_input, popup_select_option, popup_show
-from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
-from lifelog.utils.shared_utils import (
-    get_available_categories, get_available_projects, get_available_tags
-)
-from lifelog.commands.task_module import calculate_priority, validate_task_inputs
+from lifelog.ui_views.popups import popup_confirm, popup_error, popup_input, popup_multiline_input, popup_show
+from lifelog.ui_views.ui_helpers import log_exception, safe_addstr
+from lifelog.commands.task_module import calculate_priority
 from lifelog.utils.db.models import Task
 
 import calendar
@@ -22,7 +18,7 @@ import re
 from datetime import datetime
 
 from lifelog.ui_views.forms import TaskCloneForm, TaskEditForm, TaskForm, TaskViewForm, run_form
-from utils.hooks import build_payload, run_hooks
+from lifelog.utils.hooks import build_payload, run_hooks
 
 
 # Module‐level state for task filter:

@@ -363,8 +363,10 @@ def draw_home(pane, h, w):
             for i, d in enumerate(devices[:3]):  # Show up to 3 devices
                 line_y = devices_y + 1 + i
                 if line_y < max_h - 2:
-                    safe_addstr(
-                        pane, line_y, 4, f"{d['device_name']} @ {d['paired_at'][:16]}")
+                    paired_at = d.get('paired_at', '')
+                display_time = paired_at[:16] if paired_at else "unknown time"
+                safe_addstr(pane, line_y, 4,
+                            f"{d['device_name']} @ {display_time}")
 
         # Footer: action/help prompt always in last visible line
         footer_y = max_h - 2
