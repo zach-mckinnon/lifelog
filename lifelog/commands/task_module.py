@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import re
 import typer
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedeltaWe
 from tomlkit import table
 from typing import List, Optional
 import plotext as plt
@@ -117,7 +117,7 @@ def add(
         "title": title,
         "project": project,
         "category": category,
-        "importance": importance if importance else 1,
+        "importance": importance if importance else 3,
         "created": now.isoformat(),
         "due": due_dt.isoformat() if due_dt else None,
         "status": "backlog",
@@ -143,7 +143,6 @@ def add(
         validate_task_inputs(
             title=title,
             importance=importance,
-            priority=task_data.get("priority"),
         )
 
     except Exception as e:
@@ -426,7 +425,6 @@ def modify(
         validate_task_inputs(
             title=title,
             importance=importance,
-            priority=updates.get("priority"),
         )
 
     except Exception as e:
@@ -919,36 +917,19 @@ def priority_color(priority_value):
 
 
 def calculate_priority(task):
-    coeff = {
-        "importance": 5.0,
-        "urgency_due": 12.0,
-        "active": 4.0,
-    }
-    now = datetime.now()
-    score = 0
-    importance = task.get("importance", 1)
+    # Eisenhower matrix: Importance (1-5) vs Urgency
+    importance = task.get("importance", 3)
 
-    # Category importance multiplier
-    cat = task.get("category", None)
-    cat_impt = cf.get_category_importance(cat) if cat else 1.0
-    importance *= cat_impt
+    # Calculate urgency based on due date
+    urgency = 0
+    if due := task.get("due"):
+        due_date = datetime.fromisoformat(due)
+        days_left = (due_date - datetime.now()).days
+        # Scale urgency: 1.0 for today, 0.0 for >10 days
+        urgency = max(0, 1.0 - days_left/10)
 
-    score += importance * coeff["importance"]
-
-    if task.get("status") == "active":
-        score += coeff["active"]
-
-    due = task.get("due")
-    if due:
-        try:
-            due_date = datetime.fromisoformat(due)
-            days_left = (due_date - now).days
-            score += coeff["urgency_due"] * max(0, 1 - days_left / 10)
-        except Exception as e:
-            console.print(
-                f"[yellow]Warning: Couldn't parse due date for task. Due-based urgency will be skipped. Details: {str(e)}[/yellow]")
-
-    return round(score, 2)
+    # Combine importance and urgency
+    return (importance * 0.6) + (urgency * 0.4)
 
 
 def parse_due_offset(due_str):

@@ -22,6 +22,7 @@ import re
 from datetime import datetime
 
 from lifelog.ui_views.forms import TaskCloneForm, TaskEditForm, TaskForm, TaskViewForm, run_form
+from utils.hooks import build_payload, run_hooks
 
 
 # Module‐level state for task filter:
@@ -142,9 +143,23 @@ def add_task_tui(_stdscr=None):
     task_data = run_form(TaskForm)
     if not task_data:
         return  # User cancelled
+
     try:
+        # Add mandatory fields
+        task_data.setdefault('created', datetime.now().isoformat())
+        task_data.setdefault('status', 'backlog')
+        task_data.setdefault('importance', 3)
+
+        # Calculate priority like CLI
+        task_data["priority"] = calculate_priority(task_data)
+
+        # Create and save task
         task = Task(**task_data)
         task_repository.add_task(task)
+
+        # Run hooks like CLI
+        run_hooks("task_created", build_payload("task_created", task))
+
         npyscreen.notify_confirm(
             f"Task '{task.title}' added!", title="Success")
     except Exception as e:
@@ -160,9 +175,27 @@ def quick_add_task_tui(stdscr):
         if not title:
             popup_error(stdscr, "A task title is required.")
             return
+
+        # Add default values like CLI does
         now = datetime.now().isoformat()
-        task = Task(title=title, created=now)
+        task_data = {
+            "title": title,
+            "created": now,
+            "status": "backlog",
+            "importance": 3,  # Default importance
+            "priority": 0  # Will be calculated
+        }
+
+        # Calculate priority like CLI
+        task_data["priority"] = calculate_priority(task_data)
+
+        # Create and save task
+        task = Task(**task_data)
         task_repository.add_task(task)
+
+        # Run hooks like CLI
+        run_hooks("task_created", build_payload("task_created", task))
+
         popup_show(stdscr, [f"Quick Task '{title}' added!"], title="Success")
     except Exception as e:
         popup_error(stdscr, f"Could not add task: {e}")
@@ -189,6 +222,13 @@ def batch_add_tasks_tui(stdscr):
         for line in lines:
             now = datetime.now().isoformat()
             task = Task(title=line, created=now)
+            task_data = {
+                "title": line,
+                "created": now,
+                "status": "backlog",
+                "importance": 3,
+                "priority": calculate_priority({"importance": 3})
+            }
             try:
                 task_repository.add_task(task)
                 count += 1

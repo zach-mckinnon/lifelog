@@ -123,8 +123,8 @@ def add_task(task_data):
     data["priority"] = data.get("priority") or 1.0
 
     # 4) UID: only auto‐generate in client mode
-    if not is_direct_db_mode():
-        data["uid"] = data.get("uid") or str(uuid.uuid4())
+    if not data.get("uid"):
+        data["uid"] = str(uuid.uuid4())
 
     # 5) Insert and return
     if is_direct_db_mode():

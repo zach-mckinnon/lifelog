@@ -336,10 +336,8 @@ def filter_entries_for_current_period(entries, period: str):
 def validate_task_inputs(title: str, importance: int = None, priority: float = None):
     if not title or len(title) > 60:
         raise ValueError("Task title must be 1-60 characters long.")
-    if importance is not None and (not isinstance(importance, int) or importance < 0 or importance > 10):
-        raise ValueError("Importance must be an integer between 0 and 10.")
-    if priority is not None and (not isinstance(priority, (int, float)) or priority < 0 or priority > 10):
-        raise ValueError("Priority must be a number between 0 and 10.")
+    if importance is not None and (not isinstance(importance, int) or importance < 0 or importance > 5):
+        raise ValueError("Importance must be an integer between 0 and 5.")
 
 
 def category_autocomplete(ctx: typer.Context, incomplete: str):

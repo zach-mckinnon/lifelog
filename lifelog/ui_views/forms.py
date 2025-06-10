@@ -3,7 +3,7 @@
 import npyscreen
 from datetime import datetime
 from lifelog.utils.goal_util import GoalKind, Period, get_description_for_goal_kind
-from lifelog.utils.shared_utils import get_available_categories, get_available_projects, get_available_tags
+from lifelog.utils.shared_utils import get_available_categories, get_available_projects, get_available_tags, validate_task_inputs
 
 # ---------- TASK FORMS ----------
 
@@ -36,6 +36,13 @@ class TaskForm(npyscreen.ActionFormV2):
 
         self.due = self.add(npyscreen.TitleText,
                             name="Due (YYYY-MM-DD or 1d):", begin_entry_at=18)
+        self.importance = self.add(
+            npyscreen.TitleCombo,
+            name="Importance (1-5):",
+            values=["1", "2", "3", "4", "5"],
+            value="3",  # Default to medium
+            begin_entry_at=18
+        )
         self.notes = self.add(npyscreen.TitleMultiLine,
                               name="Notes:", max_height=5)
         # TAGS (multi-select)
@@ -121,10 +128,14 @@ class TaskForm(npyscreen.ActionFormV2):
             input_data["category"] = self.category.value or None
             input_data["project"] = self.project.value or None
             input_data["due"] = self.due.value.strip() or None
+            input_data["importance"] = int(self.importance.value)
             input_data["notes"] = "\n".join(self.notes.values) if hasattr(
                 self.notes, "values") else self.notes.value
             input_data["tags"] = self.tags.value.strip() or None
-
+            validate_task_inputs(
+                title=input_data["title"],
+                importance=input_data["importance"]
+            )
             # Recurrence
             if self.recur_enabled.get_selected_objects() and self.recur_enabled.get_selected_objects()[0] == "Yes":
                 input_data["recurrence"] = {
@@ -143,6 +154,7 @@ class TaskForm(npyscreen.ActionFormV2):
             self.parentApp.setNextForm(None)
         except Exception as e:
             npyscreen.notify_confirm(str(e), title="Error")
+            return
 
     def on_cancel(self):
         self.parentApp.form_data = None

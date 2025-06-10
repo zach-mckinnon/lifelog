@@ -299,10 +299,8 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
             data["duration_minutes"] = max(0.0, (ed - st).total_seconds() / 60)
 
     # 3) Assign a UID
-    if not is_direct_db_mode():
-        data["uid"] = data.get("uid") or str(uuid.uuid4())
-    else:
-        data["uid"] = data.get("uid") or str(uuid.uuid4())
+    if not data.get("uid"):
+        data["uid"] = str(uuid.uuid4())
 
     # 4) Insert into local
     fields = _get_all_time_field_names()

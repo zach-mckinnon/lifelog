@@ -309,10 +309,8 @@ def add_tracker(tracker_data: Any) -> Tracker:
     data.setdefault("notes", None)
 
     # 3) Ensure a global UID
-    if not is_direct_db_mode():
-        data.setdefault("uid", str(uuid.uuid4()))
-    else:
-        data.setdefault("uid", data.get("uid") or str(uuid.uuid4()))
+    if not data.get("uid"):
+        data["uid"] = str(uuid.uuid4())
 
     # 4) Insert into local SQLite
     fields = _get_all_tracker_field_names()

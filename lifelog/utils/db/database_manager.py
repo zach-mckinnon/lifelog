@@ -1,4 +1,5 @@
 import os
+import uuid
 from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
@@ -109,6 +110,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_sum (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             amount REAL NOT NULL,
             unit TEXT,
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
@@ -116,6 +118,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_count (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             amount INTEGER NOT NULL,
             unit TEXT,
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
@@ -123,18 +126,21 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_bool (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             -- No special fields, treated as True once any value is logged per period
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS goal_streak (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             target_streak INTEGER NOT NULL,
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS goal_duration (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             amount REAL NOT NULL,
             unit TEXT DEFAULT 'minutes',
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
@@ -142,6 +148,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_milestone (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             target REAL NOT NULL,
             unit TEXT,
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
@@ -149,6 +156,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_reduction (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             amount REAL NOT NULL,
             unit TEXT,
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
@@ -156,6 +164,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_range (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             min_amount REAL NOT NULL,
             max_amount REAL NOT NULL,
             unit TEXT,
@@ -165,6 +174,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_percentage (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             target_percentage REAL NOT NULL,
             current_percentage REAL DEFAULT 0,
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
@@ -172,6 +182,7 @@ def initialize_schema():
 
         CREATE TABLE IF NOT EXISTS goal_replacement (
             goal_id INTEGER PRIMARY KEY,
+            uid TEXT UNIQUE,
             old_behavior TEXT NOT NULL,
             new_behavior TEXT NOT NULL,
             FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
@@ -192,12 +203,13 @@ def initialize_schema():
 
         
         CREATE TABLE IF NOT EXISTS tracker_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tracker_id INTEGER,
-            timestamp DATETIME,
-            value FLOAT,
-            FOREIGN KEY(tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
-        );
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uid TEXT UNIQUE,
+        tracker_id INTEGER,
+        timestamp DATETIME,
+        value FLOAT,
+        FOREIGN KEY(tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
+    );
 
         CREATE TABLE IF NOT EXISTS time_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,9 +292,13 @@ def initialize_schema():
 def add_record(table, data, fields):
     conn = get_connection()
     cursor = conn.cursor()
+    if "uid" in fields and not data.get("uid"):
+        data["uid"] = str(uuid.uuid4())
+
     cols = ', '.join(fields)
     placeholders = ', '.join(['?'] * len(fields))
     values = [data.get(f) for f in fields]
+
     cursor.execute(f"""
         INSERT INTO {table} ({cols}) VALUES ({placeholders})
     """, values)
