@@ -1,5 +1,6 @@
 # lifelog/commands/environmental_sync.py
 
+from datetime import date
 import requests
 import json
 from lifelog.utils.db import environment_repository
@@ -8,6 +9,38 @@ from rich import print
 import typer
 
 app = typer.Typer(help="Environment data sync utilities.")
+
+WEATHERCODE_MAP = {
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Depositing rime fog",
+    51: "Drizzle: light",
+    53: "Drizzle: moderate",
+    55: "Drizzle: dense",
+    56: "Freezing drizzle: light",
+    57: "Freezing drizzle: dense",
+    61: "Rain: slight",
+    63: "Rain: moderate",
+    65: "Rain: heavy",
+    66: "Freezing rain: light",
+    67: "Freezing rain: heavy",
+    71: "Snow fall: slight",
+    73: "Snow fall: moderate",
+    75: "Snow fall: heavy",
+    77: "Snow grains",
+    80: "Rain showers: slight",
+    81: "Rain showers: moderate",
+    82: "Rain showers: violent",
+    85: "Snow showers: slight",
+    86: "Snow showers: heavy",
+    95: "Thunderstorm: slight or moderate",
+    96: "Thunderstorm with slight hail",
+    99: "Thunderstorm with heavy hail",
+    # Add more codes if needed
+}
 
 
 @app.command()
@@ -122,3 +155,75 @@ def fetch_satellite_radiation_data(lat, lon):
     else:
         print(f"Error fetching data: {response.status_code}")
         return None
+
+
+def fetch_today_forecast(lat, lon):
+    """
+    Fetch hourly forecast from Open-Meteo for today and return entries every 4 hours.
+    Also save the raw hourly data into environment_data under source "weather_hourly".
+    Returns list of dicts: {'time': 'YYYY-MM-DDThh:MM', 'temperature': float, 'precip_prob': int, 'description': str}
+    """
+    # Build URL with hourly variables and timezone=auto so times are local
+    hourly_vars = "temperature_2m,weathercode,precipitation_probability"
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        f"&hourly={hourly_vars}"
+        f"&timezone=auto"
+    )
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        # Propagate exception to caller
+        raise RuntimeError(f"Failed to fetch weather: {e}")
+
+    # Save raw forecast data so other parts can reuse without new API calls
+    try:
+        # Save full data if desired:
+        environment_repository.save_environment_data("weather_full", data)
+        # Save only hourly portion:
+        hourly_data = data.get("hourly", {})
+        environment_repository.save_environment_data(
+            "weather_hourly", hourly_data)
+    except Exception as save_err:
+        # Log or print warning but do not interrupt processing
+        # For CLI context: print; for environment_sync command context: print; here no print in library context
+        # or use logging
+        print(f"[warn]Failed to save weather data: {save_err}")
+        # Continue
+
+    # Process hourly data to extract today's 4-hourly entries
+    hourly = data.get("hourly", {})
+    times = hourly.get("time", [])
+    temps = hourly.get("temperature_2m", [])
+    precip_probs = hourly.get("precipitation_probability", [])
+    codes = hourly.get("weathercode", [])
+
+    today_str = date.today().isoformat()  # e.g. "2025-06-10"
+    results = []
+    for idx, t_str in enumerate(times):
+        # Expect format "YYYY-MM-DDThh:MM"
+        if not t_str.startswith(today_str + "T"):
+            continue
+        # Parse hour part
+        try:
+            hour = int(t_str[11:13])
+        except Exception:
+            continue
+        # Sample every 4 hours (00:00, 04:00, 08:00, ...)
+        if hour % 4 != 0:
+            continue
+        temp = temps[idx] if idx < len(temps) else None
+        precip = precip_probs[idx] if idx < len(precip_probs) else None
+        code = codes[idx] if idx < len(codes) else None
+        desc = WEATHERCODE_MAP.get(
+            code, f"Code {code}") if code is not None else "-"
+        results.append({
+            "time": t_str,
+            "temperature": temp,
+            "precip_prob": precip,
+            "description": desc,
+        })
+    return results

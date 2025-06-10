@@ -1,6 +1,7 @@
 # -------------------------------------------------------------------
 # Agenda view: calendar + top‐priority tasks
 # -------------------------------------------------------------------
+import time
 import npyscreen
 import curses
 from dataclasses import asdict
@@ -41,12 +42,21 @@ def draw_agenda(pane, h, w, selected_idx):
         month_lines = cal.formatmonth(now.year, now.month).splitlines()
         tasks = task_repository.query_tasks(
             show_completed=False, sort="priority")
-        due_days = {
-            datetime.fromisoformat(t["due"]).day
-            for t in tasks if t.get("due")
-            and datetime.fromisoformat(t["due"]).month == now.month
-            and datetime.fromisoformat(t["due"]).year == now.year
-        }
+        due_days = set()
+        for t in tasks:
+            due_val = getattr(t, "due", None)
+            if due_val:
+                # If due_val is datetime, use it directly; if string, parse:
+                if isinstance(due_val, datetime):
+                    due_dt = due_val
+                else:
+                    try:
+                        due_dt = datetime.fromisoformat(due_val)
+                    except Exception:
+                        continue
+                # Only include days in this month/year
+                if due_dt.year == now.year and due_dt.month == now.month:
+                    due_days.add(due_dt.day)
         calendar_pad_top = 2
         calendar_pad_left = 2
         for i, line in enumerate(month_lines):
@@ -95,9 +105,10 @@ def draw_agenda(pane, h, w, selected_idx):
             for i, t in enumerate(tasks[start:end], start=start):
                 is_sel = (i == selected_idx)
                 attr = curses.A_REVERSE if is_sel else curses.A_NORMAL
-                id_str = f"{t['id']:>2}"
-                title = t.get("title", "-")
-                line = f"{id_str}: {title}"
+                id_val = getattr(t, "id", None)
+                id_str = f"{id_val:>2}" if id_val is not None else " -"
+                title_str = t.title if t.title else "-"
+                line = f"{id_str}: {title_str}"
                 y = task_win_top + i - start
                 if y < max_h - 2:
                     safe_addstr(pane, y, task_win_left,
@@ -108,15 +119,55 @@ def draw_agenda(pane, h, w, selected_idx):
                 preview_left = max_w//2 + 2
                 detail_y = cal_panel_height
                 t = tasks[selected_idx]
+                # ID
+                id_val = getattr(t, "id", None)
+                line_id = f"ID: {id_val}" if id_val is not None else "ID: -"
+                # Title
+                title_val = t.title or "-"
+                line_title = f"Title: {title_val}"
+                # Due: display ISO string or formatted date
+                due_val = getattr(t, "due", None)
+                if isinstance(due_val, datetime):
+                    due_str = due_val.isoformat()
+                elif due_val:
+                    try:
+                        due_str = datetime.fromisoformat(due_val).isoformat()
+                    except Exception:
+                        due_str = str(due_val)
+                else:
+                    due_str = "-"
+                line_due = f"Due: {due_str}"
+                # Status: TaskStatus enum -> .value
+                status_val = getattr(t, "status", None)
+                if hasattr(status_val, "value"):
+                    status_str = status_val.value
+                else:
+                    status_str = str(status_val) if status_val else "-"
+                line_status = f"Status: {status_str}"
+                # Category
+                cat_str = t.category or "-"
+                line_cat = f"Category: {cat_str}"
+                # Project
+                proj_str = t.project or "-"
+                line_proj = f"Project: {proj_str}"
+                # Priority
+                prio_val = getattr(t, "priority", None)
+                prio_str = str(prio_val) if prio_val is not None else "-"
+                line_prio = f"Priority: {prio_str}"
+                # Notes: take substring
+                notes_val = t.notes or "-"
+                notes_display = notes_val[:max_w//2 - 6]
+                line_notes = f"Notes: {notes_display or '-'}"
+
                 preview_lines = [
-                    f"ID: {t['id']}",
-                    f"Title: {t.get('title', '-')}",
-                    f"Due: {t.get('due', '-')}",
-                    f"Status: {t.get('status', '-')}",
-                    f"Category: {t.get('category', '-')}",
-                    f"Project: {t.get('project', '-')}",
-                    f"Priority: {t.get('priority', '-')}",
-                    f"Notes: {(t.get('notes', '-') or '-')[:max_w//2-6]}",
+                    line_id,
+                    line_title,
+                    line_due,
+                    line_status,
+                    line_cat,
+                    line_proj,
+                    line_prio,
+                    line_notes,
                 ]
                 for idx, line in enumerate(preview_lines):
                     if detail_y + idx < max_h - 2:
@@ -357,6 +408,70 @@ def view_task_tui(_stdscr, sel):
     app.run()
 
 
+def countdown_timer_ui(stdscr, total_seconds, title="Focus Session"):
+    """
+    Show a countdown timer in a centered window for total_seconds.
+    Returns True if completed normally, False if aborted by user keypress.
+    """
+    # Compute window size: e.g., height 5 lines, width enough for title and timer
+    h, w = stdscr.getmaxyx()
+    win_h = 5
+    win_w = max(len(title) + 4, 20)
+    # Center position
+    start_y = max(0, (h - win_h) // 2)
+    start_x = max(0, (w - win_w) // 2)
+    # Create a new window
+    win = curses.newwin(win_h, win_w, start_y, start_x)
+    win.border()
+
+    # Title line
+    try:
+        win.addstr(0, max(1, (win_w - len(title))//2), title, curses.A_BOLD)
+    except curses.error:
+        pass
+
+    # Set nodelay to allow checking for keypress without blocking
+    stdscr.nodelay(True)
+    win.nodelay(True)
+
+    remaining = total_seconds
+    completed = True
+
+    while remaining >= 0:
+        # Compute MM:SS
+        mins, secs = divmod(remaining, 60)
+        timer_str = f"{mins:02d}:{secs:02d}"
+        # Clear the line in the window and display timer
+        try:
+            # Place at center of window
+            win.addstr(2, max(1, (win_w - len(timer_str))//2), timer_str)
+        except curses.error:
+            pass
+        win.refresh()
+
+        # Wait up to 1 second, checking for keypress
+        start = time.time()
+        while time.time() - start < 1:
+            c = stdscr.getch()
+            if c != -1:
+                # If user presses 'p' or 'q', abort early
+                # You can refine: e.g., 'p' to pause, 'q' to quit session
+                if c in (ord('q'), ord('p')):
+                    completed = False
+                    break
+            time.sleep(0.1)  # small sleep to avoid busy loop
+        if not completed:
+            break
+        remaining -= 1
+
+    # Clean up: restore blocking mode
+    stdscr.nodelay(False)
+    win.clear()
+    win.refresh()
+    del win
+    return completed
+
+
 def focus_mode_tui(stdscr, sel):
     """
     Robust distraction-free focus mode for a task.
@@ -370,27 +485,38 @@ def focus_mode_tui(stdscr, sel):
 
     # --- Get task
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
+    # Guard: sel in range
+    if sel < 0 or sel >= len(tasks):
+        popup_show(stdscr, ["No task selected"], title="Error")
+        return
     t = tasks[sel]
 
     # --- Start timer if not running for this task
     active = time_repository.get_active_time_entry()
-    if not (active and active.get("task_id") == t["id"]):
+    # Compare dict active["task_id"] with t.id
+    if not (active and active.get("task_id") == t.id):
+        # Start a new time entry for this task
         time_repository.start_time_entry(
-            title=t["title"],
-            category=t.get("category"),
-            project=t.get("project"),
-            tags=t.get("tags"),
-            notes=t.get("notes"),
-            task_id=t["id"]
+            title=t.title,
+            category=t.category,
+            project=t.project,
+            tags=t.tags,
+            notes=t.notes,
+            task_id=t.id
         )
         timer_started = True
     else:
         timer_started = False
 
-    # --- Total time spent on task
+    # --- Total time spent on task (helper)
     def get_total_task_time():
         logs = time_repository.get_all_time_logs()
-        return int(sum(e['duration_minutes'] for e in logs if e.get('task_id') == t['id'] and e.get('duration_minutes')))
+        # logs are dicts; sum durations for this task
+        return int(sum(
+            e.get('duration_minutes', 0)
+            for e in logs
+            if e.get('task_id') == t.id and e.get('duration_minutes')
+        ))
 
     # --- Pomodoro settings
     pomodoro_mode = False
@@ -410,21 +536,37 @@ def focus_mode_tui(stdscr, sel):
 
         # Display total task time (accumulated, plus current if timer running)
         total_minutes = get_total_task_time()
-        # Add current session time if active and running for this task
+        # Add current session minutes if active and for this task
         active = time_repository.get_active_time_entry()
-        if active and active.get("task_id") == t["id"] and active.get("start"):
-            dt_start = datetime.fromisoformat(active["start"])
-            now = datetime.now()
-            total_minutes += int((now - dt_start).total_seconds() // 60)
+        if active and active.get("task_id") == t.id and active.get("start"):
+            # active["start"] is ISO string
+            try:
+                dt_start = datetime.fromisoformat(active["start"])
+                now = datetime.now()
+                total_minutes += int((now - dt_start).total_seconds() // 60)
+            except Exception:
+                pass
 
         timer_str = f"{mins:02}:{secs:02}"
+        # Build display lines using attribute access
+        # Fallback to "-" when field is None or empty
+        due_display = "-"
+        if getattr(t, "due", None):
+            due_val = t.due
+            if isinstance(due_val, datetime):
+                due_display = due_val.isoformat()
+            else:
+                try:
+                    due_display = datetime.fromisoformat(due_val).isoformat()
+                except Exception:
+                    due_display = str(due_val)
         lines = [
             "FOCUS MODE - Pomodoro ON" if pomodoro_mode else "FOCUS MODE",
             "",
-            f"Title: {t['title']}",
-            f"Project: {t.get('project', '-')}",
-            f"Category: {t.get('category', '-')}",
-            f"Due: {t.get('due', '-')}",
+            f"Title: {t.title or '-'}",
+            f"Project: {t.project or '-'}",
+            f"Category: {t.category or '-'}",
+            f"Due: {due_display}",
             f"Total time: {total_minutes} min",
             f"Session: [{timer_str}]",
             "",
@@ -442,16 +584,23 @@ def focus_mode_tui(stdscr, sel):
 
         lines.append("You must pause or complete the task to exit focus mode.")
 
+        # Center and render lines
         for idx, line in enumerate(lines):
-            stdscr.addstr(h//2 - len(lines)//2 + idx,
-                          max(2, (w - len(line))//2), line)
+            try:
+                stdscr.addstr(h//2 - len(lines)//2 + idx,
+                              max(2, (w - len(line))//2), line)
+            except curses.error:
+                # In case of small window, skip out-of-bounds
+                pass
 
         stdscr.refresh()
         c = stdscr.getch()
         if c == ord("p"):
+            # Pause -> stop timing for this task
             stop_task_tui(stdscr)
             break
         if c == ord("d"):
+            # Mark done
             done_task_tui(stdscr, sel)
             break
         if c == ord("P"):
@@ -459,8 +608,7 @@ def focus_mode_tui(stdscr, sel):
             in_break = False
             session_mode_start = time.time()
             continue
-        if c in (ord("q"), 27):  # Try to quit: prompt instead
-
+        if c in (ord("q"), 27):  # Quit attempt
             popup_show(stdscr, [
                 "You must pause ('p') or mark done ('d') to exit focus mode.",
                 "Pomodoro: 'P' to toggle, stay focused!"
@@ -469,12 +617,10 @@ def focus_mode_tui(stdscr, sel):
 
         if pomodoro_mode:
             if not in_break and elapsed >= pomo_length:
-
                 popup_show(stdscr, ["Pomodoro complete! Break time."])
                 in_break = True
                 session_mode_start = time.time()
             elif in_break and elapsed >= break_length:
-
                 popup_show(stdscr, ["Break over! Back to focus."])
                 in_break = False
                 session_mode_start = time.time()
@@ -489,13 +635,20 @@ def set_task_reminder_tui(stdscr, sel):
     Set a custom reminder for a task via popup (like CLI).
     """
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
+    if sel < 0 or sel >= len(tasks):
+        popup_show(stdscr, ["No task selected"], title="Error")
+        return
     t = tasks[sel]
-    if not t.get("due"):
+
+    # Check if due date exists
+    if not getattr(t, "due", None):
         popup_show(stdscr, ["Task must have a due date!"])
         return
 
+    # Ask user how long before due for reminder
     reminder_str = popup_input(
         stdscr, "How long before due for reminder? (e.g. 1d, 120):")
+    # You may parse reminder_str if needed; create_due_alert likely handles it internally
     try:
         create_due_alert(t)
         popup_show(stdscr, ["Reminder set!"])
@@ -506,14 +659,14 @@ def set_task_reminder_tui(stdscr, sel):
 
 def delete_task_tui(stdscr, sel):
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
-    # ── Guard: no tasks to delete
+    # Guard: no tasks to delete
     if not tasks:
         return popup_show(stdscr, ["No tasks to delete"])
-    # ── Guard: sel out of range
+    # Guard: sel out of range
     if sel < 0 or sel >= len(tasks):
         return popup_show(stdscr, ["No task selected"])
 
-    tid = tasks[sel]["id"]
+    tid = tasks[sel].id
     if popup_confirm(stdscr, f"Delete task #{tid}?"):
         try:
             task_repository.delete_task(tid)
@@ -651,12 +804,24 @@ def start_task_tui(stdscr, sel):
     """
     Starts timing the selected task. Optionally lets user update tags/notes.
     """
+    from datetime import datetime
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
+    if sel < 0 or sel >= len(tasks):
+        popup_show(stdscr, ["No task selected"], title="Error")
+        return
     t = tasks[sel]
+
+    # Prompt for tags (show existing or empty)
+    existing_tags = t.tags or ""
     new_tags = popup_input(
-        stdscr, f"Tags [{t.get('tags') or ''}]:") or t.get("tags")
+        stdscr, f"Tags [{existing_tags}]:"
+    ) or existing_tags
+
+    # Prompt for notes
+    existing_notes = t.notes or ""
     new_notes = popup_multiline_input(
-        stdscr, "Notes (optional):", initial=t.get("notes") or "") or t.get("notes")
+        stdscr, "Notes (optional):", initial=existing_notes
+    ) or existing_notes
 
     updates = {}
     if new_tags is not None:
@@ -669,19 +834,20 @@ def start_task_tui(stdscr, sel):
     updates["start"] = now_iso
 
     try:
-        task_repository.update_task(t["id"], updates)
+        # Update the task record first
+        task_repository.update_task(t.id, updates)
+        # Start time entry
         time_repository.start_time_entry(
-            title=t["title"],
-            task_id=t["id"],
+            title=t.title,
+            task_id=t.id,
             start_time=now_iso,
-            category=t.get("category"),
-            project=t.get("project"),
+            category=t.category,
+            project=t.project,
             tags=new_tags,
             notes=new_notes,
         )
         run_hooks("task", "started", t)
-        popup_show(stdscr, [f"Started '{t['title']}'"])
-
+        popup_show(stdscr, [f"Started '{t.title}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
         log_exception("start_task_tui", e)
@@ -691,21 +857,29 @@ def stop_task_tui(stdscr):
     """
     Stops the current active task and time entry. Optionally lets user update tags/notes.
     """
+    from datetime import datetime
     active = time_repository.get_active_time_entry()
     if not active or not active.get("task_id"):
         popup_show(stdscr, ["No active task"])
         return
 
-    tid = active["task_id"]
+    tid = active.get("task_id")
     task = task_repository.get_task_by_id(tid)
     if not task:
         popup_show(stdscr, ["Active task not found"])
         return
 
+    # Prompt for tags
+    existing_tags = task.tags or ""
     new_tags = popup_input(
-        stdscr, f"Tags [{task.get('tags') or ''}]:") or task.get("tags")
+        stdscr, f"Tags [{existing_tags}]:"
+    ) or existing_tags
+
+    # Prompt for notes
+    existing_notes = task.notes or ""
     new_notes = popup_multiline_input(
-        stdscr, "Notes (optional):", initial=task.get("notes") or "") or task.get("notes")
+        stdscr, "Notes (optional):", initial=existing_notes
+    ) or existing_notes
 
     updates = {}
     if new_tags is not None:
@@ -717,10 +891,12 @@ def stop_task_tui(stdscr):
     now_iso = datetime.now().isoformat()
 
     try:
+        # Stop the active time entry
         time_repository.stop_active_time_entry(end_time=now_iso)
+        # Update the task record
         task_repository.update_task(tid, updates)
         run_hooks("task", "stopped", task)
-        popup_show(stdscr, [f"Paused '{task['title']}'"])
+        popup_show(stdscr, [f"Paused '{task.title}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
         log_exception("stop_task_tui", e)
@@ -730,13 +906,24 @@ def done_task_tui(stdscr, sel):
     """
     Marks the selected task as done, prompts for tags/notes, stops timing if running.
     """
+    from datetime import datetime
     tasks = task_repository.query_tasks(show_completed=False, sort="priority")
+    if sel < 0 or sel >= len(tasks):
+        popup_show(stdscr, ["No task selected"], title="Error")
+        return
     t = tasks[sel]
 
+    # Prompt for tags
+    existing_tags = t.tags or ""
     new_tags = popup_input(
-        stdscr, f"Tags [{t.get('tags') or ''}]:") or t.get("tags")
+        stdscr, f"Tags [{existing_tags}]:"
+    ) or existing_tags
+
+    # Prompt for notes
+    existing_notes = t.notes or ""
     new_notes = popup_multiline_input(
-        stdscr, "Notes (optional):", initial=t.get("notes") or "") or t.get("notes")
+        stdscr, "Notes (optional):", initial=existing_notes
+    ) or existing_notes
 
     updates = {
         "tags": new_tags,
@@ -747,11 +934,13 @@ def done_task_tui(stdscr, sel):
 
     try:
         active = time_repository.get_active_time_entry()
-        if active and active.get("task_id") == t["id"]:
+        if active and active.get("task_id") == t.id:
+            # Stop timing
             time_repository.stop_active_time_entry(end_time=updates["end"])
-        task_repository.update_task(t["id"], updates)
+        # Update task record
+        task_repository.update_task(t.id, updates)
         run_hooks("task", "completed", t)
-        popup_show(stdscr, [f"Task '{t['title']}' marked done"])
+        popup_show(stdscr, [f"Task '{t.title}' marked done"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
         log_exception("done_task_tui", e)

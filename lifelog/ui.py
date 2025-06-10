@@ -303,12 +303,16 @@ def draw_home(pane, h, w):
         try:
             tasks = task_repository.query_tasks(sort="priority")[:3]
             if tasks:
-                sections.append(
-                    ("Top Tasks:", [(t['title'], None) for t in tasks]))
-        except Exception as e:
-            sections.append(("Tasks Error", [str(e)]))
+                # Use task.title (Task object), not t['title']
+                # Wrap attribute in tuple (text, attr)
+                top_items = [(t.title or "<no title>", None) for t in tasks]
+                sections.append(("Top Tasks:", top_items))
 
-        # Section 2: Time Info
+        except Exception as e:
+            # Wrap the error string into a tuple so unpacking (text, attr) works
+            sections.append(("Tasks Error", [(str(e), None)]))
+
+       # Section 2: Time Info
         try:
             time_info = []
             active = time_repository.get_active_time_entry()
