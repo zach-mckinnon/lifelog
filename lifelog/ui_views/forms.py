@@ -3,6 +3,7 @@
 import npyscreen
 from datetime import datetime
 from lifelog.utils.goal_util import GoalKind, Period, get_description_for_goal_kind
+from lifelog.utils.shared_utils import get_available_categories, get_available_projects, get_available_tags
 
 # ---------- TASK FORMS ----------
 
@@ -20,22 +21,35 @@ class TaskForm(npyscreen.ActionFormV2):
                  color="CAUTION", editable=False)
         self.title = self.add(npyscreen.TitleText,
                               name="Title*", value="", begin_entry_at=18)
-        self.category = self.add(npyscreen.TitleCombo,
-                                 name="Category", values=[], begin_entry_at=18)
-        self.project = self.add(npyscreen.TitleCombo,
-                                name="Project", values=[], begin_entry_at=18)
+        # CATEGORY
+        self.category = self.add(
+            npyscreen.TitleText, name="Category (optional):", begin_entry_at=18)
+        self.category_select_btn = self.add(
+            npyscreen.ButtonPress, name="[Select Category]", when_pressed_function=self.select_category
+        )
+        # PROJECT
+        self.project = self.add(npyscreen.TitleText,
+                                name="Project (optional):", begin_entry_at=18)
+        self.project_select_btn = self.add(
+            npyscreen.ButtonPress, name="[Select Project]", when_pressed_function=self.select_project
+        )
+
         self.due = self.add(npyscreen.TitleText,
                             name="Due (YYYY-MM-DD or 1d):", begin_entry_at=18)
         self.notes = self.add(npyscreen.TitleMultiLine,
                               name="Notes:", max_height=5)
+        # TAGS (multi-select)
         self.tags = self.add(npyscreen.TitleText,
-                             name="Tags (comma-separated):", begin_entry_at=18)
+                             name="Tags (comma, optional):", begin_entry_at=18)
+        self.tags_select_btn = self.add(
+            npyscreen.ButtonPress, name="[Select Tags]", when_pressed_function=self.select_tags
+        )
         self.recur_enabled = self.add(
             npyscreen.TitleSelectOne,
             name="Repeat?",
             values=["No", "Yes"],
             scroll_exit=True,
-            max_height=3,  # 2 is enough for Yes/No
+            max_height=2,  # 2 is enough for Yes/No
         )
         self.recur_everyX = self.add(
             npyscreen.TitleText, name="Repeat every X:", value="1", begin_entry_at=18)
@@ -48,7 +62,7 @@ class TaskForm(npyscreen.ActionFormV2):
             name="First of Month?",
             values=["No", "Yes"],
             scroll_exit=True,
-            max_height=3,
+            max_height=2,
         )
         self.recur_fields = [self.recur_everyX, self.recur_unit,
                              self.recur_days, self.recur_first_of_month]
@@ -56,6 +70,42 @@ class TaskForm(npyscreen.ActionFormV2):
         # Hide recurrence fields by default
         for fld in self.recur_fields:
             fld.hidden = True
+
+    def select_category(self):
+        cats = get_available_categories()
+        if not cats:
+            npyscreen.notify_confirm(
+                "No categories available. Type to add new.", title="Category")
+            return
+        sel = npyscreen.selectOne(cats, title="Select Category")
+        if sel:
+            self.category.value = cats[sel[0]]
+
+    def select_project(self):
+        projects = get_available_projects()
+        if not projects:
+            npyscreen.notify_confirm(
+                "No projects available. Type to add new.", title="Project")
+            return
+        sel = npyscreen.selectOne(projects, title="Select Project")
+        if sel:
+            self.project.value = projects[sel[0]]
+
+    def select_tags(self):
+        tags = get_available_tags()
+        if not tags:
+            npyscreen.notify_confirm(
+                "No tags in config. Type to add new.", title="Tags")
+            return
+        sel = npyscreen.selectMultiple(
+            tags, title="Select Tags (space to pick, Enter to confirm)")
+        if sel:
+            selected_tags = [tags[i] for i in sel]
+            # Merge with any tags user already typed
+            manual = [t.strip()
+                      for t in self.tags.value.split(",") if t.strip()]
+            final_tags = list(sorted(set(selected_tags + manual)))
+            self.tags.value = ", ".join(final_tags)
 
     def while_editing(self, *args, **kwargs):
         show = self.recur_enabled.get_selected_objects(
