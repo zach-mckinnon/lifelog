@@ -151,7 +151,7 @@ def add(
     # Save using repository (already generic)
     try:
         task_repository.add_task(task)
-        run_hooks("task_created", build_payload("task_created", task))
+        run_hooks("task", "created", task)
     except Exception as e:
         console.print(f"[bold red]❌ Failed to save task: {e}[/bold red]")
         raise typer.Exit(code=1)
@@ -314,7 +314,6 @@ def info(id: int):
 
 
 @app.command()
-@app.command()
 def start(id: int):
     """
     Start or resume a task. Only one task can be tracked at a time.
@@ -344,7 +343,7 @@ def start(id: int):
     # Start time tracking linked to the task
     time_repository.start_time_entry(
         task.title, task_id=id, start_time=now.isoformat())
-    run_hooks("task_started", build_payload("task_started", task))
+    run_hooks("task", "started", task)
     console.print(
         f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task.title}")
 
@@ -432,7 +431,7 @@ def modify(
         raise typer.Exit(code=1)
     task_repository.update_task(id, updates)
     updated_task = task = task_repository.get_task_by_id(id)
-    run_hooks("task_updated", build_payload("task_updated", updated_task))
+    run_hooks("task", "updated", updated_task)
     console.print(
         f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
 
@@ -499,15 +498,14 @@ def stop(
 
     duration_minutes = (
         end_time - datetime.fromisoformat(active["start"])).total_seconds() / 60
-    run_hooks("task_stopped", build_payload("task_stopped", task))
+    run_hooks("task", "stopped", task)
     console.print(
         f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task.id}][/bold blue]: {task.title} — Duration: [cyan] {round(duration_minutes, 2)} [/cyan] minutes")
-
-# Set a task to completed.
 
 
 @app.command()
 def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
+    # Set a task to completed.
     """
     Mark a task as completed.
     """
@@ -554,7 +552,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     console.print(
         f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_feedback_saying("task_completed"))
-    run_hooks("task_stopped", build_payload("task_completed", task))
+    run_hooks("task", "completed", task)
 
 
 @app.command()
