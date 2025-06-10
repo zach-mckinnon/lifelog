@@ -293,88 +293,120 @@ def draw_home(pane, h, w):
         max_h, max_w = pane.getmaxyx()
         pane.border()
         title = " Home "
-        # Center title on the top border
         safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
                     title, curses.A_BOLD)
 
         y = 2
+        sections = []
 
-        # Top tasks
-        if y < max_h - 2:
-            safe_addstr(pane, y, 2, "Top Tasks:", curses.A_UNDERLINE)
-        tasks = task_repository.query_tasks(sort="priority")[:3]
-        for i, t in enumerate(tasks):
-            line_y = y + 1 + i
-            if line_y < max_h - 2:
-                safe_addstr(pane, line_y, 4, f"{t['title'][:max_w-8]}")
-        y += len(tasks) + 2
+        # Section 1: Top Tasks
+        try:
+            tasks = task_repository.query_tasks(sort="priority")[:3]
+            if tasks:
+                sections.append(
+                    ("Top Tasks:", [(t['title'], None) for t in tasks]))
+        except Exception as e:
+            sections.append(("Tasks Error", [str(e)]))
 
-        # Time info
-        if y < max_h - 2:
-            safe_addstr(pane, y, 2, "Time:", curses.A_UNDERLINE)
-        active = time_repository.get_active_time_entry()
-        if active:
-            line_y = y + 1
-            if line_y < max_h - 2:
-                safe_addstr(pane, line_y, 4,
-                            f">> {active['title'][:max_w-10]}")
-            y += 2
-        else:
-            logs = time_repository.get_all_time_logs()
-            if logs:
-                logs = sorted(logs, key=lambda l: l.get(
-                    'end', l.get('start', '')), reverse=True)
-                last = logs[0]
-                line_y = y + 1
-                if line_y < max_h - 2:
-                    safe_addstr(
-                        pane, line_y, 4, f"Last: {last['title'][:max_w-18]} ({int(last.get('duration_minutes', 0))} min)")
-                y += 2
+        # Section 2: Time Info
+        try:
+            time_info = []
+            active = time_repository.get_active_time_entry()
+            if active:
+                time_info.append((f">> {active['title']}", None))
+            else:
+                logs = time_repository.get_all_time_logs()
+                if logs:
+                    logs.sort(key=lambda l: l.get(
+                        'end', l.get('start', '')), reverse=True)
+                    last = logs[0]
+                    mins = int(last.get('duration_minutes', 0))
+                    time_info.append(
+                        (f"Last: {last['title']} ({mins} min)", None))
 
-        # Recent trackers
-        if y < max_h - 2:
-            safe_addstr(pane, y, 2, "Recent Trackers:", curses.A_UNDERLINE)
-        trackers = track_repository.get_all_trackers()[-2:]
-        for i, t in enumerate(trackers):
-            line_y = y + 1 + i
-            if line_y < max_h - 2:
-                safe_addstr(pane, line_y, 4, f"{t['title'][:max_w-8]}")
-        y += len(trackers) + 2
+            if time_info:
+                sections.append(("Time:", time_info))
+        except Exception as e:
+            sections.append(("Time Error", [str(e)]))
 
-        # Show weather/air/moon info at bottom (above action/status)
-        bottom_info_y = max_h - 4
-        env_weather = environment_repository.get_latest_environment_data(
-            'weather')
-        env_air = environment_repository.get_latest_environment_data(
-            'air_quality')
-        env_moon = environment_repository.get_latest_environment_data('moon')
-        if any([env_weather, env_air, env_moon]) and bottom_info_y > y:
-            env_text = f"Weather: {env_weather.get('summary', 'N/A')} | "
-            env_text += f"AQI: {env_air.get('index', 'N/A')} | "
-            env_text += f"Moon: {env_moon.get('phase', 'N/A')}"
-            safe_addstr(pane, bottom_info_y, 2, env_text[:max_w-4])
+        # Section 3: Recent Trackers
+        try:
+            trackers = track_repository.get_all_trackers()[-2:]
+            if trackers:
+                sections.append(
+                    ("Recent Trackers:", [(t['title'], None) for t in trackers]))
+        except Exception as e:
+            sections.append(("Trackers Error", [str(e)]))
 
-        # Show paired devices just above the "Press S" footer
-        devices_y = max_h - 7
-        devices = get_all_api_devices()
-        if devices and devices_y > y:
-            safe_addstr(pane, devices_y, 2,
-                        "Paired Devices:", curses.A_UNDERLINE)
-            for i, d in enumerate(devices[:3]):  # Show up to 3 devices
-                line_y = devices_y + 1 + i
-                if line_y < max_h - 2:
-                    paired_at = d.get('paired_at', '')
-                display_time = paired_at[:16] if paired_at else "unknown time"
-                safe_addstr(pane, line_y, 4,
-                            f"{d['device_name']} @ {display_time}")
+        # Render sections with adaptive layout
+        for header, items in sections:
+            # Check if we have space for this section
+            # Need at least 3 lines (header + 1 item + footer)
+            if y >= max_h - 4:
+                break
 
-        # Footer: action/help prompt always in last visible line
+            safe_addstr(pane, y, 2, header, curses.A_UNDERLINE)
+            y += 1
+
+            for text, attr in items:
+                if y >= max_h - 3:  # Stop before footer
+                    break
+                safe_addstr(pane, y, 4, text[:max_w-8], attr)
+                y += 1
+            y += 1  # Section gap
+
+        # Environment section at bottom (if space)
+        try:
+            if y <= max_h - 6:  # Check space for environment + devices + footer
+                env_y = max_h - 5
+                env_weather = environment_repository.get_latest_environment_data(
+                    'weather')
+                env_air = environment_repository.get_latest_environment_data(
+                    'air_quality')
+                env_moon = environment_repository.get_latest_environment_data(
+                    'moon')
+
+                if any([env_weather, env_air, env_moon]):
+                    weather = env_weather.get(
+                        'summary', 'N/A') if env_weather else 'N/A'
+                    aqi = env_air.get('index', 'N/A') if env_air else 'N/A'
+                    moon = env_moon.get('phase', 'N/A') if env_moon else 'N/A'
+
+                    env_text = f"Weather: {weather} | AQI: {aqi} | Moon: {moon}"
+                    safe_addstr(pane, env_y, 2, env_text[:max_w-4])
+        except Exception as e:
+            if y <= max_h - 5:
+                safe_addstr(pane, max_h - 5, 2,
+                            f"Env error: {str(e)[:max_w-4]}")
+
+        # Devices section (if space)
+        try:
+            if y <= max_h - 7:  # Check space for devices section
+                devices_y = max_h - 7
+                devices = get_all_api_devices()
+                if devices:
+                    safe_addstr(pane, devices_y, 2,
+                                "Paired Devices:", curses.A_UNDERLINE)
+                    device_line_y = devices_y + 1
+                    for d in devices[:3]:  # Max 3 devices
+                        if device_line_y >= max_h - 2:
+                            break
+                        paired_at = d.get('paired_at', '')
+                        display_time = paired_at[:16] if paired_at else "unknown"
+                        safe_addstr(pane, device_line_y, 4,
+                                    f"{d['device_name']} @ {display_time}"[:max_w-8])
+                        device_line_y += 1
+        except Exception as e:
+            if y <= max_h - 7:
+                safe_addstr(pane, max_h - 7, 2,
+                            f"Devices error: {str(e)[:max_w-4]}")
+
+        # Footer always at bottom
         footer_y = max_h - 2
         safe_addstr(pane, footer_y, 2,
                     "Press 'S' to Start My Day!", curses.A_BOLD)
-        pane.noutrefresh()
+
     except Exception as e:
-        # Always put error at bottom
         max_h, _ = pane.getmaxyx()
-        safe_addstr(pane, max_h - 2, 2, f"Home err: {e}", curses.A_BOLD)
-        pane.noutrefresh()
+        safe_addstr(pane, max_h - 2, 2,
+                    f"Home err: {str(e)[:max_w-20]}", curses.A_BOLD)
