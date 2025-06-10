@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import re
 import typer
 import json
-from datetime import datetime, timedeltaWe
+from datetime import datetime, timedelta
 from tomlkit import table
 from typing import List, Optional
 import plotext as plt
