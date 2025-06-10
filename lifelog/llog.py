@@ -723,30 +723,52 @@ def api_pair_new():
     """Pair this device with the server."""
     config = cf.load_config()
     mode = config.get("deployment", {}).get("mode")
+    import requests
+
     if mode == "server":
         # Host: generate and show a pairing code
-        import requests
         device_name = typer.prompt("Name this device (e.g. 'Office PC')")
-        r = requests.post("http://localhost:5000/api/pair/start",
-                          json={"device_name": device_name})
-        code = r.json().get("pairing_code")
-        print(
-            f"Pairing code: {code}\nExpires in {r.json().get('expires_in')} seconds")
+        try:
+            r = requests.post("http://localhost:5000/api/pair/start",
+                              json={"device_name": device_name})
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            print(f"[red]Error contacting API: {e}[/red]")
+            print(f"[red]Server response: {getattr(r, 'text', '')}[/red]")
+            return
+
+        code = data.get("pairing_code")
+        expires_in = data.get("expires_in")
+        if not code or not expires_in:
+            print("[red]No pairing code was returned. Check your server logs.[/red]")
+            print(f"Raw server response: {data}")
+            return
+        print(f"[green]Pairing code:[/green] {code}")
+        print(f"[yellow]Expires in {expires_in} seconds[/yellow]")
         print("Enter this code on the client device to complete pairing.")
+
     elif mode == "client":
-        # Client: complete pairing using code and server URL
         server_url = config["deployment"]["server_url"]
         device_name = typer.prompt("Name this device (e.g. 'Laptop')")
         code = typer.prompt("Enter the pairing code shown on the server")
-        r = requests.post(f"{server_url}/api/pair/complete",
-                          json={"pairing_code": code, "device_name": device_name})
-        if "device_token" in r.json():
-            token = r.json()["device_token"]
+        try:
+            r = requests.post(f"{server_url}/api/pair/complete",
+                              json={"pairing_code": code, "device_name": device_name})
+            r.raise_for_status()
+            resp = r.json()
+        except Exception as e:
+            print(f"[red]Error during pairing: {e}[/red]")
+            print(f"[red]Server response: {getattr(r, 'text', '')}[/red]")
+            return
+
+        if "device_token" in resp:
+            token = resp["device_token"]
             config["api"] = {"device_token": token}
             cf.save_config(config)
             print("[green]✓ Device paired successfully![/green]")
         else:
-            print("[red]Pairing failed: " + str(r.json()) + "[/red]")
+            print("[red]Pairing failed: " + str(resp) + "[/red]")
     else:
         print("This command is only for server/host or client devices.")
 
