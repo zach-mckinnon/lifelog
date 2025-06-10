@@ -369,7 +369,7 @@ def add_category_to_config(category: str, description: str = ""):
     if category not in cats:
         cats[category] = description
         config["categories"] = cats
-        cf.save_config()(config)
+        cf.save_config(config)
 
 
 def get_available_projects() -> list:
@@ -397,7 +397,7 @@ def add_tag_to_config(tag: str, description: str = ""):
     if tag not in tags:
         tags[tag] = description
         config["tags"] = tags
-        cf.save_config()(config)
+        cf.save_config(config)
 
 
 def get_available_statuses() -> list:
