@@ -9,7 +9,13 @@ from lifelog.utils.goal_util import GoalKind, Period, get_description_for_goal_k
 
 class TaskForm(npyscreen.ActionFormV2):
     def create(self):
-        self.SHOW_SCROLLBAR = True
+        # Use a scrollable Form if available
+        if hasattr(self, 'lines') and self.lines < 20:
+            npyscreen.notify_confirm(
+                "Terminal too small for Add Task form! Please resize (min 20 rows).", title="UI Error")
+            self.parentApp.setNextForm(None)
+            return
+
         self.add(npyscreen.FixedText, value="Fields marked * are required.",
                  color="CAUTION", editable=False)
         self.title = self.add(npyscreen.TitleText,
@@ -24,13 +30,12 @@ class TaskForm(npyscreen.ActionFormV2):
                               name="Notes:", max_height=5)
         self.tags = self.add(npyscreen.TitleText,
                              name="Tags (comma-separated):", begin_entry_at=18)
-        # Recurrence fields
         self.recur_enabled = self.add(
             npyscreen.TitleSelectOne,
             name="Repeat?",
             values=["No", "Yes"],
             scroll_exit=True,
-            max_height=3,
+            max_height=2,  # 2 is enough for Yes/No
         )
         self.recur_everyX = self.add(
             npyscreen.TitleText, name="Repeat every X:", value="1", begin_entry_at=18)
@@ -38,10 +43,19 @@ class TaskForm(npyscreen.ActionFormV2):
                                    "day", "week", "month", "year"], begin_entry_at=18)
         self.recur_days = self.add(
             npyscreen.TitleText, name="Days of week (0=Mon,6=Sun):", begin_entry_at=30)
-        self.recur_first_of_month = self.add(npyscreen.TitleSelectOne, name="First of Month?", values=[
-                                             "No", "Yes"], scroll_exit=True, max_height=3)
+        self.recur_first_of_month = self.add(
+            npyscreen.TitleSelectOne,
+            name="First of Month?",
+            values=["No", "Yes"],
+            scroll_exit=True,
+            max_height=2,
+        )
         self.recur_fields = [self.recur_everyX, self.recur_unit,
                              self.recur_days, self.recur_first_of_month]
+
+        # Hide recurrence fields by default
+        for fld in self.recur_fields:
+            fld.hidden = True
 
     def while_editing(self, *args, **kwargs):
         show = self.recur_enabled.get_selected_objects(
