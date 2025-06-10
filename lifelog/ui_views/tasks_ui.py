@@ -154,7 +154,7 @@ def add_task_tui(_stdscr=None):
         task_repository.add_task(task)
 
         # Run hooks like CLI
-        run_hooks("task_created", build_payload("task_created", task))
+        run_hooks("task", "created", task)
 
         npyscreen.notify_confirm(
             f"Task '{task.title}' added!", title="Success")
@@ -190,7 +190,7 @@ def quick_add_task_tui(stdscr):
         task_repository.add_task(task)
 
         # Run hooks like CLI
-        run_hooks("task_created", build_payload("task_created", task))
+        run_hooks("task", "created", task)
 
         popup_show(stdscr, [f"Quick Task '{title}' added!"], title="Success")
     except Exception as e:
@@ -316,6 +316,7 @@ def edit_task_tui(_stdscr, sel):
         return
     task = Task(**{**asdict(t), **task_data})
     task_repository.update_task(t.id, asdict(task))
+    run_hooks("task", "updated", task)
     npyscreen.notify_confirm(f"Task #{t.id} updated!", title="Updated")
 
 # --- View Task with Form (read-only) ---
@@ -678,7 +679,9 @@ def start_task_tui(stdscr, sel):
             tags=new_tags,
             notes=new_notes,
         )
+        run_hooks("task", "started", t)
         popup_show(stdscr, [f"Started '{t['title']}'"])
+
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
         log_exception("start_task_tui", e)
@@ -716,6 +719,7 @@ def stop_task_tui(stdscr):
     try:
         time_repository.stop_active_time_entry(end_time=now_iso)
         task_repository.update_task(tid, updates)
+        run_hooks("task", "stopped", task)
         popup_show(stdscr, [f"Paused '{task['title']}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
@@ -746,6 +750,7 @@ def done_task_tui(stdscr, sel):
         if active and active.get("task_id") == t["id"]:
             time_repository.stop_active_time_entry(end_time=updates["end"])
         task_repository.update_task(t["id"], updates)
+        run_hooks("task", "completed", t)
         popup_show(stdscr, [f"Task '{t['title']}' marked done"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
