@@ -9,6 +9,7 @@ from lifelog.utils.goal_util import GoalKind, Period, get_description_for_goal_k
 
 class TaskForm(npyscreen.ActionFormV2):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         self.add(npyscreen.FixedText, value="Fields marked * are required.",
                  color="CAUTION", editable=False)
         self.title = self.add(npyscreen.TitleText,
@@ -24,8 +25,13 @@ class TaskForm(npyscreen.ActionFormV2):
         self.tags = self.add(npyscreen.TitleText,
                              name="Tags (comma-separated):", begin_entry_at=18)
         # Recurrence fields
-        self.recur_enabled = self.add(npyscreen.TitleSelectOne, name="Repeat?", values=[
-                                      "No", "Yes"], scroll_exit=True, max_height=2)
+        self.recur_enabled = self.add(
+            npyscreen.TitleSelectOne,
+            name="Repeat?",
+            values=["No", "Yes"],
+            scroll_exit=True,
+            max_height=3,
+        )
         self.recur_everyX = self.add(
             npyscreen.TitleText, name="Repeat every X:", value="1", begin_entry_at=18)
         self.recur_unit = self.add(npyscreen.TitleCombo, name="Unit:", values=[
@@ -33,7 +39,7 @@ class TaskForm(npyscreen.ActionFormV2):
         self.recur_days = self.add(
             npyscreen.TitleText, name="Days of week (0=Mon,6=Sun):", begin_entry_at=30)
         self.recur_first_of_month = self.add(npyscreen.TitleSelectOne, name="First of Month?", values=[
-                                             "No", "Yes"], scroll_exit=True, max_height=2)
+                                             "No", "Yes"], scroll_exit=True, max_height=3)
         self.recur_fields = [self.recur_everyX, self.recur_unit,
                              self.recur_days, self.recur_first_of_month]
 
@@ -81,18 +87,21 @@ class TaskForm(npyscreen.ActionFormV2):
 
 class TaskCloneForm(TaskForm):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         super().create()
         # Hide or disable fields not relevant for cloning (e.g., no status/time fields)
 
 
 class TaskEditForm(TaskForm):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         super().create()
         # Allow editing everything except system fields (ID, created, etc)
 
 
 class TaskViewForm(TaskForm):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         super().create()
         # After super().create(), set all widgets to editable=False
         for w in self._widgets__:
@@ -103,6 +112,7 @@ class TaskViewForm(TaskForm):
 
 class TimeEntryForm(npyscreen.ActionFormV2):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         self.add(npyscreen.FixedText, value="Log a manual time entry. * = required",
                  color="CAUTION", editable=False)
         self.title = self.add(npyscreen.TitleText,
@@ -151,6 +161,7 @@ class TimeEntryForm(npyscreen.ActionFormV2):
 
 class TrackerForm(npyscreen.ActionFormV2):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         self.title = self.add(
             npyscreen.TitleText, name="Tracker Title*", value="", begin_entry_at=18)
         self.type = self.add(npyscreen.TitleCombo, name="Type*",
@@ -184,6 +195,7 @@ class TrackerForm(npyscreen.ActionFormV2):
 
 class TrackerEntryForm(npyscreen.ActionFormV2):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         self.tracker_title = self.add(
             npyscreen.FixedText, value="(tracker info here)", editable=False)
         self.value = self.add(npyscreen.TitleText,
@@ -210,6 +222,7 @@ class TrackerEntryForm(npyscreen.ActionFormV2):
 
 class GoalKindSelectForm(npyscreen.ActionFormV2):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         self.kind = self.add(
             npyscreen.TitleSelectOne,
             name="Select Goal Type*:",
@@ -247,6 +260,7 @@ class GoalKindSelectForm(npyscreen.ActionFormV2):
 
 class GoalDetailForm(npyscreen.ActionFormV2):
     def create(self):
+        self.SHOW_SCROLLBAR = True
         self.add(npyscreen.FixedText, value="Set Goal Details (* = required)",
                  color="CAUTION", editable=False)
         self.title = self.add(npyscreen.TitleText,
