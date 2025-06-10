@@ -35,7 +35,7 @@ class TaskForm(npyscreen.ActionFormV2):
             name="Repeat?",
             values=["No", "Yes"],
             scroll_exit=True,
-            max_height=2,  # 2 is enough for Yes/No
+            max_height=3,  # 2 is enough for Yes/No
         )
         self.recur_everyX = self.add(
             npyscreen.TitleText, name="Repeat every X:", value="1", begin_entry_at=18)
@@ -48,7 +48,7 @@ class TaskForm(npyscreen.ActionFormV2):
             name="First of Month?",
             values=["No", "Yes"],
             scroll_exit=True,
-            max_height=2,
+            max_height=3,
         )
         self.recur_fields = [self.recur_everyX, self.recur_unit,
                              self.recur_days, self.recur_first_of_month]
