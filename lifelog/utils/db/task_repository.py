@@ -1,4 +1,5 @@
 from dataclasses import asdict
+import logging
 from typing import Any, Dict
 import uuid
 from lifelog.config.config_manager import is_host_server
@@ -13,6 +14,9 @@ from lifelog.utils.db import (
     queue_sync_operation,
 )
 from lifelog.utils.db.db_helper import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced
+from lifelog.commands.task_module import calculate_priority
+
+logger = logging.getLogger(__name__)
 
 
 def get_all_tasks():
@@ -101,47 +105,82 @@ def get_task_by_id(task_id):
 
 def add_task(task_data):
     """
-    Accepts dict or Task object, handles dataclass conversion, fills in defaults,
-    and then INSERTs exactly the columns in get_task_fields().
+    Accept dict or Task object; fill in defaults only if missing:
+      - created: now if missing
+      - status: 'backlog' if missing
+      - importance: DEFAULT_IMPORTANCE (e.g. 1) if missing
+      - priority: calculate_priority(data) if missing
+      - uid: auto-generate if missing
+    Then INSERT into tasks table and return the created Task object.
     """
-    # 1) Turn your dataclass into a plain dict, or copy the dict you were given.
+    # 1) Convert dataclass to dict or copy dict
     if hasattr(task_data, "__dataclass_fields__"):
         data = asdict(task_data)
     else:
         data = task_data.copy()
 
-    # 2) Fill in a default for *every* column your model knows about
-    # e.g. ['uid','title','project',…,'start','end','notes']
+    # 2) Ensure all known fields exist in data (set to None if completely absent)
     fields = get_task_fields()
     for f in fields:
         data.setdefault(f, None)
 
-    # 3) Now override the ones that should never be None
-    data["created"] = data.get("created") or datetime.now().isoformat()
-    data["status"] = data.get("status") or "backlog"
-    data["importance"] = data.get("importance") or 1
-    data["priority"] = data.get("priority") or 1.0
+    # 3) Defaults only when missing (None)
+    # created timestamp
+    if data.get("created") is None:
+        data["created"] = datetime.now().isoformat()
 
-    # 4) UID: only auto‐generate in client mode
+    # status default
+    if data.get("status") is None:
+        data["status"] = "backlog"
+
+    # importance default: only if missing
+    if data.get("importance") is None:
+        # You may define a module-level constant DEFAULT_IMPORTANCE = 1
+        data["importance"] = 1
+
+    # priority default: only if missing; calculate via calculate_priority()
+    if data.get("priority") is None:
+        # calculate_priority expects a dict-like with at least "importance" and possibly "due"
+        try:
+            data["priority"] = calculate_priority(data)
+        except Exception as e:
+            # In case calculation fails, fallback to a safe default, e.g. 1.0
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Failed to calculate priority for new task: {e}", exc_info=True)
+            data["priority"] = 1.0
+
+    # 4) UID: auto-generate if missing
     if not data.get("uid"):
         data["uid"] = str(uuid.uuid4())
 
-    # 5) Insert and return
+    # 5) INSERT into DB
     if is_direct_db_mode():
-        new_id = add_record("tasks", data, fields)  # Use returned ID
-        return get_task_by_id(new_id)
+        try:
+            new_id = add_record("tasks", data, fields)
+            return get_task_by_id(new_id)
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Error inserting new task into DB: {e}", exc_info=True)
+            raise
     else:
-        # client mode: insert, queue up a “create”, try sync, and re‐fetch
-        add_record("tasks", data, fields)
-        queue_sync_operation("tasks", "create", data)
-        process_sync_queue()
-
-        conn = get_connection()
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM tasks WHERE uid = ?",
-                           (data["uid"],)).fetchone()
-        conn.close()
-        return task_from_row(dict(row))
+        # client mode: insert locally, queue sync, then re-fetch by UID
+        try:
+            add_record("tasks", data, fields)
+            queue_sync_operation("tasks", "create", data)
+            process_sync_queue()
+            conn = get_connection()
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM tasks WHERE uid = ?",
+                               (data["uid"],)).fetchone()
+            conn.close()
+            return task_from_row(dict(row))
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Error inserting/syncing new task in client mode: {e}", exc_info=True)
+            raise
 
 
 def update_task(task_id, updates):

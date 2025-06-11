@@ -1,6 +1,7 @@
 # lifelog/api/time_api.py
 
 from datetime import datetime
+import logging
 from flask import request, jsonify, Blueprint
 from lifelog.api.errors import debug_api
 from lifelog.api.auth import require_device_token
@@ -8,6 +9,8 @@ from lifelog.utils.db import time_repository
 from lifelog.config.config_manager import is_host_server
 
 time_bp = Blueprint('time', __name__, url_prefix='/time')
+
+logger = logging.getLogger(__name__)
 
 
 @time_bp.route('/entries', methods=['GET'])

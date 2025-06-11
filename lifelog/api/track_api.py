@@ -1,5 +1,6 @@
 # lifelog/api/track_api.py
 
+import logging
 from flask import request, jsonify, Blueprint
 from lifelog.api.auth import require_device_token
 from lifelog.api.errors import debug_api
@@ -8,10 +9,12 @@ from lifelog.config.config_manager import is_host_server
 
 trackers_bp = Blueprint('trackers', __name__, url_prefix='/trackers')
 
+logger = logging.getLogger(__name__)
 
 # ───────────────────────────────────────────────────────────────────────────────
 # TRACKER ENDPOINTS
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 @trackers_bp.route('/', methods=['GET'])
 @require_device_token

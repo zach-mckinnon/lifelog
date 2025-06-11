@@ -1,4 +1,5 @@
 import json
+import logging
 import sqlite3
 import requests
 from datetime import datetime
@@ -95,22 +96,47 @@ def process_sync_queue():
                 # Remove successful sync
                 conn.execute("DELETE FROM sync_queue WHERE id = ?", (id,))
                 conn.commit()
+                logger = logging.getLogger(__name__)
+                logger.info("process_sync_queue: synced %s id=%d", table, id)
         except Exception as e:
-            # Log error and retry later
-            print(f"Sync error: {e}")
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "process_sync_queue: Sync error for table %s id=%d: %s", table, id, e, exc_info=True)
 
     conn.close()
 
 
 def auto_sync():
+    logger = logging.getLogger(__name__)
     if should_sync():
         from lifelog.utils.db.task_repository import _pull_changed_tasks_from_host
         from lifelog.utils.db.time_repository import _pull_changed_time_logs_from_host
         from lifelog.utils.db.track_repository import _pull_changed_trackers_from_host, _pull_changed_goals_from_host
-        _pull_changed_tasks_from_host()
-        _pull_changed_time_logs_from_host()
-        _pull_changed_trackers_from_host
-        _pull_changed_goals_from_host
+        # 1) Push local queued changes, then pull updates for each table:
+        try:
+            _pull_changed_tasks_from_host()
+            logger.info("auto_sync: Pulled changed tasks from host")
+        except Exception as e:
+            logger.error(
+                "auto_sync: Failed to pull changed tasks: %s", e, exc_info=True)
+        try:
+            _pull_changed_time_logs_from_host()
+            logger.info("auto_sync: Pulled changed time logs from host")
+        except Exception as e:
+            logger.error(
+                "auto_sync: Failed to pull changed time logs: %s", e, exc_info=True)
+        try:
+            _pull_changed_trackers_from_host()
+            logger.info("auto_sync: Pulled changed trackers from host")
+        except Exception as e:
+            logger.error(
+                "auto_sync: Failed to pull changed trackers: %s", e, exc_info=True)
+        try:
+            _pull_changed_goals_from_host()
+            logger.info("auto_sync: Pulled changed goals from host")
+        except Exception as e:
+            logger.error(
+                "auto_sync: Failed to pull changed goals: %s", e, exc_info=True)
 
 
 def get_local_db_connection() -> sqlite3.Connection:
