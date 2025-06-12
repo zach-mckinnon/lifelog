@@ -3,14 +3,10 @@
 Lifelog Report Generation Module
 This module provides functionality to generate various reports based on the user's data.
 It includes features for generating daily, weekly, and monthly reports, as well as custom date range reports.
-The module uses JSON files for data storage and integrates with a cron job system for scheduling report generation.
 '''
 
-import base64
-import json
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, timedelta
 import logging
-import lifelog.config.config_manager as cf
 from dateutil.relativedelta import relativedelta
 
 import re
@@ -45,65 +41,6 @@ def log_error(error_msg, traceback=None):
         logger.error(f"{error_msg}\n{traceback}")
     else:
         logger.error(error_msg)
-
-
-def sum_entries(name: str, since: str = "today") -> float:
-    """
-    Sum all entries for `name` in the log file that are
-    timestamped since the start of the given period.
-    Supported `since` values: "today", "week", "month".
-    """
-    # 1. Determine cutoff datetime
-    now = datetime.now()
-    if since == "today":
-        cutoff = datetime.combine(date.today(), time.min)
-    elif since == "week":
-        # 7 days ago at midnight
-        cutoff = datetime.combine(date.today(), time.min) - timedelta(days=7)
-    elif since == "month":
-        # first day of this month at midnight
-        cutoff = datetime.combine(date.today().replace(day=1), time.min)
-    else:
-        raise ValueError(f"Unsupported period: {since}")
-
-    # 2. Load all log entries
-    TRACK_FILE = cf.get_track_file()
-    with open(TRACK_FILE, "r") as f:
-        entries = json.load(f)
-
-    # 3. Filter + sum
-    total = 0.0
-    for e in entries:
-        if e.get("tracker") == name:
-            # parse ISO timestamp
-            entry_ts = datetime.fromisoformat(e["timestamp"])
-            if entry_ts >= cutoff:
-                total += float(e["value"])
-    return total
-
-
-def count_entries(name: str, since: str = "today") -> int:
-    TRACK_FILE = cf.get_track_file()
-
-    if since == "today":
-        cutoff = datetime.combine(date.today(), time.min)
-    elif since == "week":
-        # 7 days ago at midnight
-        cutoff = datetime.combine(date.today(), time.min) - timedelta(days=7)
-    elif since == "month":
-        # first day of this month at midnight
-        cutoff = datetime.combine(date.today().replace(day=1), time.min)
-    else:
-        raise ValueError(f"Unsupported period: {since}")
-
-    with open(TRACK_FILE, "r") as f:
-        entries = json.load(f)
-
-    for e in entries:
-        if e.get("tracker") == name:
-            entry_ts = datetime.fromisoformat(e["timestamp"])
-
-    return sum(1 for e in entries if e["metric"] == name and entry_ts >= cutoff)
 
 
 def parse_date_string(time_string: str, future: bool = False, now: datetime = datetime.now()) -> datetime:
@@ -200,6 +137,42 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
         raise ValueError(f"Could not parse: '{time_string}'")
 
     return target
+
+
+def parse_offset_to_timedelta(offset_str: str) -> timedelta:
+    """
+    Parse an offset string like '120' (minutes), '1d', '2h', '30m', '1w' into a timedelta.
+    Raises ValueError if format unrecognized.
+    """
+    s = offset_str.strip().lower()
+    if not s:
+        raise ValueError("Empty offset")
+    # Pure digits => minutes
+    if s.isdigit():
+        minutes = int(s)
+        return timedelta(minutes=minutes)
+    # Patterns: e.g. '1d', '2h', '30m', '1w'
+    m = re.fullmatch(r'(\d+)([dhmw])', s)
+    if m:
+        val = int(m.group(1))
+        unit = m.group(2)
+        if unit == 'd':
+            return timedelta(days=val)
+        elif unit == 'h':
+            return timedelta(hours=val)
+        elif unit == 'm':
+            return timedelta(minutes=val)
+        elif unit == 'w':
+            return timedelta(weeks=val)
+    # Maybe allow 'Xm' or 'Xmin'?
+    m2 = re.fullmatch(r'(\d+)(min|mins|minute|minutes)', s)
+    if m2:
+        val = int(m2.group(1))
+        return timedelta(minutes=val)
+    # Possibly allow 'Xh' already covered. If more complex needed, you could
+    # try parse_date_string(s, future=True) - now, but that can be confusing
+    # if parse_date_string interprets e.g. "tomorrow" as absolute date.
+    raise ValueError(f"Unrecognized offset format: '{offset_str}'")
 
 
 def parse_args(args: List[str]):

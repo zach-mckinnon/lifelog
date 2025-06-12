@@ -1,8 +1,54 @@
 # lifelog/models.py
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
-from dataclasses import dataclass, fields
+from typing import Any, Dict, List, Optional, Union, get_args, get_origin
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime
+
+
+class BaseModel:
+    def asdict(self) -> dict:
+        """
+        Convert dataclass to dict, but keep raw types (Enum, datetime) for internal use.
+        """
+        return asdict(self)
+
+    def to_dict(self) -> dict:
+        """
+        Convert dataclass to JSON-serializable dict:
+         - Enum fields → their .value
+         - datetime fields → ISO-format strings
+         - Nested dataclasses: also converted recursively
+        """
+        result = {}
+        for f in fields(self.__class__):
+            name = f.name
+            val = getattr(self, name)
+            if val is None:
+                result[name] = None
+            elif isinstance(val, Enum):
+                result[name] = val.value
+            elif isinstance(val, datetime):
+                result[name] = val.isoformat()
+            # For nested dataclasses (if any), assume they implement to_dict()
+            elif hasattr(val, "to_dict") and callable(val.to_dict):
+                result[name] = val.to_dict()
+            # Lists of dataclasses?
+            elif isinstance(val, list):
+                new_list = []
+                for item in val:
+                    if hasattr(item, "to_dict"):
+                        new_list.append(item.to_dict())
+                    else:
+                        new_list.append(item)
+                result[name] = new_list
+            else:
+                result[name] = val
+        return result
+
+    def __repr__(self):
+        cname = self.__class__.__name__
+        fields_str = ', '.join(f"{k}={v!r}" for k, v in self.to_dict().items())
+        return f"{cname}({fields_str})"
 
 
 class TaskStatus(Enum):
@@ -12,7 +58,7 @@ class TaskStatus(Enum):
 
 
 @dataclass
-class Task:
+class Task(BaseModel):
     id: int = None
     title: str = ""
     project: Optional[str] = None
@@ -38,27 +84,59 @@ def get_task_fields():
     return [f.name for f in fields(Task) if f.name != "id"]
 
 
-def task_from_row(row):
+def task_from_row(row: Dict[str, Any]) -> Task:
     """
-    Convert a dict/Row from sqlite3 to a Task object, handling ISO datetime parsing.
+    Convert a dict/Row from sqlite3 to a Task object, handling:
+     - ISO datetime parsing for datetime fields
+     - Conversion of status string to TaskStatus enum
     """
     field_types = {f.name: f.type for f in fields(Task)}
     data = {}
     for k, v in row.items():
-        if k in field_types:
-            typ = field_types[k]
-            if typ in [datetime, Optional[datetime]] and v:
+        if k not in field_types:
+            continue
+        typ = field_types[k]
+        if v is None:
+            data[k] = None
+            continue
+
+        # Handle datetime fields
+        if typ is datetime or typ == Optional[datetime]:
+            try:
+                data[k] = datetime.fromisoformat(v)
+            except Exception:
+                data[k] = None
+            continue
+
+        # Handle TaskStatus enum field
+        # Need to detect either TaskStatus or Optional[TaskStatus]
+        # If typ is exactly TaskStatus:
+        if typ is TaskStatus:
+            try:
+                data[k] = TaskStatus(v)
+            except ValueError:
+                # Unknown status string in DB: fallback or None
+                data[k] = None
+            continue
+        # If typ is Optional[TaskStatus], i.e. typing.Optional[TaskStatus]
+        origin = get_origin(typ)
+        if origin is Optional:
+            args = get_args(typ)  # e.g. (TaskStatus,)
+            if TaskStatus in args:
                 try:
-                    data[k] = datetime.fromisoformat(v)
+                    data[k] = TaskStatus(v)
                 except Exception:
                     data[k] = None
-            else:
-                data[k] = v
+                continue
+
+        # For other fields, just assign directly (int, str, etc.)
+        data[k] = v
+
     return Task(**data)
 
 
 @dataclass
-class TimeLog:
+class TimeLog(BaseModel):
     id: int = None
     title: str = ""
     start: datetime = None
@@ -73,27 +151,36 @@ class TimeLog:
     uid: str = None
 
 
-def time_log_from_row(row):
-    # Robustly convert a sqlite3 row or dict to a TimeLog instance
+def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
+    """
+    Robustly convert a sqlite3 row or dict to a TimeLog instance.
+    `row` is a dict mapping column names to values (strings or numbers).
+    """
     kwargs = {}
     for field in fields(TimeLog):
-        val = row.get(field.name)
-        if field.type in [datetime, Optional[datetime]] and val:
+        name = field.name
+        val = row.get(name)
+        # Handle datetime fields
+        if name in ("start", "end") and val:
+            # Expect val is ISO string in DB
             try:
-                kwargs[field.name] = datetime.fromisoformat(val)
+                kwargs[name] = datetime.fromisoformat(val)
             except Exception:
-                kwargs[field.name] = None
+                kwargs[name] = None
+        elif name == "distracted_minutes":
+            # If None in DB, default to 0
+            if val is None:
+                kwargs[name] = 0.0
+            else:
+                kwargs[name] = val
         else:
-            kwargs[field.name] = val
-        if field.name == "distracted_minutes" and val is None:
-            kwargs[field.name] = 0
-        else:
-            kwargs[field.name] = val
+            # Other fields: just assign directly
+            kwargs[name] = val
     return TimeLog(**kwargs)
 
 
 @dataclass
-class Tracker:
+class Tracker(BaseModel):
     id: Optional[int]
     title: str
     type: str
@@ -101,12 +188,13 @@ class Tracker:
     created: str
     tags: Optional[str] = None
     notes: Optional[str] = None
-    goals: Optional[list] = None
+    entries: Optional[List['TrackerEntry']] = None
+    goals: Optional[List['Goal']] = None
     uid: str = None
 
 
 @dataclass
-class TrackerEntry():
+class TrackerEntry(BaseModel):
     id: int
     tracker_id: int
     timestamp: str
@@ -115,7 +203,7 @@ class TrackerEntry():
 
 
 @dataclass
-class GoalBase:
+class GoalBase(BaseModel):
     id: Optional[int]
     tracker_id: int    # FK to Tracker
     title: str
@@ -283,7 +371,7 @@ def get_goal_fields() -> List[str]:
 
 
 @dataclass
-class Tracker:
+class Tracker(BaseModel):
     id: Optional[int]
     title: str
     type: str
@@ -297,8 +385,8 @@ class Tracker:
 
 def tracker_from_row(row: Dict[str, Any]) -> Tracker:
     """
-    Convert a sqlite3‐row (or dict) into a Tracker dataclass.  
-    Any missing keys default to None.  
+    Convert a sqlite3‐row (or dict) into a Tracker dataclass.
+    Any missing keys default to None. Embedded fields (entries/goals) remain None here.
     """
     return Tracker(
         id=row.get("id"),
@@ -306,9 +394,10 @@ def tracker_from_row(row: Dict[str, Any]) -> Tracker:
         type=row.get("type", ""),
         category=row.get("category"),
         created=row.get("created", ""),
-        tags=row.get("tags"),      # if your schema never writes tags→None
-        notes=row.get("notes"),    # if your schema never writes notes→None
-        goals=None,                # we do not fetch embedded goals here
+        tags=row.get("tags"),
+        notes=row.get("notes"),
+        entries=None,
+        goals=None,
         uid=row.get("uid"),
     )
 
@@ -336,9 +425,19 @@ def tracker_from_row(row: Dict[str, Any]) -> Tracker:
 #
 #    We simply pull the four stored columns; uid isn’t stored locally, so it stays None.
 # ───────────────────────────────────────────────────────────────────────────────
+@dataclass
+class EnvironmentData(BaseModel):
+    uid: str = None
+    id: int = None
+    timestamp: datetime = None
+    weather: str = None
+    air_quality: str = None
+    moon: str = None
+    satellite: str = None
+
 
 @dataclass
-class TrackerEntry():
+class TrackerEntry(BaseModel):
     id: int
     tracker_id: int
     timestamp: str
@@ -365,7 +464,7 @@ def goal_from_row(row):
         row = dict(row)
     kind = row["kind"]
     base = {
-        "id": row["id"],
+        "id": row.id,
         "tracker_id": row["tracker_id"],
         "title": row["title"],
         "kind": row["kind"],

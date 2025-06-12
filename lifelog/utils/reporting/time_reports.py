@@ -7,11 +7,14 @@ The module uses JSON files for data storage and integrates with the Rich library
 It is designed to enhance the user experience by providing visual representations of time data directly in the terminal.
 '''
 
-from datetime import datetime, timedelta
+# Use your unified period parser
+from lifelog.utils.shared_utils import parse_date_string
+# Make sure this is the correct path
+from lifelog.utils.db import time_repository
+from datetime import datetime
 import json
 import csv
 from rich.console import Console
-from lifelog.config.config_manager import get_time_file
 from lifelog.utils.reporting.analytics.report_utils import (
     render_line_chart,
     render_pie_chart,
@@ -25,23 +28,26 @@ def report_time_trend(since: str = "7d", export: str = None):
     """
     📈 Plot time spent per day over the period.
     """
-    cutoff = _parse_since(since)
+    cutoff = parse_date_string(since, future=False)
     console.print(
         f"[bold]Time Trend:[/] {since} since {cutoff.date().isoformat()}")
 
-    # Load and filter
-    tf = get_time_file()
-    data = json.load(open(tf, 'r'))
-    history = data.get('history', [])
-    filtered = [h for h in history if datetime.fromisoformat(
-        h['start']) >= cutoff]
+    # Fetch from SQL
+    history = time_repository.get_all_time_logs(since=cutoff)
 
     # Aggregate per day
-    day_totals: dict[str, float] = {}
-    for rec in filtered:
-        day = datetime.fromisoformat(rec['start']).date().isoformat()
-        day_totals[day] = day_totals.get(
-            day, 0) + rec.get('duration_minutes', 0)
+    day_totals = {}
+    for rec in history:
+        # rec could be a model or dict: support both for now
+        start = getattr(rec, "start", rec.get("start"))
+        dur = getattr(rec, "duration_minutes", rec.get("duration_minutes", 0))
+        if start and isinstance(start, str):
+            day = datetime.fromisoformat(start).date().isoformat()
+        elif start:
+            day = start.date().isoformat()
+        else:
+            continue
+        day_totals[day] = day_totals.get(day, 0) + dur
 
     # Prepare series
     dates = sorted(day_totals.keys())
@@ -56,20 +62,18 @@ def report_time_distribution(since: str = "7d", export: str = None):
     """
     🥧 Show pie chart of total time per category.
     """
-    cutoff = _parse_since(since)
+    cutoff = parse_date_string(since, future=False)
     console.print(
         f"[bold]Time Distribution:[/] {since} since {cutoff.date().isoformat()}")
 
-    tf = get_time_file()
-    data = json.load(open(tf, 'r'))
-    history = [h for h in data.get(
-        'history', []) if datetime.fromisoformat(h['start']) >= cutoff]
+    history = time_repository.get_all_time_logs(since=cutoff)
 
     # Aggregate per category
-    totals: dict[str, float] = {}
+    totals = {}
     for rec in history:
-        cat = rec.get('category', 'unknown')
-        totals[cat] = totals.get(cat, 0) + rec.get('duration_minutes', 0)
+        cat = getattr(rec, "category", rec.get("category", "unknown"))
+        dur = getattr(rec, "duration_minutes", rec.get("duration_minutes", 0))
+        totals[cat] = totals.get(cat, 0) + dur
 
     render_pie_chart(totals)
     if export:
@@ -80,42 +84,28 @@ def report_time_calendar(since: str = "30d", export: str = None):
     """
     📅 Calendar heatmap of minutes per weekday.
     """
-    cutoff = _parse_since(since)
+    cutoff = parse_date_string(since, future=False)
     console.print(
         f"[bold]Time Calendar:[/] {since} since {cutoff.date().isoformat()}")
 
-    tf = get_time_file()
-    data = json.load(open(tf, 'r'))
-    history = [h for h in data.get(
-        'history', []) if datetime.fromisoformat(h['start']) >= cutoff]
+    history = time_repository.get_all_time_logs(since=cutoff)
 
     # Aggregate per weekday
-    weekday_totals: dict[str, float] = {}
+    weekday_totals = {}
     for rec in history:
-        wd = datetime.fromisoformat(rec['start']).strftime("%a")
-        weekday_totals[wd] = weekday_totals.get(
-            wd, 0) + rec.get('duration_minutes', 0)
+        start = getattr(rec, "start", rec.get("start"))
+        dur = getattr(rec, "duration_minutes", rec.get("duration_minutes", 0))
+        if start and isinstance(start, str):
+            wd = datetime.fromisoformat(start).strftime("%a")
+        elif start:
+            wd = start.strftime("%a")
+        else:
+            continue
+        weekday_totals[wd] = weekday_totals.get(wd, 0) + dur
 
     render_calendar_heatmap(weekday_totals)
     if export:
         _export(weekday_totals, since, export)
-
-
-def _parse_since(s: str) -> datetime:
-    now = datetime.now()
-    unit = s[-1]
-    try:
-        amt = int(s[:-1])
-    except ValueError:
-        amt = int(s)
-        unit = 'd'
-    if unit == 'd':
-        return now - timedelta(days=amt)
-    if unit == 'w':
-        return now - timedelta(weeks=amt)
-    if unit == 'm':
-        return now - timedelta(days=30 * amt)
-    return now - timedelta(days=amt)
 
 
 def _export(data: dict[str, float], since: str, filepath: str):

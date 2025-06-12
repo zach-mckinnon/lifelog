@@ -25,7 +25,7 @@ def load_tracker_data():
     for t in trackers:
         for e in t.get("entries", []):
             combined.append({
-                "tracker": t["title"],
+                "tracker": t.title,
                 "timestamp": e["timestamp"],
                 "value": e["value"]
             })
@@ -39,8 +39,8 @@ def load_time_data():
     for l in logs:
         if l["duration_minutes"]:
             combined.append({
-                "tracker": f"Time: {l['title']}",
-                "timestamp": l["start"],
+                "tracker": f"Time: {l.title}",
+                "timestamp": l.start,
                 "value": l["duration_minutes"]
             })
     return combined

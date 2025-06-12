@@ -1,7 +1,10 @@
 # lifelog.utils/db/environment_repository.py
+from typing import Optional
 from lifelog.utils.db.database_manager import get_connection
 from datetime import datetime
 import json
+
+from utils.db.models import EnvironmentData
 
 
 def save_environment_data(section, data):
@@ -15,7 +18,7 @@ def save_environment_data(section, data):
     conn.close()
 
 
-def get_latest_environment_data(source: str):
+def get_latest_environment_data(source: str) -> Optional[EnvironmentData]:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -25,4 +28,4 @@ def get_latest_environment_data(source: str):
     """, (source,))
     row = cur.fetchone()
     conn.close()
-    return json.loads(row[0]) if row else None
+    return EnvironmentData(**json.loads(row[0])) if row else None

@@ -1,19 +1,63 @@
 # lifelog/api/track_api.py
 
+from datetime import datetime
 import logging
 from flask import request, jsonify, Blueprint
 from lifelog.api.auth import require_device_token
-from lifelog.api.errors import debug_api
+from lifelog.api.errors import debug_api, parse_json, error, validate_iso
 from lifelog.utils.db import track_repository
 from lifelog.config.config_manager import is_host_server
 
 trackers_bp = Blueprint('trackers', __name__, url_prefix='/trackers')
-
 logger = logging.getLogger(__name__)
 
-# ───────────────────────────────────────────────────────────────────────────────
-# TRACKER ENDPOINTS
-# ───────────────────────────────────────────────────────────────────────────────
+
+def _get_tracker_or_404_by_id(tracker_id: int):
+    """
+    Fetch tracker by numeric ID or raise ApiError(404).
+    """
+    tracker = track_repository.get_tracker_by_id(tracker_id)
+    if not tracker:
+        error('Tracker not found', 404)
+    return tracker
+
+
+def _get_tracker_or_404_by_uid(uid_val: str):
+    """
+    Fetch tracker by global UID or raise ApiError(404).
+    """
+    tracker = track_repository.get_tracker_by_uid(uid_val)
+    if not tracker:
+        error('Tracker not found', 404)
+    return tracker
+
+
+def _require_host_mode():
+    """
+    Raise ApiError(403) if not host mode.
+    """
+    if not is_host_server():
+        error('Endpoint only available on host', 403)
+
+
+def _parse_list_filters(args):
+    """
+    Parse query params for list_trackers or raise ApiError.
+    Supported filters: title_contains, category.
+    """
+    filters: dict = {}
+    title_contains = args.get('title_contains')
+    if title_contains:
+        if not isinstance(title_contains, str):
+            error('Invalid title_contains filter', 400)
+        filters['title_contains'] = title_contains
+    category = args.get('category')
+    if category:
+        if not isinstance(category, str):
+            error('Invalid category filter', 400)
+        filters['category'] = category
+    # Note: uid handled separately in endpoint
+    return filters
 
 
 @trackers_bp.route('/', methods=['GET'])
@@ -22,23 +66,20 @@ logger = logging.getLogger(__name__)
 def list_trackers():
     """
     GET /trackers?uid=<uid>&title_contains=…&category=…
-    Returns a list of trackers (local‐merged). In client mode, pushes & pulls first.
     """
-    uid = request.args.get('uid')
-    title_contains = request.args.get('title_contains')
-    category = request.args.get('category')
-
-    # Pass these filters into repository
+    filters = _parse_list_filters(request.args)
     trackers = track_repository.get_all_trackers(
-        title_contains=title_contains,
-        category=category
+        title_contains=filters.get('title_contains'),
+        category=filters.get('category')
     )
-
+    # If uid filter provided, apply here
+    uid = request.args.get('uid')
     if uid:
-        # If someone asked specifically by uid, filter the returned list
+        if not isinstance(uid, str):
+            error('Invalid uid filter', 400)
         trackers = [t for t in trackers if t.uid == uid]
-
-    return jsonify([t.__dict__ for t in trackers]), 200
+    # Return JSON list
+    return jsonify([t.to_dict() for t in trackers]), 200
 
 
 @trackers_bp.route('/', methods=['POST'])
@@ -48,17 +89,29 @@ def create_tracker():
     """
     POST /trackers
     Body: JSON with at least { "title":"…", "type":"int"|"float"|"bool"|"str", ... }
-    In CLIENT mode: inserts locally, queues “create” to /sync/trackers, returns created tracker.
-    In HOST mode: inserts directly, returns created tracker.
     """
-    data = request.json or {}
+    data = parse_json()  # raises ApiError if invalid JSON
+    # Minimal required: title
+    title = data.get('title')
+    if not title or not isinstance(title, str) or not title.strip():
+        error('Missing or invalid "title" field', 400)
+    # 'type' is also required by repository; validate presence
+    ttype = data.get('type')
+    if not ttype or not isinstance(ttype, str) or not ttype.strip():
+        error('Missing or invalid "type" field', 400)
+    # Optionally other fields (category, tags, notes) can be strings if provided
+    # Let repository handle defaults and further validation
+
     try:
         new_tracker = track_repository.add_tracker(data)
-        return jsonify(new_tracker.__dict__), 201
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to create tracker: {e}'}), 400
+    except ValueError as ve:
+        # validation failure in repository, e.g. missing required fields
+        error(str(ve), 400)
+    except Exception:
+        logger.exception("Failed to create tracker")
+        error('Failed to create tracker', 500)
+
+    return jsonify(new_tracker.to_dict()), 201
 
 
 @trackers_bp.route('/<int:tracker_id>', methods=['GET'])
@@ -67,12 +120,9 @@ def create_tracker():
 def get_tracker(tracker_id: int):
     """
     GET /trackers/<tracker_id>
-    Returns one tracker by numeric ID. In client mode, pushes & pulls first.
     """
-    tracker = track_repository.get_tracker_by_id(tracker_id)
-    if not tracker:
-        return jsonify({'error': 'Tracker not found'}), 404
-    return jsonify(tracker.__dict__), 200
+    tracker = _get_tracker_or_404_by_id(tracker_id)
+    return jsonify(tracker.to_dict()), 200
 
 
 @trackers_bp.route('/uid/<string:uid_val>', methods=['GET'])
@@ -81,12 +131,9 @@ def get_tracker(tracker_id: int):
 def get_tracker_by_uid(uid_val: str):
     """
     GET /trackers/uid/<uid>
-    Returns one tracker by global UID. Push/pull first if client; direct if host.
     """
-    tracker = track_repository.get_tracker_by_uid(uid_val)
-    if not tracker:
-        return jsonify({'error': 'Tracker not found'}), 404
-    return jsonify(tracker.__dict__), 200
+    tracker = _get_tracker_or_404_by_uid(uid_val)
+    return jsonify(tracker.to_dict()), 200
 
 
 @trackers_bp.route('/<int:tracker_id>', methods=['PUT'])
@@ -95,20 +142,37 @@ def get_tracker_by_uid(uid_val: str):
 def update_tracker_api(tracker_id: int):
     """
     PUT /trackers/<tracker_id>
-    Body: JSON of fields to update (partial).
-    In CLIENT mode: updates locally, queues “update” by uid, returns updated tracker.
-    In HOST mode: updates directly, returns updated tracker.
+    Body: JSON partial fields.
     """
-    data = request.json or {}
+    _get_tracker_or_404_by_id(tracker_id)
+    data = parse_json()
+    # If data contains 'title', validate non-empty string
+    if 'title' in data:
+        title = data['title']
+        if title is None or not isinstance(title, str) or not title.strip():
+            error('Field "title" must be non-empty string', 400)
+    # If data contains other fields, optionally validate types:
+    if 'type' in data:
+        ttype = data['type']
+        if ttype is None or not isinstance(ttype, str) or not ttype.strip():
+            error('Field "type" must be non-empty string', 400)
+    # category/tags/notes if present must be strings or None
+    for fld in ('category', 'tags', 'notes'):
+        if fld in data:
+            val = data[fld]
+            if val is not None and not isinstance(val, str):
+                error(f'Field "{fld}" must be a string', 400)
     try:
         updated = track_repository.update_tracker(tracker_id, data)
         if not updated:
-            return jsonify({'error': 'Tracker not found or update failed'}), 400
-        return jsonify(updated.__dict__), 200
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to update tracker: {e}'}), 400
+            error('Tracker not found or update failed', 400)
+    except ValueError as ve:
+        error(str(ve), 400)
+    except Exception:
+        logger.exception("Failed to update tracker")
+        error('Failed to update tracker', 500)
+
+    return jsonify(updated.to_dict()), 200
 
 
 @trackers_bp.route('/uid/<string:uid_val>', methods=['PUT'])
@@ -116,26 +180,36 @@ def update_tracker_api(tracker_id: int):
 @debug_api
 def update_tracker_by_uid_api(uid_val: str):
     """
-    PUT /trackers/uid/<uid>
-    Body: JSON of fields to update (partial). Host‐only.
+    PUT /trackers/uid/<uid>  Host-only.
     """
-    if not is_host_server():
-        return jsonify({'error': 'Endpoint only available on host'}), 403
-
-    data = request.json or {}
+    _require_host_mode()
+    tracker = _get_tracker_or_404_by_uid(uid_val)
+    data = parse_json()
+    # Similar validation as above
+    if 'title' in data:
+        title = data['title']
+        if title is None or not isinstance(title, str) or not title.strip():
+            error('Field "title" must be non-empty string', 400)
+    if 'type' in data:
+        ttype = data['type']
+        if ttype is None or not isinstance(ttype, str) or not ttype.strip():
+            error('Field "type" must be non-empty string', 400)
+    for fld in ('category', 'tags', 'notes'):
+        if fld in data:
+            val = data[fld]
+            if val is not None and not isinstance(val, str):
+                error(f'Field "{fld}" must be a string', 400)
     try:
-        # Fetch the local row’s numeric ID first
-        tracker = track_repository.get_tracker_by_uid(uid_val)
-        if not tracker:
-            return jsonify({'error': 'Tracker not found'}), 404
-
         updated = track_repository.update_tracker(tracker.id, data)
-        return jsonify(updated.__dict__), 200
+        if not updated:
+            error('Tracker not found or update failed', 400)
+    except ValueError as ve:
+        error(str(ve), 400)
+    except Exception:
+        logger.exception("Failed to update tracker by UID")
+        error('Failed to update tracker', 500)
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to update tracker: {e}'}), 400
+    return jsonify(updated.to_dict()), 200
 
 
 @trackers_bp.route('/<int:tracker_id>', methods=['DELETE'])
@@ -144,18 +218,16 @@ def update_tracker_by_uid_api(uid_val: str):
 def delete_tracker_api(tracker_id: int):
     """
     DELETE /trackers/<tracker_id>
-    In CLIENT mode: deletes locally, queues “delete” by uid, returns success.
-    In HOST mode: deletes directly, returns success.
     """
+    _get_tracker_or_404_by_id(tracker_id)
     try:
         success = track_repository.delete_tracker(tracker_id)
         if not success:
-            return jsonify({'error': 'Delete failed'}), 400
-        return jsonify({'status': 'success'}), 200
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to delete tracker: {e}'}), 400
+            error('Delete failed', 400)
+    except Exception:
+        logger.exception("Failed to delete tracker")
+        error('Failed to delete tracker', 500)
+    return jsonify({'status': 'success'}), 200
 
 
 @trackers_bp.route('/uid/<string:uid_val>', methods=['DELETE'])
@@ -163,26 +235,18 @@ def delete_tracker_api(tracker_id: int):
 @debug_api
 def delete_tracker_by_uid_api(uid_val: str):
     """
-    DELETE /trackers/uid/<uid>
-    Host‐only: delete by global UID.
+    DELETE /trackers/uid/<uid>  Host-only.
     """
-    if not is_host_server():
-        return jsonify({'error': 'Endpoint only available on host'}), 403
-
+    _require_host_mode()
+    tracker = _get_tracker_or_404_by_uid(uid_val)
     try:
-        tracker = track_repository.get_tracker_by_uid(uid_val)
-        if not tracker:
-            return jsonify({'error': 'Tracker not found'}), 404
-
         success = track_repository.delete_tracker(tracker.id)
         if not success:
-            return jsonify({'error': 'Delete failed'}), 400
-        return jsonify({'status': 'success'}), 200
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to delete tracker: {e}'}), 400
+            error('Delete failed', 400)
+    except Exception:
+        logger.exception("Failed to delete tracker by UID")
+        error('Failed to delete tracker', 500)
+    return jsonify({'status': 'success'}), 200
 
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -195,10 +259,11 @@ def delete_tracker_by_uid_api(uid_val: str):
 def list_tracker_entries(tracker_id: int):
     """
     GET /trackers/<tracker_id>/entries
-    Lists all entries for that tracker (local-only).
     """
+    # Optionally ensure tracker exists, else return empty
+    _get_tracker_or_404_by_id(tracker_id)
     entries = track_repository.get_entries_for_tracker(tracker_id)
-    return jsonify([e.__dict__ for e in entries]), 200
+    return jsonify([e.to_dict() for e in entries]), 200
 
 
 @trackers_bp.route('/<int:tracker_id>/entries', methods=['POST'])
@@ -208,22 +273,28 @@ def add_tracker_entry_api(tracker_id: int):
     """
     POST /trackers/<tracker_id>/entries
     Body: { "timestamp": "<ISO>", "value": <float> }
-    Local‐only insert; no host sync.
     """
-    data = request.json or {}
+    _get_tracker_or_404_by_id(tracker_id)
+    data = parse_json()
     ts = data.get("timestamp")
     val = data.get("value")
-
     if ts is None or val is None:
-        return jsonify({'error': 'Missing timestamp or value'}), 400
-
+        error('Missing timestamp or value', 400)
+    # Validate timestamp
+    validate_iso("timestamp", ts)
+    # Validate value as float
     try:
-        entry = track_repository.add_tracker_entry(tracker_id, ts, float(val))
-        return jsonify(entry.__dict__), 201
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to add entry: {e}'}), 400
+        val_f = float(val)
+    except Exception:
+        error(f'Invalid "value": {val}', 400)
+    try:
+        entry = track_repository.add_tracker_entry(tracker_id, ts, val_f)
+    except ValueError as ve:
+        error(str(ve), 400)
+    except Exception:
+        logger.exception("Failed to add tracker entry")
+        error('Failed to add entry', 500)
+    return jsonify(entry.to_dict()), 201
 
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -236,29 +307,30 @@ def add_tracker_entry_api(tracker_id: int):
 def list_goals_for_tracker(tracker_id: int):
     """
     GET /trackers/<tracker_id>/goals
-    Return all goals for that tracker. In CLIENT mode, push → pull first.
     """
+    _get_tracker_or_404_by_id(tracker_id)
     goals = track_repository.get_goals_for_tracker(tracker_id)
-    return jsonify([g.__dict__ for g in goals]), 200
+    return jsonify([g.to_dict() for g in goals]), 200
 
 
 @trackers_bp.route('/<int:tracker_id>/goals', methods=['POST'])
 @require_device_token
 @debug_api
 def create_goal_for_tracker(tracker_id: int):
-    data = request.json or {}
+    """
+    POST /trackers/<tracker_id>/goals
+    """
+    _get_tracker_or_404_by_id(tracker_id)
+    data = parse_json()
+    # Repository will validate required fields (title, kind, etc.) and raise ValueError
     try:
         new_goal = track_repository.add_goal(tracker_id, data)
-        return jsonify(new_goal.__dict__), 201
-
     except ValueError as ve:
-        # If validation fails, send 400 + explanatory message
-        return jsonify({'error': str(ve)}), 400
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to create goal: {e}'}), 500
+        error(str(ve), 400)
+    except Exception:
+        logger.exception("Failed to create goal")
+        error('Failed to create goal', 500)
+    return jsonify(new_goal.to_dict()), 201
 
 
 @trackers_bp.route('/goals/uid/<string:uid_val>', methods=['GET'])
@@ -267,42 +339,37 @@ def create_goal_for_tracker(tracker_id: int):
 def get_goal_by_uid_api(uid_val: str):
     """
     GET /trackers/goals/uid/<uid>
-    Fetch one goal by global UID. In CLIENT mode: push → pull → upsert → return.
-    In HOST mode: direct local SELECT.
     """
     goal = track_repository.get_goal_by_uid(uid_val)
     if not goal:
-        return jsonify({'error': 'Goal not found'}), 404
-    return jsonify(goal.__dict__), 200
+        error('Goal not found', 404)
+    return jsonify(goal.to_dict()), 200
 
 
 @trackers_bp.route('/goals/<string:uid_val>', methods=['PUT'])
 @require_device_token
 @debug_api
 def update_goal_by_uid_api(uid_val: str):
-    if not is_host_server():
-        return jsonify({'error': 'Endpoint only available on host'}), 403
-
-    data = request.json or {}
-
-    # 1) Fetch the existing goal
+    """
+    PUT /trackers/goals/<uid>  Host-only.
+    """
+    _require_host_mode()
     goal = track_repository.get_goal_by_uid(uid_val)
     if not goal:
-        return jsonify({'error': 'Goal not found'}), 404
-
-    # 2) Inject the kind so that update_goal can route to the correct detail table
+        error('Goal not found', 404)
+    data = parse_json()
+    # Inject existing kind so repository routes detail correctly
     data['kind'] = goal.kind
-
     try:
-        # 3) Now update_goal has everything it needs
         updated = track_repository.update_goal(goal.id, data)
-        return jsonify(updated.__dict__), 200
-
+        if not updated:
+            error('Goal not found or update failed', 400)
     except ValueError as ve:
-        return jsonify({'error': str(ve)}), 400
-
-    except Exception as e:
-        return jsonify({'error': f'Failed to update goal: {e}'}), 500
+        error(str(ve), 400)
+    except Exception:
+        logger.exception("Failed to update goal")
+        error('Failed to update goal', 500)
+    return jsonify(updated.to_dict()), 200
 
 
 @trackers_bp.route('/goals/<string:uid_val>', methods=['DELETE'])
@@ -310,23 +377,17 @@ def update_goal_by_uid_api(uid_val: str):
 @debug_api
 def delete_goal_by_uid_api(uid_val: str):
     """
-    DELETE /trackers/goals/<uid>
-    Host-only endpoint. Deletes goal WHERE uid = ?.
+    DELETE /trackers/goals/<uid>  Host-only.
     """
-    if not is_host_server():
-        return jsonify({'error': 'Endpoint only available on host'}), 403
-
+    _require_host_mode()
+    goal = track_repository.get_goal_by_uid(uid_val)
+    if not goal:
+        error('Goal not found', 404)
     try:
-        goal = track_repository.get_goal_by_uid(uid_val)
-        if not goal:
-            return jsonify({'error': 'Goal not found'}), 404
-
         success = track_repository.delete_goal(goal.id)
         if not success:
-            return jsonify({'error': 'Delete failed'}), 400
-        return jsonify({'status': 'success'}), 200
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to delete goal: {e}'}), 400
+            error('Delete failed', 400)
+    except Exception:
+        logger.exception("Failed to delete goal")
+        error('Failed to delete goal', 500)
+    return jsonify({'status': 'success'}), 200

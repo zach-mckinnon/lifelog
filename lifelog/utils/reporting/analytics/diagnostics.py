@@ -5,13 +5,15 @@ This module provides functionality to generate diagnostic reports based on user 
 It includes functions to analyze user data, identify low wellness days, and compute correlations between different metrics.
 It is designed to help users identify patterns and relationships in their data, providing valuable feedback for self-improvement and habit tracking.'''
 
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import csv
 from rich.console import Console
 from lifelog.utils.reporting.insight_engine import load_metric_data, daily_averages, compute_correlation
 from lifelog.config.config_manager import get_time_file
 from lifelog.utils.reporting.analytics.report_utils import render_line_chart, render_calendar_heatmap
+from lifelog.utils.db.track_repository import get_all_trackers, get_entries_for_tracker
+from lifelog.utils.shared_utils import parse_date_string
 
 console = Console()
 
@@ -19,26 +21,34 @@ console = Console()
 def report_diagnostics(since: str = "30d", export: str = None):
     """
     🔍 Diagnostic report: identify days of low wellness and potential root causes.
-
-    since: time window (e.g. "30d").
-    export: optional CSV/JSON filepath.
     """
-    cutoff = _parse_since(since)
+    cutoff = parse_date_string(since, future=False)
     console.print(
         f"[bold]Diagnostic Report:[/] since {cutoff.date().isoformat()}\n")
 
-    # 1. Load data
-    metric_entries = load_metric_data()
-    tracker_daily = daily_averages(metric_entries)
-    time_data = json.load(open(get_time_file(), 'r')).get('history', [])
+    # 1. Load all trackers' daily averages
+    trackers = get_all_trackers()
+    # Build daily averages per tracker
+    tracker_daily = {}
+    for tracker in trackers:
+        entries = get_entries_for_tracker(tracker.id)
+        # Map by date string
+        day_map = {}
+        for e in entries:
+            if e.timestamp >= cutoff:
+                date_str = e.timestamp.date().isoformat()
+                day_map.setdefault(date_str, []).append(e.value)
+        # Average per day
+        tracker_daily[tracker.title] = {
+            d: sum(vals)/len(vals) for d, vals in day_map.items()}
 
-    # 2. Identify low-mood days (< threshold)
+    # 2. Identify low-mood days
     mood_map = tracker_daily.get('mood', {})
     low_days = [d for d, v in mood_map.items(
     ) if v <= 3 and datetime.fromisoformat(d) >= cutoff]
     console.print(f"[red]Low mood days:[/] {len(low_days)} days since {since}")
 
-    # 3. Check sleep & energy correlations on those days
+    # 3. Sleep/Energy on those days
     sleep_map = tracker_daily.get('sleepq', {})
     energy_map = tracker_daily.get('energy', {})
     sleep_vals = [sleep_map.get(d, 0) for d in low_days]
@@ -57,38 +67,21 @@ def report_diagnostics(since: str = "30d", export: str = None):
     values = [mood_map[d] for d in dates]
     render_line_chart(dates, values, label="Mood Values")
 
-    # 6. Weekly heatmap of activity (time tracked)
-    # aggregate minutes per weekday
+    # 6. Weekly heatmap (time logs)
+    from lifelog.utils.db.time_repository import get_all_time_logs
+    time_logs = get_all_time_logs(since=cutoff)
     weekday_totals = {}
-    for rec in time_data:
-        ts = datetime.fromisoformat(rec['start'])
+    for t in time_logs:
+        ts = t.start
         if ts >= cutoff:
             wd = ts.strftime('%a')
-            weekday_totals[wd] = weekday_totals.get(
-                wd, 0) + rec.get('duration_minutes', 0)
+            weekday_totals[wd] = weekday_totals.get(wd, 0) + t.duration_minutes
     render_calendar_heatmap(weekday_totals)
 
     # 7. Export if requested
     if export:
         _export_diagnostics(low_days, corr_sleep,
                             corr_energy, weekday_totals, export)
-
-
-def _parse_since(s: str) -> datetime:
-    now = datetime.now()
-    unit = s[-1]
-    try:
-        amt = int(s[:-1])
-    except ValueError:
-        amt = int(s)
-        unit = 'd'
-    if unit == 'd':
-        return now - timedelta(days=amt)
-    if unit == 'w':
-        return now - timedelta(weeks=amt)
-    if unit == 'm':
-        return now - timedelta(days=30*amt)
-    return now - timedelta(days=amt)
 
 
 def _export_diagnostics(low_days, corr_sleep, corr_energy, weekday_totals, filepath):

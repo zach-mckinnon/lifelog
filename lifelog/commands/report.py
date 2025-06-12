@@ -16,6 +16,7 @@ from lifelog.utils.db import report_repository
 from lifelog.utils.db import track_repository, time_repository
 import lifelog.config.config_manager as cf
 from lifelog.utils.db import track_repository
+from lifelog.utils.db.models import Tracker
 
 
 app = typer.Typer(help="Generate a report for your goal progress.")
@@ -36,17 +37,24 @@ class ReportType(str, Enum):
     UNKNOWN = "unknown"
 
 
-def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
+def generate_goal_report(tracker: Tracker) -> Dict[str, Any]:
     """
-    Generate a structured goal progress report for a tracker.
-    Now pulls entries from SQL, not from embedded tracker object.
+    Generate a structured goal progress report for a given Tracker instance.
+    Pulls entries and goals from SQL.
     """
-    goals = track_repository.get_goals_for_tracker(tracker["id"])
-    # 🆕 Load entries directly from SQL
-    entries = track_repository.get_entries_for_tracker(tracker["id"])
+    # Fetch goals and entries via repository
+    goals = track_repository.get_goals_for_tracker(tracker.id)
+    entries = track_repository.get_entries_for_tracker(tracker.id)
 
-    df = pd.DataFrame(entries)
+    # Convert list of TrackerEntry to DataFrame via dicts
+    if entries:
+        entry_dicts = [e.to_dict() for e in entries]
+        df = pd.DataFrame(entry_dicts)
+    else:
+        df = pd.DataFrame(
+            columns=["id", "tracker_id", "timestamp", "value", "uid"])
 
+    # Handle empty DataFrame
     if df.empty:
         return {
             "report_type": "empty",
@@ -73,12 +81,13 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
             "metrics": {}
         }
 
-    # ✅ Use first goal for now
+    # Use first goal for now
     goal = goals[0]
-    goal_id = goal["id"]
-    kind = goal["kind"]
+    goal_id = goal.id
+    kind = goal.kind  # attribute
 
-    # Dispatch handlers (these functions stay the same)
+    # Dispatch handlers
+    # Use the new get_goal_details or named wrappers
     if kind == "range":
         details = track_repository.get_goal_range(goal_id)
         return _report_range(tracker, goal, details, df)
@@ -89,7 +98,8 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
         details = track_repository.get_goal_count(goal_id)
         return _report_count(tracker, goal, details, df)
     if kind == "bool":
-        return _report_bool(tracker, goal, df)
+        # bool goals often have no detail fields; can pass empty details dict
+        return _report_bool(tracker, goal, {}, df)
     if kind == "streak":
         details = track_repository.get_goal_streak(goal_id)
         return _report_streak(tracker, goal, details, df)
@@ -109,6 +119,7 @@ def generate_goal_report(tracker: Dict[str, Any]) -> Dict[str, Any]:
         details = track_repository.get_goal_replacement(goal_id)
         return _report_replacement(tracker, goal, details, df)
 
+    # Unknown kind
     return _empty_report(f"Unknown goal kind: {kind}")
 
 
@@ -474,7 +485,7 @@ def gather_all_data():
         "tasks": task_repository.get_all_tasks(),
         "trackers": track_repository.get_all_trackers(),
         "tracker_entries": track_repository.get_all_entries(),
-        "goals": [g for t in track_repository.get_all_trackers() for g in track_repository.get_goals_for_tracker(t["id"])],
+        "goals": [g for t in track_repository.get_all_trackers() for g in track_repository.get_goals_for_tracker(t.id)],
         "time_logs": time_repository.get_all_time_logs(),
         "environment": environment_repository.get_all_environmental_data() if hasattr(environment_repository, "get_all_environmental_data") else [],
     }

@@ -303,7 +303,7 @@ def draw_home(pane, h, w):
         try:
             tasks = task_repository.query_tasks(sort="priority")[:3]
             if tasks:
-                # Use task.title (Task object), not t['title']
+                # Use task.title (Task object), not t.title
                 # Wrap attribute in tuple (text, attr)
                 top_items = [(t.title or "<no title>", None) for t in tasks]
                 sections.append(("Top Tasks:", top_items))
@@ -317,7 +317,7 @@ def draw_home(pane, h, w):
             time_info = []
             active = time_repository.get_active_time_entry()
             if active:
-                time_info.append((f">> {active['title']}", None))
+                time_info.append((f">> {active.title}", None))
             else:
                 logs = time_repository.get_all_time_logs()
                 if logs:
@@ -326,7 +326,7 @@ def draw_home(pane, h, w):
                     last = logs[0]
                     mins = int(last.get('duration_minutes', 0))
                     time_info.append(
-                        (f"Last: {last['title']} ({mins} min)", None))
+                        (f"Last: {last.title} ({mins} min)", None))
 
             if time_info:
                 sections.append(("Time:", time_info))

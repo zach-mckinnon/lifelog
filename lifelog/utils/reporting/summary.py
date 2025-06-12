@@ -13,7 +13,6 @@ from rich.console import Console
 from lifelog.utils.db import track_repository
 from lifelog.utils.reporting.insight_engine import daily_averages, load_tracker_data, load_time_data
 import lifelog.config.config_manager as cf
-from lifelog.utils.shared_utils import sum_entries
 from lifelog.utils.reporting.analytics.report_utils import render_pie_chart
 from rich.table import Table
 
@@ -39,7 +38,7 @@ def summary_metric(since: str = "7d", export: str = None):
         entries = [e for e in t.get("entries", []) if datetime.fromisoformat(
             e["timestamp"]) >= cutoff]
         total = sum(e["value"] for e in entries)
-        data[t["title"]] = total
+        data[t.title] = total
 
     if not data:
         console.print("[yellow]⚠️ No tracker data to summarize yet.[/yellow]")

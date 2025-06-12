@@ -1,5 +1,6 @@
 # lifelog/utils/db/track_repository.py
 
+from typing import List
 from datetime import datetime
 import logging
 import uuid
@@ -379,7 +380,7 @@ def add_tracker(tracker_data: Any) -> Tracker:
     """
     data: Dict[str, Any]
     if isinstance(tracker_data, Tracker):
-        data = tracker_data.__dict__.copy()
+        data = tracker_data.to_dict().copy()
     else:
         data = tracker_data.copy()
 
@@ -1694,29 +1695,51 @@ def validate_goal_fields(goal: dict):
 # Helpers combining trackers & goals/entries
 # ───────────────────────────────────────────────────────────────────────────────
 
-def get_all_trackers_with_goals() -> List[Dict[str, Any]]:
-    trackers = get_all_trackers()
-    combined: List[Dict[str, Any]] = []
+
+def get_all_trackers_with_goals() -> List[Tracker]:
+    """
+    Return all Tracker instances, each with .goals populated as List[Goal].
+    """
+    trackers = get_all_trackers()  # List[Tracker], goals=None initially
     for tracker in trackers:
         try:
-            goals = get_goals_for_tracker(tracker["id"])
+            goals: List[Goal] = get_goals_for_tracker(tracker.id)
         except Exception:
             goals = []
-        t = dict(tracker)
-        t["goals"] = goals
-        combined.append(t)
-    return combined
+        tracker.goals = goals
+    return trackers
 
 
-def get_all_trackers_with_entries() -> List[Dict[str, Any]]:
+def get_all_trackers_with_entries() -> List[Tracker]:
+    """
+    Return all Tracker instances, each with .entries populated as List[TrackerEntry].
+    """
     trackers = get_all_trackers()
-    combined: List[Dict[str, Any]] = []
     for tracker in trackers:
         try:
-            entries = get_entries_for_tracker(tracker["id"])
+            entries: List[TrackerEntry] = get_entries_for_tracker(tracker.id)
         except Exception:
             entries = []
-        t = dict(tracker)
-        t["entries"] = entries
-        combined.append(t)
-    return combined
+        tracker.entries = entries
+    return trackers
+
+
+def get_goal_details(goal_id: int) -> Dict[str, Any]:
+    """
+    Fetch detail fields for the given goal_id based on its kind.
+    Returns a dict of detail columns (e.g., {'min_amount': ..., 'max_amount': ..., ...}).
+    Raises ValueError if goal not found or kind missing.
+    """
+    goal = get_goal_by_id(goal_id)
+    if not goal:
+        raise ValueError(f"Goal with id {goal_id} not found")
+    kind = goal.kind  # attribute access on dataclass
+    if not kind:
+        raise ValueError(f"Goal id {goal_id} has no kind")
+    # _select_goal_detail returns {} if no detail row (e.g., bool has no extra columns)
+    try:
+        details = _select_goal_detail(goal_id, kind)
+    except Exception as e:
+        # Log or wrap exception as needed; for now, re-raise
+        raise
+    return details or {}

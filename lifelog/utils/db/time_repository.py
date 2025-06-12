@@ -112,7 +112,7 @@ def upsert_local_time_log(data: Dict[str, Any]) -> None:
 
         fields = _get_all_time_field_names()  # includes "uid" if defined
         if existing:
-            local_id = existing["id"]
+            local_id = existing.id
             # Build updates-only dict (only fields present in data and in schema)
             updates = {k: data[k] for k in fields if k in data}
             try:
@@ -276,11 +276,17 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
     """
     # 1) Normalize 'start'
     try:
-        if isinstance(data.get("start"), datetime):
-            data["start"] = data["start"].isoformat()
+        start_val = data.get("start")
+        if isinstance(start_val, datetime):
+            data["start"] = start_val.isoformat()
         else:
-            # If missing or not datetime, set to now ISO
-            data["start"] = data.get("start") or datetime.now().isoformat()
+            # If missing or not datetime or not a valid ISO string, set to now ISO
+            # If it's a string, we assume it's already ISO or parse elsewhere; but to be safe:
+            if not start_val:
+                data["start"] = datetime.now().isoformat()
+            else:
+                # Could validate ISO format here; for now assume user passed correct ISO
+                data["start"] = start_val
     except Exception as e:
         logger.error(
             f"Error normalizing start in start_time_entry: {e}", exc_info=True)
@@ -288,7 +294,7 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
 
     # 2) Normalize/assign uid
     try:
-        if "uid" not in data or not data["uid"]:
+        if not data.get("uid"):
             data["uid"] = str(uuid.uuid4())
     except Exception as e:
         logger.error(
@@ -303,7 +309,6 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
         logger.error(
             f"Failed to insert new time entry into local DB: {e}; data={data}", exc_info=True)
         raise
-
     # 4) Retrieve the inserted row by uid
     conn = None
     try:
@@ -382,9 +387,9 @@ def stop_active_time_entry(
         if not row:
             raise RuntimeError("No active time entry to stop.")
         record = dict(row)
-        local_id = record["id"]
+        local_id = record.id
         uid_val = record.get("uid")
-        start_iso = record["start"]
+        start_iso = record.start
         try:
             start_dt = datetime.fromisoformat(start_iso)
         except Exception:
@@ -477,6 +482,7 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     try:
         if isinstance(data.get("start"), datetime):
             data["start"] = data["start"].isoformat()
+        # else if string, assume ISO
         if isinstance(data.get("end"), datetime):
             data["end"] = data["end"].isoformat()
     except Exception as e:
@@ -488,8 +494,10 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     try:
         if data.get("end") is not None:
             if data.get("duration_minutes") is None:
-                st = datetime.fromisoformat(data["start"])
-                ed = datetime.fromisoformat(data["end"])
+                st_iso = data["start"]
+                ed_iso = data["end"]
+                st = datetime.fromisoformat(st_iso)
+                ed = datetime.fromisoformat(ed_iso)
                 data["duration_minutes"] = max(
                     0.0, (ed - st).total_seconds() / 60.0)
     except Exception as e:
@@ -506,7 +514,7 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
             f"Error generating uid in add_time_entry: {e}", exc_info=True)
         raise
 
-    # 4) Insert into local SQLite
+    # 4) Insert into local SQLite...
     fields = _get_all_time_field_names()
     try:
         add_record("time_history", data, fields)
@@ -750,3 +758,36 @@ def delete_time_log_by_uid(uid_val: str) -> None:
     finally:
         if conn:
             conn.close()
+
+
+def add_distracted_minutes_to_active(mins: float) -> float:
+    """
+    Increment distracted_minutes on the currently active TimeLog by `mins`.
+    Returns the new total distracted_minutes.
+    Raises RuntimeError if no active entry.
+    """
+    # 1) Fetch active entry
+    active = get_active_time_entry()
+    if not active:
+        raise RuntimeError(
+            "No active time entry to add distracted minutes to.")
+    # 2) Compute new total
+    current = getattr(active, "distracted_minutes", 0.0) or 0.0
+    try:
+        mins_float = float(mins)
+    except Exception:
+        raise ValueError(f"Invalid minutes value: {mins}")
+    new_total = current + mins_float
+    # 3) Update via update_time_entry so sync logic is applied
+    try:
+        # update_time_entry expects entry_id and keyword updates
+        updated = update_time_entry(active.id, distracted_minutes=new_total)
+    except Exception as e:
+        logger.error(
+            f"Failed to update distracted_minutes for entry id={active.id}: {e}", exc_info=True)
+        raise
+    # 4) Return new value (from updated or our calculation)
+    # If update_time_entry returns a TimeLog, use its distracted_minutes; else fallback
+    if updated and getattr(updated, "distracted_minutes", None) is not None:
+        return updated.distracted_minutes
+    return new_total

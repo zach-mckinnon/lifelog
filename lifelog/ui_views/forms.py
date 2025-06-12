@@ -40,7 +40,7 @@ class TaskForm(npyscreen.ActionFormV2):
             npyscreen.TitleCombo,
             name="Importance (1-5):",
             values=["1", "2", "3", "4", "5"],
-            value="3",  # Default to medium
+            value="2",  # Default to medium
             begin_entry_at=18
         )
         self.notes = self.add(npyscreen.TitleMultiLine,
@@ -124,32 +124,107 @@ class TaskForm(npyscreen.ActionFormV2):
     def on_ok(self):
         try:
             input_data = {}
+            # Title
             input_data["title"] = self.title.value.strip()
-            input_data["category"] = self.category.value or None
-            input_data["project"] = self.project.value or None
-            input_data["due"] = self.due.value.strip() or None
-            input_data["importance"] = int(self.importance.value)
-            input_data["notes"] = "\n".join(self.notes.values) if hasattr(
-                self.notes, "values") else self.notes.value
-            input_data["tags"] = self.tags.value.strip() or None
+            # Category/project
+            input_data["category"] = self.category.value.strip() or None
+            input_data["project"] = self.project.value.strip() or None
+            # Due
+            due_str = self.due.value.strip()
+            input_data["due"] = due_str or None
+
+            # Importance: read from TitleCombo index
+            if isinstance(self.importance.value, int):
+                idx = self.importance.value
+                # guard index range
+                if 0 <= idx < len(self.importance.values):
+                    importance_str = self.importance.values[idx]
+                    try:
+                        importance = int(importance_str)
+                    except:
+                        raise ValueError(
+                            f"Invalid importance: {importance_str}")
+                else:
+                    raise ValueError(
+                        f"Importance selection out of range: {idx}")
+            else:
+                # fallback if value somehow a string
+                importance = int(self.importance.value)
+            input_data["importance"] = importance
+
+            # Notes
+            if hasattr(self.notes, "values"):
+                input_data["notes"] = "\n".join(
+                    self.notes.values).strip() or None
+            else:
+                input_data["notes"] = self.notes.value.strip() or None
+
+            # Tags
+            tags_str = (self.tags.value or "").strip()
+            input_data["tags"] = tags_str or None
+
+            # Validate required
             validate_task_inputs(
                 title=input_data["title"],
                 importance=input_data["importance"]
             )
-            # Recurrence
-            if self.recur_enabled.get_selected_objects() and self.recur_enabled.get_selected_objects()[0] == "Yes":
+
+            # Recurrence block
+            if (self.recur_enabled.get_selected_objects() and
+                    self.recur_enabled.get_selected_objects()[0] == "Yes"):
+                # everyX
+                everyX_val = self.recur_everyX.value.strip()
+                if not everyX_val:
+                    raise ValueError(
+                        "Recurrence: 'every X' is required if repeating")
+                try:
+                    everyX = int(everyX_val)
+                except:
+                    raise ValueError(
+                        f"Invalid recurrence everyX: {everyX_val}")
+
+                # unit: read from TitleCombo index
+                if isinstance(self.recur_unit.value, int):
+                    idx_u = self.recur_unit.value
+                    if 0 <= idx_u < len(self.recur_unit.values):
+                        unit = self.recur_unit.values[idx_u]
+                    else:
+                        raise ValueError(
+                            f"Invalid recurrence unit selection: {idx_u}")
+                else:
+                    unit = self.recur_unit.value.strip()
+
+                # daysOfWeek
+                days_val = (self.recur_days.value or "").strip()
+                if days_val:
+                    try:
+                        daysOfWeek = [int(d) for d in days_val.split(
+                            ",") if d.strip() != ""]
+                    except:
+                        raise ValueError(
+                            f"Invalid recurrence days: {days_val}")
+                else:
+                    daysOfWeek = []
+
+                # onFirstOfMonth
+                onFirst = False
+                if (self.recur_first_of_month.get_selected_objects() and
+                        self.recur_first_of_month.get_selected_objects()[0] == "Yes"):
+                    onFirst = True
+
                 input_data["recurrence"] = {
                     "repeat": True,
-                    "everyX": int(self.recur_everyX.value or 1),
-                    "unit": self.recur_unit.value,
-                    "daysOfWeek": [int(d) for d in (self.recur_days.value or "").split(",") if d.strip()],
-                    "onFirstOfMonth": bool(self.recur_first_of_month.get_selected_objects() and self.recur_first_of_month.get_selected_objects()[0] == "Yes"),
+                    "everyX": everyX,
+                    "unit": unit,
+                    "daysOfWeek": daysOfWeek,
+                    "onFirstOfMonth": onFirst,
                     "baseDueTime": datetime.now().isoformat(),
                     "lastCreated": datetime.now().isoformat(),
                 }
             else:
                 input_data["recurrence"] = None
 
+            # Pass back
             self.parentApp.form_data = input_data
             self.parentApp.setNextForm(None)
         except Exception as e:
@@ -485,7 +560,7 @@ def run_goal_form_prefilled(goal=None):
     """
     class GoalEditApp(npyscreen.NPSAppManaged):
         def onStart(selfx):
-            selfx.goal_kind = goal.get("kind") if goal else None
+            selfx.goal_kind = goal.kind if goal else None
             form = selfx.addForm("MAIN", GoalDetailForm, name="Goal Details")
             if goal:
                 form.title.value = goal.get("title", "")

@@ -106,7 +106,8 @@ def add(
 
     # Add to repo
     try:
-        tracker_id = track_repository.add_tracker(tracker)
+        new_tracker = track_repository.add_tracker(tracker)
+        tracker_id = new_tracker.id
         if goal:
             track_repository.add_goal(tracker_id=tracker_id, goal_data=goal)
     except Exception as e:
@@ -208,33 +209,24 @@ def list_trackers(
         tracker_id = str(t.id or "-")
         title = t.title
         category_str = t.category or "-"
-
         goals = track_repository.get_goals_for_tracker(t.id)
         goal_str = "-"
         progress_display = "-"
-
         if goals:
             goal = goals[0]
-            goal_title = getattr(goal, "title", title)
+            goal_str = goal.title or title
             try:
-                report = generate_goal_report({
-                    "id": t.id,
-                    "title": title,
-                    "type": t.type,
-                    "category": category_str,
-                    "goals": [goal]  # Pass the single goal explicitly
-                })
-                goal_str = goal_title
+                report = generate_goal_report(t)  # pass Tracker instance
+                # format_goal_display expects (goal_title, report)
                 progress_display = "\n".join(
-                    format_goal_display(goal_title, report))
+                    format_goal_display(goal_str, report))
             except Exception as e:
                 console.print(
                     f"[yellow]⚠️ Could not generate report for {title}: {e}[/yellow]")
-
         table.add_row(tracker_id, title, category_str,
                       goal_str, progress_display)
 
-    console.print(table)
+        console.print(table)
 
 
 @app.command("delete")
@@ -418,7 +410,7 @@ def validate_type(title: str, value: str):
     goals = definition.get("goals", [])
     if goals:
         for goal in goals:
-            goal_kind = goal.get("kind")
+            goal_kind = goal.kind
 
             # Validate based on goal type
             if goal_kind == "range" and isinstance(value, (int, float)):
@@ -442,12 +434,12 @@ def validate_type(title: str, value: str):
     return value
 
 
-def validate_value_against_tracker(tracker: dict, value: Any) -> Any:
+def validate_value_against_tracker(tracker: Tracker, value: Any) -> Any:
     """
     Validate a value against the tracker's expected type.
-    If the type doesn't match, prompt the user until a valid value is given.
+    If invalid, prompt again.
     """
-    tracker_type = tracker.get("type")
+    tracker_type = tracker.type  # use attribute
 
     def _prompt_correct_value():
         if tracker_type == "int":
@@ -456,13 +448,12 @@ def validate_value_against_tracker(tracker: dict, value: Any) -> Any:
             return prompt("Enter a float value", type=float)
         elif tracker_type == "bool":
             resp = prompt("Enter true/false, yes/no, 1/0").lower()
-            if resp in ["true", "yes", "y", "1"]:
-                return 1
-            elif resp in ["false", "no", "n", "0"]:
-                return 0
-            else:
-                console.print("[bold red]Invalid boolean input.[/bold red]")
-                return _prompt_correct_value()  # recursively ask again
+            if resp in ["true", "yes", "1"]:
+                return True
+            elif resp in ["false", "no", "0"]:
+                return False
+            console.print("[bold red]Invalid boolean input.[/bold red]")
+            return _prompt_correct_value()
         elif tracker_type == "str":
             return prompt("Enter a string value")
         else:
@@ -476,15 +467,15 @@ def validate_value_against_tracker(tracker: dict, value: Any) -> Any:
             return float(value)
         elif tracker_type == "bool":
             if isinstance(value, bool):
-                return int(value)
+                return value
             if isinstance(value, (int, float)):
-                return int(bool(value))
+                return bool(value)
             if isinstance(value, str):
                 if value.lower() in ["true", "yes", "y", "1"]:
-                    return 1
-                elif value.lower() in ["false", "no", "n", "0"]:
-                    return 0
-            raise ValueError  # force fallback to prompt
+                    return True
+                if value.lower() in ["false", "no", "n", "0"]:
+                    return False
+            raise ValueError
         elif tracker_type == "str":
             return str(value)
         else:

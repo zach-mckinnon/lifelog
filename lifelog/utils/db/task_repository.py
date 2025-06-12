@@ -1,9 +1,9 @@
 from dataclasses import asdict
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 import uuid
 from lifelog.config.config_manager import is_host_server
-from lifelog.utils.db.models import Task, get_task_fields, task_from_row
+from lifelog.utils.db.models import Task, TaskStatus, get_task_fields, task_from_row
 from lifelog.utils.db.database_manager import get_connection, add_record, update_record
 from datetime import datetime
 import sqlite3
@@ -19,7 +19,7 @@ from lifelog.commands.task_module import calculate_priority
 logger = logging.getLogger(__name__)
 
 
-def get_all_tasks():
+def get_all_tasks() -> List[Task]:
     """
     Return all tasks from the local SQLite database, ordered by due ASC.
     If we're in client mode (should_sync()), first pull remote tasks down and upsert them locally.
@@ -103,7 +103,7 @@ def get_task_by_id(task_id):
     return task_from_row(dict(task_row)) if task_row else None
 
 
-def add_task(task_data):
+def add_task(task_data) -> Task:
     """
     Accept dict or Task object; fill in defaults only if missing:
       - created: now if missing
@@ -127,16 +127,22 @@ def add_task(task_data):
     # 3) Defaults only when missing (None)
     # created timestamp
     if data.get("created") is None:
-        data["created"] = datetime.now().isoformat()
+        data.id = datetime.now().isoformat()
 
     # status default
-    if data.get("status") is None:
-        data["status"] = "backlog"
+    status_val = data.get("status")
+    if status_val is not None:
+        try:
+            data["status"] = TaskStatus(status_val)
+        except ValueError:
+            raise ValueError(f"Invalid status: {status_val}")
+    else:
+        data["status"] = TaskStatus.BACKLOG
 
     # importance default: only if missing
     if data.get("importance") is None:
         # You may define a module-level constant DEFAULT_IMPORTANCE = 1
-        data["importance"] = 1
+        data.importance = 1
 
     # priority default: only if missing; calculate via calculate_priority()
     if data.get("priority") is None:
@@ -149,6 +155,9 @@ def add_task(task_data):
             logger.error(
                 f"Failed to calculate priority for new task: {e}", exc_info=True)
             data["priority"] = 1.0
+
+    if 'due' in data and data['due'] is not None:
+        data['due'] = datetime.fromisoformat(data['due'])
 
     # 4) UID: auto-generate if missing
     if not data.get("uid"):

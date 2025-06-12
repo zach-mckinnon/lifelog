@@ -1,13 +1,13 @@
 import typer
-import json
 from enum import Enum
 from typing import Dict, Any
 from rich.console import Console
 from rich.panel import Panel
 from datetime import datetime
-
+import pandas as pd
 from lifelog.utils.db import track_repository
 from lifelog.utils.shared_utils import filter_entries_for_current_period
+from lifelog.utils.db.models import Tracker, Goal
 app = typer.Typer()
 console = Console()
 
@@ -117,7 +117,7 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
 
     # Additional fields based on goal kind
     if goal_kind == GoalKind.BOOL:
-        goal["amount"] = True
+        goal.amount = True
     elif goal_kind == GoalKind.RANGE:
         goal["min_amount"] = float(typer.prompt(
             "Enter minimum value", type=float))
@@ -128,7 +128,7 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
     elif goal_kind == GoalKind.REPLACEMENT:
         goal["old_behavior"] = typer.prompt("Enter behavior to replace")
         goal["new_behavior"] = typer.prompt("Enter replacement behavior")
-        goal["amount"] = True
+        goal.amount = True
     elif goal_kind == GoalKind.PERCENTAGE:
         goal["target_percentage"] = float(typer.prompt(
             "Enter target percentage (0-100)", type=float))
@@ -144,174 +144,216 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
         goal["target_streak"] = int(typer.prompt(
             "Enter target streak length", type=int))
     elif goal_kind == GoalKind.DURATION:
-        goal["amount"] = float(typer.prompt(
+        goal.amount = float(typer.prompt(
             "Enter duration amount", type=float))
         goal["unit"] = typer.prompt(
             "Enter time unit (e.g., 'minutes', 'hours')", default="minutes")
     elif goal_kind in [GoalKind.SUM, GoalKind.COUNT, GoalKind.REDUCTION]:
-        goal["amount"] = float(typer.prompt("Enter target amount", type=float))
+        goal.amount = float(typer.prompt("Enter target amount", type=float))
         goal["unit"] = typer.prompt(
             "Enter unit (e.g., 'oz', 'times', 'pages', leave blank if none)", default="")
 
     return goal
 
 
-def calculate_goal_progress(tracker: Dict[str, Any]) -> Dict[str, Any]:
+def calculate_goal_progress(tracker: Tracker) -> Dict[str, Any]:
     """
-    Given a tracker object, calculate its goal progress and return a summary
-    including a formatted string for display.
+    Given a Tracker dataclass, calculate its first-goal progress summary.
     """
-    entries = track_repository.get_entries_for_tracker(tracker["id"])
+    # Fetch entries as dataclass instances
+    entries = track_repository.get_entries_for_tracker(tracker.id)
+    # If no entries, early return
     if not entries:
-        return {"progress": 0, "status": "This tracker is ready for your first entry! 📝"}
+        return {
+            "progress": 0,
+            "status": "This tracker is ready for your first entry! 📝"
+        }
 
-    goals = tracker.get("goals")
+    # Fetch goals (list of Goal dataclasses)
+    goals = tracker.goals or track_repository.get_goals_for_tracker(tracker.id)
     if not goals:
         return {"progress": None, "status": "No goal set for this tracker."}
 
-    # assume first goal if list
-    goal = goals if isinstance(goals, dict) else goals[0]
-    goal_kind = goal.get("kind")
-    period = goal.get("period", None)
+    # Use first goal
+    goal = goals[0]
+    kind = goal.kind
+    period = getattr(goal, "period", None)
 
-    # ✅ Apply period filter if exists
+    # Build DataFrame from entries
+    df_all = pd.DataFrame([e.to_dict() for e in entries])
+    # Filter by period if needed
     if period:
-        df = filter_entries_for_current_period(entries, period)
-        entries = df.to_dict('records')
+        # filter_entries_for_current_period should accept DataFrame and return DataFrame
+        df_filtered = filter_entries_for_current_period(df_all, period)
+    else:
+        df_filtered = df_all
 
-    # After filtering, still check if empty
-    if not entries:
+    if df_filtered.empty:
         return {"progress": 0, "status": f"No entries yet for this {period} period."}
 
-    progress = {}
-
-    now = datetime.now()
-
-    # SUM goal: accumulated total
-    if goal_kind == GoalKind.SUM.value:
-        total = sum(entry["value"] for entry in entries)
+    progress: Dict[str, Any] = {}
+    # Now handle each kind, using attribute access on goal and DataFrame columns
+    if kind == "sum":
+        total = df_filtered["value"].sum()
+        target = getattr(goal, "amount", None)
+        completed = (total >= target) if target is not None else False
         progress.update({
             "progress": total,
-            "target": goal["amount"],
-            "completed": total >= goal["amount"]
+            "target": target,
+            "completed": completed
         })
-
-    # COUNT goal: count of entries
-    elif goal_kind == GoalKind.COUNT.value:
-        count = len(entries)
+    elif kind == "count":
+        count = len(df_filtered)
+        target = getattr(goal, "amount", None)
+        completed = (count >= target) if target is not None else False
         progress.update({
             "progress": count,
-            "target": goal["amount"],
-            "completed": count >= goal["amount"]
+            "target": target,
+            "completed": completed
         })
-
-    # BOOL goal: number of distinct days with a True value
-    elif goal_kind == GoalKind.BOOL.value:
-        completed_days = {entry["timestamp"][:10]
-                          for entry in entries if entry["value"]}
+    elif kind == "bool":
+        # Count distinct days where value True
+        # Ensure timestamp parsed
+        df_filtered["date"] = pd.to_datetime(df_filtered["timestamp"]).dt.date
+        true_days = df_filtered[df_filtered["value"]].date.unique()
+        num = len(true_days)
         progress.update({
-            "progress": len(completed_days),
+            "progress": num,
             "target": 1,
-            "completed": bool(completed_days)
+            "completed": bool(num >= 1)
         })
-
-    # STREAK goal (placeholder implementation)
-    elif goal_kind == GoalKind.STREAK.value:
+    elif kind == "streak":
+        # Example streak logic: count consecutive days up to today
+        df_filtered["date"] = pd.to_datetime(df_filtered["timestamp"]).dt.date
+        dates = sorted(df_filtered["date"].unique())
+        today = datetime.today().date()
+        streak = 0
+        for d in reversed(dates):
+            if (today - d).days == streak:
+                streak += 1
+            else:
+                break
+        target_streak = getattr(goal, "target_streak", None)
+        completed = (
+            streak >= target_streak) if target_streak is not None else False
         progress.update({
-            "progress": 0,  # Implement real streak logic if needed
-            "target": goal["target_streak"],
-            "completed": False
+            "progress": streak,
+            "target": target_streak,
+            "completed": completed
         })
-
-    # MILESTONE goal
-    elif goal_kind == GoalKind.MILESTONE.value:
-        current = goal.get("current", 0)
+    elif kind == "duration":
+        total = df_filtered["value"].sum()
+        target = getattr(goal, "amount", None)
+        completed = (total >= target) if target is not None else False
+        progress.update({
+            "progress": total,
+            "target": target,
+            "completed": completed
+        })
+    elif kind == "milestone":
+        # Assume 'current' stored or sum entries?
+        # If your model stores current separately, use that; else sum:
+        current = df_filtered["value"].sum()
+        target = getattr(goal, "target", None)
+        completed = (current >= target) if target is not None else False
         progress.update({
             "progress": current,
-            "target": goal["target"],
-            "completed": current >= goal["target"]
-        })
-
-    # RANGE goal
-    elif goal_kind == GoalKind.RANGE.value:
-        latest_value = entries[-1]["value"]
-        min_val = goal["min_amount"]
-        max_val = goal["max_amount"]
-        progress.update({
-            "progress": latest_value,
-            "target": f"{min_val}–{max_val}",
-            "completed": min_val <= latest_value <= max_val
-        })
-
-    # REDUCTION goal
-    elif goal_kind == GoalKind.REDUCTION.value:
-        latest_value = entries[-1]["value"]
-        target = goal["amount"]
-        progress.update({
-            "progress": latest_value,
             "target": target,
-            "completed": latest_value <= target
+            "completed": completed
         })
-
-    # PERCENTAGE goal
-    elif goal_kind == GoalKind.PERCENTAGE.value:
-        current_pct = goal.get("current_percentage", 0)
+    elif kind == "range":
+        # Latest entry value
+        latest = df_filtered["value"].iloc[-1]
+        min_amt = getattr(goal, "min_amount", None)
+        max_amt = getattr(goal, "max_amount", None)
+        in_range = False
+        if min_amt is not None and max_amt is not None:
+            in_range = (min_amt <= latest <= max_amt)
         progress.update({
-            "progress": current_pct,
-            "target": goal["target_percentage"],
-            "completed": current_pct >= goal["target_percentage"]
+            "progress": latest,
+            "target": (min_amt, max_amt),
+            "completed": in_range
         })
-
+    elif kind == "reduction":
+        latest = df_filtered["value"].iloc[-1]
+        target = getattr(goal, "amount", None)
+        completed = (latest <= target) if target is not None else False
+        progress.update({
+            "progress": latest,
+            "target": target,
+            "completed": completed
+        })
+    elif kind == "percentage":
+        # If entries store percent over time? Otherwise use stored current_percentage?
+        latest_pct = df_filtered["value"].iloc[-1]
+        target_pct = getattr(goal, "target_percentage", None)
+        completed = (
+            latest_pct >= target_pct) if target_pct is not None else False
+        progress.update({
+            "progress": latest_pct,
+            "target": target_pct,
+            "completed": completed
+        })
+    elif kind == "replacement":
+        # E.g., positive values count new behavior, negative old
+        new_count = (df_filtered["value"] > 0).sum()
+        old_count = (df_filtered["value"] < 0).sum()
+        total = new_count + old_count
+        ratio = (new_count / total * 100) if total else 0
+        completed = ratio >= 75
+        progress.update({
+            "progress": ratio,
+            "target": 75,
+            "completed": completed,
+            "new_count": new_count,
+            "old_count": old_count
+        })
     else:
-        progress.update({"progress": "Unknown Goal Kind", "completed": False})
+        progress.update(
+            {"progress": None, "status": "Unknown goal kind", "completed": False})
 
-    # Add formatted summary to progress for CLI display
-    progress["summary"] = format_goal_progress_for_list_view(tracker, progress)
+    # Add summary formatting if desired
+    progress["summary"] = format_goal_progress_for_list_view(
+        tracker, progress, goal)
     return progress
 
 
-def format_goal_progress_for_list_view(tracker: dict, progress: dict) -> str:
+def format_goal_progress_for_list_view(tracker: Tracker, progress: Dict[str, Any], goal) -> str:
     """
-    Nicely format the progress report for a tracker in the list view.
+    Format progress summary for display in CLI list.
     """
-    goal = tracker.get("goals", [{}])[0]
-    goal_kind = goal.get("kind")
+    kind = goal.kind
     value = progress.get("progress")
     target = progress.get("target")
-    completed = progress.get("completed")
+    completed = progress.get("completed", False)
     check = "✓" if completed else "✗"
 
-    if goal_kind == "range":
-        return f"Now: {value} / Target: {target} {check}"
-
-    if goal_kind == "sum":
+    if kind == "range":
+        min_val, max_val = target if isinstance(
+            target, tuple) else (None, None)
+        return f"Now: {value} (range {min_val}-{max_val}) {check}"
+    if kind == "sum":
         pct = round((value / target) * 100) if target else 0
         return f"{value} / {target} ({pct}%) {check}"
-
-    if goal_kind == "count":
-        remaining = int(target) - int(value)
-        return f"{value} / {target} ({remaining} left) {check}"
-
-    if goal_kind == "bool":
+    if kind == "count":
+        remaining = int(target) - int(value) if target is not None else None
+        rem_str = f" ({remaining} left)" if remaining not in (None, 0) else ""
+        return f"{value} / {target}{rem_str} {check}"
+    if kind == "bool":
         return f"{value} day(s) completed {check}"
-
-    if goal_kind == "streak":
-        return f"🔥 Streak: {value} / {target}"
-
-    if goal_kind == "milestone":
+    if kind == "streak":
+        return f"🔥 Streak: {value} / {target} {check}"
+    if kind == "milestone":
         pct = round((value / target) * 100) if target else 0
-        return f"{value} / {target} ({pct}%)"
-
-    if goal_kind == "reduction":
-        status = "✓ Below target" if completed else f"✗ {value} > {target}"
-        return f"Now: {value} | Target: < {target} {status}"
-
-    if goal_kind == "percentage":
-        return f"{value}% of {target}% goal"
-
-    if goal_kind == "replacement":
-        old = goal.get("old_behavior", "?")
-        new = goal.get("new_behavior", "?")
-        return f"Replacing '{old}' ➡ '{new}' | {value}"
-
+        return f"{value} / {target} ({pct}%) {check}"
+    if kind == "reduction":
+        status = "Below target ✓" if completed else f"{value} > {target} ✗"
+        return f"Now: {value} | Target: ≤{target} | {status}"
+    if kind == "percentage":
+        return f"{value}% of {target}% {check}"
+    if kind == "replacement":
+        new_count = progress.get("new_count", 0)
+        old_count = progress.get("old_count", 0)
+        return f"Replacing: {new_count} new / {old_count} old ({value:.1f}%) {check}"
+    # Unknown
     return str(value)

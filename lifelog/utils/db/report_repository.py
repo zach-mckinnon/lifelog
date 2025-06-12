@@ -9,26 +9,29 @@ from lifelog.utils.reporting.insight_engine import generate_insights
 
 
 def get_tracker_summary(since_days: int = 7) -> pd.DataFrame:
-    """Summarize all trackers with their total values since N days."""
+    """
+    Build a DataFrame of tracker entries in the last `since_days` days.
+    """
     since = datetime.now() - timedelta(days=since_days)
+    # List[Tracker]
     trackers = track_repository.get_all_trackers_with_entries()
     rows = []
 
     for tracker in trackers:
-        for entry in tracker.get("entries", []):
-            if datetime.fromisoformat(entry["timestamp"]) >= since:
+        for entry in tracker.entries or []:  # TrackerEntry instance
+            timestamp = entry.timestamp
+           # Normalize to ISO string for comparison and output
+            if isinstance(timestamp, datetime):
+                ts_iso = timestamp.isoformat()
+            else:
+                ts_iso = timestamp
+            if datetime.fromisoformat(ts_iso) >= since:
                 rows.append({
-                    "tracker": tracker["title"],
-                    "timestamp": entry["timestamp"],
-                    "value": entry["value"]
+                    "tracker": tracker.title,
+                    "timestamp": ts_iso,
+                    "value": entry.value
                 })
-
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    return df.groupby('tracker')['value'].sum().reset_index()
+    return pd.DataFrame(rows)
 
 
 def get_time_summary(since_days: int = 7) -> pd.DataFrame:
@@ -54,7 +57,7 @@ def get_daily_tracker_averages(metric_name: str, since_days: int = 7) -> pd.Data
     if not tracker:
         return pd.DataFrame()
 
-    for entry in track_repository.get_entries_for_tracker(tracker["id"]):
+    for entry in track_repository.get_entries_for_tracker(tracker.id):
         if datetime.fromisoformat(entry["timestamp"]) >= since:
             entries.append({
                 "timestamp": entry["timestamp"],

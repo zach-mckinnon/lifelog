@@ -3,16 +3,17 @@
 Lifelog Task Management Module
 This module provides functionality to create, modify, delete, and manage tasks within the Lifelog application.
 It includes features for tracking time spent on tasks, setting reminders, and managing task recurrence.
-The module uses JSON files for data storage and integrates with a cron job system for scheduling reminders.
 '''
 from dataclasses import asdict
 
 from datetime import datetime, timedelta
 import re
+from shlex import shlex
+import subprocess
+from sys import platform
 import typer
 import json
 from datetime import datetime, timedelta
-from tomlkit import table
 from typing import List, Optional
 import plotext as plt
 
@@ -26,9 +27,9 @@ import calendar
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, parse_args, validate_task_inputs
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, validate_task_inputs
 import lifelog.config.config_manager as cf
-from lifelog.config.schedule_manager import apply_scheduled_jobs, save_config
+from lifelog.config.schedule_manager import IS_POSIX, apply_scheduled_jobs, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
 from lifelog.utils.get_quotes import get_feedback_saying, get_motivational_quote
 from lifelog.utils.hooks import build_payload, run_hooks
@@ -158,6 +159,24 @@ def add(
 
     console.print(
         f"[green]✅ Task added[/green]: [bold blue]{title}[/bold blue]")
+    if due_dt:
+        if Confirm.ask("Would you like to set a reminder before due?"):
+            # Prompt for offset
+            offset_str = typer.prompt(
+                "How long before due for reminder? (e.g. '1d', '2h', '120')",
+                type=str
+            ).strip()
+            if offset_str:
+                try:
+                    # Use the updated create_due_alert that accepts offset_str
+                    create_due_alert(task, offset_str)
+                except Exception as e:
+                    console.print(
+                        f"[bold red]❌ Could not set reminder: {e}[/bold red]")
+                    # Not fatal; continue
+                else:
+                    console.print(
+                        f"[green]✅ Reminder set {offset_str} before due.[/green]")
     console.print(get_feedback_saying("task_added"))
 
 
@@ -324,7 +343,8 @@ def start(id: int):
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
-    if task.status not in ["backlog", "active"]:
+    # Assuming Task.status is a string or Enum; compare accordingly
+    if getattr(task, "status", None) not in ["backlog", "active"]:
         console.print(
             f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (backlog or active only).")
         raise typer.Exit(code=1)
@@ -333,16 +353,35 @@ def start(id: int):
     active_entry = time_repository.get_active_time_entry()
     if active_entry:
         console.print(
-            f"[yellow]⚠️ Warning[/yellow]: Another time log is already running.. {active_entry['title']}")
+            f"[yellow]⚠️ Warning[/yellow]: Another time log is already running: {active_entry.title}")
         raise typer.Exit(code=1)
 
-    # Mark task as active in DB
-    task_repository.update_task(
-        id, {"status": "active", "start": now.isoformat()})
+    # 1) Mark task as active in DB, set its start timestamp
+    # Use ISO-format string for storage if the repository stores datetimes as ISO strings
+    update_payload = {"status": "active", "start": now.isoformat()}
+    task_repository.update_task(id, update_payload)
+    # Optionally refresh the task object:
+    task = task_repository.get_task_by_id(id)
 
-    # Start time tracking linked to the task
-    time_repository.start_time_entry(
-        task.title, task_id=id, start_time=now.isoformat())
+    # 2) Start time tracking linked to the task.
+    # Build a dict matching time_repository.start_time_entry signature:
+    time_entry_data = {
+        "title": task.title or "",
+        "task_id": id,
+        "start": now.isoformat(),
+        "category": task.category,
+        "project": task.project,
+        "tags": task.tags,
+        "notes": f"Started via task {id}",
+    }
+    try:
+        time_repository.start_time_entry(time_entry_data)
+    except Exception as e:
+        console.print(
+            f"[bold red]❌ Failed to start time entry: {e}[/bold red]")
+        # Optionally roll back task status? For now, exit with error
+        raise typer.Exit(code=1)
+
     run_hooks("task", "started", task)
     console.print(
         f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task.title}")
@@ -386,7 +425,7 @@ def modify(
         updates["project"] = project
     if due:
         try:
-            due_dt = parse_date_string(due)
+            due_dt = parse_date_string(due, future=True, now=now)
             updates["due"] = due_dt.isoformat()
         except Exception as e:
             console.print(f"[bold red]❌ Invalid due date: {e}[/bold red]")
@@ -415,22 +454,29 @@ def modify(
     # Priority recalc
     merged = asdict(task)
     merged.update(updates)
-    updates["priority"] = calculate_priority(merged)
+    try:
+        updates["priority"] = calculate_priority(merged)
+    except Exception as e:
+        console.print(
+            f"[yellow]⚠️ Could not recalculate priority: {e}[/yellow]")
+        updates["priority"] = getattr(task, "priority", 1)
 
     if not updates:
         console.print("[yellow]⚠️ No changes were made.[/yellow]")
         raise typer.Exit(code=0)
+
     try:
         validate_task_inputs(
-            title=title,
-            importance=importance,
+            title=updates.get("title", task.title),
+            importance=updates.get("importance", task.importance),
         )
 
     except Exception as e:
         console.print(f"[bold red]❌ {e}[/bold red]")
         raise typer.Exit(code=1)
+
     task_repository.update_task(id, updates)
-    updated_task = task = task_repository.get_task_by_id(id)
+    updated_task = task_repository.get_task_by_id(id)
     run_hooks("task", "updated", updated_task)
     console.print(
         f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
@@ -461,7 +507,12 @@ def stop(
     Pause the currently active task and stop timing, without marking it done.
     """
     now = datetime.now()
-    tags, notes = parse_args(args or [])
+    # parse_args returns lists; if args is None, treat as empty
+    try:
+        tags, notes = parse_args(args or [])
+    except ValueError as e:
+        console.print(f"[error]{e}[/error]")
+        raise typer.Exit(code=1)
 
     # Check if active time log exists
     active = time_repository.get_active_time_entry()
@@ -470,85 +521,113 @@ def stop(
             "[yellow]⚠️ Warning[/yellow]: No active task is being tracked.")
         raise typer.Exit(code=1)
 
-    if not active.get("task_id"):
+    # Use attribute access
+    if not getattr(active, "task_id", None):
         console.print(
             "[yellow]⚠️ Warning[/yellow]: Active log is not linked to a task.")
         raise typer.Exit(code=1)
 
-    task_id = active["task_id"]
+    task_id = active.task_id
     task = task_repository.get_task_by_id(task_id)
     if not task:
         console.print(
             "[bold red]❌ Error[/bold red]: Task for active tracking not found.")
         raise typer.Exit(code=1)
 
-    # Stop the time log
-    end_time = parse_date_string(past, now=now) if past else now
-    time_repository.stop_active_time_entry(
-        end_time=end_time.isoformat(),
-        tags=",".join(tags) if tags else None,
-        notes=notes if notes else None
-    )
+    # Determine end_time
+    try:
+        end_time = parse_date_string(past, now=now) if past else now
+    except Exception as e:
+        console.print(f"[bold red]❌ Invalid time: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Stop the time log. pass datetime directly or ISO string:
+    try:
+        # time_repository.stop_active_time_entry accepts datetime
+        updated_log = time_repository.stop_active_time_entry(
+            end_time=end_time,
+            tags=",".join(tags) if tags else None,
+            notes=notes if notes else None
+        )
+    except Exception as e:
+        console.print(f"[bold red]❌ Failed to stop timer: {e}[/bold red]")
+        raise typer.Exit(code=1)
 
     # Update the task back to 'backlog'
-    updates = {
-        "status": "backlog"
-    }
-    task_repository.update_task(task_id, updates)
+    task_repository.update_task(task_id, {"status": "backlog"})
 
-    duration_minutes = (
-        end_time - datetime.fromisoformat(active["start"])).total_seconds() / 60
+    # Compute duration: active.start is a datetime
+    start_dt = getattr(active, "start", None)
+    if isinstance(start_dt, datetime):
+        duration_minutes = (end_time - start_dt).total_seconds() / 60
+    else:
+        duration_minutes = 0.0
+
     run_hooks("task", "stopped", task)
     console.print(
-        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task.id}][/bold blue]: {task.title} — Duration: [cyan] {round(duration_minutes, 2)} [/cyan] minutes")
+        f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task.id}][/bold blue]: {task.title} — Duration: [cyan]{round(duration_minutes, 2)}[/cyan] minutes")
 
 
 @app.command()
 def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] = typer.Argument(None, help="Optional +tags and notes.")):
-    # Set a task to completed.
     """
     Mark a task as completed.
     """
     now = datetime.now()
-    tags, notes = parse_args(args or [])
+    try:
+        tags, notes = parse_args(args or [])
+    except ValueError as e:
+        console.print(f"[error]{e}[/error]")
+        raise typer.Exit(code=1)
 
-    # Lookup task directly from SQL
     task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
-    # Check if there's an active time entry
     active = time_repository.get_active_time_entry()
     if not active:
         console.print("[yellow]⚠️ No active timer. No new log saved.[/yellow]")
-
         # Just mark task done directly
         task_repository.update_task(id, {"status": "done"})
         console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
+        run_hooks("task", "completed", task)
         return
 
-    # Validate active log matches the task being marked done
-    if active.get("task_id") != id:
+    # Ensure active log belongs to this task
+    if getattr(active, "task_id", None) != id:
         console.print(
             f"[bold red]❌ Error[/bold red]: Active log is not for task ID {id}.")
         raise typer.Exit(code=1)
 
-    # Calculate duration
-    start_time = datetime.fromisoformat(active["start"])
-    end_time = parse_date_string(past, now=now) if past else now
-    duration = (end_time - start_time).total_seconds() / 60
+    # Compute end_time
+    try:
+        end_time = parse_date_string(past, now=now) if past else now
+    except Exception as e:
+        console.print(f"[bold red]❌ Invalid time: {e}[/bold red]")
+        raise typer.Exit(code=1)
 
-    # Stop the active time log and update with final tags/notes
-    time_repository.stop_active_time_entry(
-        end_time=end_time.isoformat(),
-        tags=",".join(tags) if tags else None,
-        notes=notes if notes else None
-    )
+    # Compute duration using active.start (a datetime)
+    start_dt = getattr(active, "start", None)
+    if isinstance(start_dt, datetime):
+        duration = (end_time - start_dt).total_seconds() / 60
+    else:
+        duration = 0.0
 
-    # Update task to done status
+    # Stop the active time log; pass datetime or ISO string
+    try:
+        time_repository.stop_active_time_entry(
+            end_time=end_time,
+            tags=",".join(tags) if tags else None,
+            notes=notes if notes else None
+        )
+    except Exception as e:
+        console.print(
+            f"[bold red]❌ Failed to stop active time entry: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Mark task as done
     task_repository.update_task(id, {"status": "done"})
-
     console.print(
         f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_feedback_saying("task_completed"))
@@ -753,11 +832,11 @@ def build_calendar_panel(now: datetime, tasks: list) -> Panel:
 
     # gather days_of_week to highlight
     due_days = {
-        datetime.fromisoformat(t["due"]).day
+        datetime.fromisoformat(t.due).day
         for t in tasks
         if t.get("due")
-        and datetime.fromisoformat(t["due"]).month == now.month
-        and datetime.fromisoformat(t["due"]).year == now.year
+        and datetime.fromisoformat(t.due).month == now.month
+        and datetime.fromisoformat(t.due).year == now.year
     }
 
     def highlight_month(text: str, due_days: set, today: int) -> Text:
@@ -914,19 +993,26 @@ def priority_color(priority_value):
 # Calculate the priority using an Eisenhower Matrix.
 
 
-def calculate_priority(task):
-    # Eisenhower matrix: Importance (1-5) vs Urgency
-    importance = task.get("importance", 3)
-
-    # Calculate urgency based on due date
-    urgency = 0
-    if due := task.get("due"):
-        due_date = datetime.fromisoformat(due)
-        days_left = (due_date - datetime.now()).days
-        # Scale urgency: 1.0 for today, 0.0 for >10 days
-        urgency = max(0, 1.0 - days_left/10)
-
-    # Combine importance and urgency
+def calculate_priority(task: Task) -> float:
+    if isinstance(task, dict):
+        importance = task.get("importance", 3)
+        due_val = task.get("due", None)
+    else:  # assume Task instance
+        importance = getattr(task, "importance", 3) or 3
+        due_val = getattr(task, "due", None)
+    urgency = 0.0
+    if due_val:
+        # due_val is likely a datetime already (repository parsed ISO into datetime)
+        if isinstance(due_val, str):
+            try:
+                due_date = datetime.fromisoformat(due_val)
+            except Exception:
+                due_date = None
+        else:
+            due_date = due_val
+        if due_date:
+            days_left = (due_date - datetime.now()).days
+            urgency = max(0.0, 1.0 - days_left / 10)
     return (importance * 0.6) + (urgency * 0.4)
 
 
@@ -945,46 +1031,169 @@ def parse_due_offset(due_str):
     return timedelta(days_of_week=1)  # default fallback
 
 
-def create_due_alert(task):
-    user_input = typer.prompt(
-        "How long before due would you like an alert? (examples: '120' for minutes or '1d' for 1 day)",
-        type=str
-    )
-    due = task.due
-    now = datetime.now()
+def create_due_alert(task, offset_str: str):
+    """
+    Schedule a reminder alert for `task` at (due_time - offset).
+    On POSIX: writes a cron job (one‐off) in the [cron] section and calls apply_scheduled_jobs().
+    On Windows: creates a one‐time Scheduled Task via schtasks.exe at the exact date/time.
+    offset_str: e.g. '120' (minutes), '1d', '2h', '30m', '1w', etc.
+    """
+    # 1. Obtain due_time from task.due
+    due = getattr(task, "due", None)
+    if not due:
+        raise ValueError("Task has no due date")
     if isinstance(due, str):
-        due_time = datetime.fromisoformat(due)
-    else:
+        try:
+            due_time = datetime.fromisoformat(due)
+        except Exception as e:
+            raise ValueError(
+                f"Task.due is not valid ISO datetime: {due}") from e
+    elif isinstance(due, datetime):
         due_time = due
-
-    # Try to parse user input
-    if user_input.isdigit():
-        # Just simple minutes
-        alert_minutes = int(user_input)
-        alert_time = due_time - timedelta(minutes=alert_minutes)
     else:
-        # Parse like '1d', '2h', etc.
-        # pretend it's future to get a positive delta
-        parsed_delta_start = parse_date_string(
-            user_input, future=True, now=now)
-        if parsed_delta_start is None:
-            console.print("[error]Invalid time format for alert![/error]")
-            raise typer.Exit(code=1)
+        raise ValueError(f"Unsupported due type: {type(due)}")
 
-        # Calculate the time offset difference
-        offset = parsed_delta_start - datetime.now()
-        # Now subtract that offset from the due time
-        alert_time = due_time - offset
+    # 2. Parse offset_str into timedelta
+    try:
+        offset = parse_offset_to_timedelta(offset_str)
+    except ValueError as e:
+        raise ValueError(f"Invalid reminder offset: {e}") from e
 
-    cron_time = f"{alert_time.minute} {alert_time.hour} {alert_time.day} {alert_time.month} *"
+    # 3. Compute alert_time
+    alert_time = due_time - offset
+    now = datetime.now()
+    if alert_time < now:
+        console.print(
+            f"[yellow]⚠️ Reminder time {alert_time.strftime('%Y-%m-%d %H:%M')} is in the past. Scheduling immediately.[/yellow]"
+        )
+        # schedule in ~5 seconds from now
+        alert_time = now + timedelta(seconds=5)
 
-    doc = cf.load_config()
-    cron_section = doc.get("cron", table())
-    cron_section[f"task_alert_{task.id}"] = {
-        "schedule": cron_time,
-        "command": f"notify-send '!! Reminder: Task [{task.id}] {task.title} is due soon!!'"
-    }
+    system = platform.system()
 
-    doc["cron"] = cron_section
-    save_config(doc)
-    apply_scheduled_jobs()
+    # Build the notification command. You may adjust for cross‐platform.
+    # For POSIX, we assume notify-send is available; for Windows, user might configure
+    # their own command or we can default to msg or PowerShell toast (left as an exercise).
+    # Here we simply reuse the same command string; on Windows you may need to adjust.
+    due_str = due_time.strftime('%Y-%m-%d %H:%M')
+    # Escape quotes via shlex.quote or manual
+    # We'll wrap title in quotes carefully:
+    # On POSIX: notify-send 'Reminder: Task [id] "title" is due at ...'
+    notification_message = f"Reminder: Task [{task.id}] \"{task.title}\" is due at {due_str}"
+    if IS_POSIX:
+        # POSIX: use notify-send
+        cmd = f"notify-send {shlex.quote(notification_message)}"
+    else:
+        # Windows: you might use PowerShell `New-BurntToastNotification` or `msg`, but leaving
+        # it simple: echo to console or use msg.exe if configured. User can customize config.
+        # Here we default to PowerShell popup if available; for now, fallback to msg:
+        # msg * "Reminder: Task [id] title is due at due_str"
+        # Note: msg requires messenger service or admin privileges; better to let user configure.
+        # For demo, we use a PowerShell balloon tip via PowerShell:
+        #   powershell -Command "New-BurntToastNotification -Text 'Reminder', 'Task ... is due at ...'"
+        # But BurntToast module may not be installed. As fallback, we just `msg`:
+        # We'll choose msg for simplicity:
+        msg_text = notification_message
+        cmd = f"msg * {shlex.quote(msg_text)}"
+        # You may let user override or detect a better notification command in config.
+
+    # 4. Schedule based on OS
+    if IS_POSIX:
+        # Build cron schedule: minute hour day month *
+        minute = alert_time.minute
+        hour = alert_time.hour
+        day = alert_time.day
+        month = alert_time.month
+        cron_time = f"{minute} {hour} {day} {month} *"
+
+        # Insert into config under [cron]
+        doc = cf.load_config()
+        cron_section = doc.get("cron", {})
+        name = f"task_due_{task.id}"
+        cron_section[name] = {
+            "schedule": cron_time,
+            "command": cmd
+        }
+        doc["cron"] = cron_section
+        ok = save_config(doc)
+        if not ok:
+            raise RuntimeError("Failed to save config for reminder")
+        apply_scheduled_jobs()
+        console.print(
+            f"[green]✅ Reminder scheduled at {alert_time.strftime('%Y-%m-%d %H:%M')} via cron[/green]")
+
+    else:
+        # Windows: schedule a one-time task via schtasks.exe
+        # Task name must be unique; prefix to avoid conflicts
+        name = f"Lifelog_task_due_{task.id}"
+        # Delete existing task with same name if any
+        try:
+            subprocess.run(
+                ["schtasks", "/Delete", "/TN", name, "/F"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False
+            )
+        except Exception:
+            # ignore
+            pass
+
+        # Prepare date/time strings for schtasks:
+        # /SC ONCE /ST HH:MM /SD MM/DD/YYYY
+        time_str = alert_time.strftime("%H:%M")
+        date_str = alert_time.strftime("%m/%d/%Y")
+        # Build command array
+        # Note: If cmd contains spaces or quotes, schtasks expects /TR "..." including quotes:
+        # We'll wrap cmd in double quotes.
+        # On Windows, msg * "text" may require double quotes around the message.
+        tr = cmd
+        # If the cmd string itself contains double quotes, escape them:
+        # For simplicity, wrap the entire cmd in double quotes and escape inner double quotes by backslash:
+        escaped_cmd = tr.replace('"', '\\"')
+        tr_quoted = f"\"{escaped_cmd}\""
+
+        schtasks_cmd = [
+            "schtasks",
+            "/Create",
+            "/SC", "ONCE",
+            "/TN", name,
+            "/TR", tr_quoted,
+            "/ST", time_str,
+            "/SD", date_str,
+            "/F"
+        ]
+        try:
+            subprocess.run(schtasks_cmd, check=True)
+            console.print(
+                f"[green]✅ Reminder scheduled at {alert_time.strftime('%Y-%m-%d %H:%M')} via Windows Scheduled Task[/green]")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"schtasks failed: {e}") from e
+        except FileNotFoundError as e:
+            raise RuntimeError(f"schtasks.exe not found: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"Failed to schedule Windows task: {e}") from e
+
+
+def clear_due_alert(task):
+    if IS_POSIX:
+        doc = cf.load_config()
+        cron_section = doc.get("cron", {})
+        name = f"task_due_{task.id}"
+        if name in cron_section:
+            del cron_section[name]
+            doc["cron"] = cron_section
+            save_config(doc)
+            apply_scheduled_jobs()
+            console.print(
+                f"[green]✅ Reminder cleared for task {task.id}[/green]")
+        else:
+            console.print(
+                f"[yellow]No reminder found for task {task.id}[/yellow]")
+    else:
+        name = f"Lifelog_task_due_{task.id}"
+        try:
+            subprocess.run(
+                ["schtasks", "/Delete", "/TN", name, "/F"], check=False)
+            console.print(
+                f"[green]✅ Reminder cleared for task {task.id}[/green]")
+        except Exception as e:
+            console.print(f"[red]Failed to clear reminder: {e}[/red]")

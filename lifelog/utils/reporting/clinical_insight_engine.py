@@ -34,7 +34,7 @@ def log_and_return(insights, summary, rationale, action=None):
 
 
 def is_tracker_present(trackers, name):
-    return next((t for t in trackers if t['title'].lower() == name.lower()), None)
+    return next((t for t in trackers if t.title.lower() == name.lower()), None)
 
 # ---------- Insight Category Functions ----------
 
@@ -92,7 +92,7 @@ def insight_habit_streaks(trackers):
             last_date = dt
         add_insight(
             insights,
-            f"Habit '{tr['title']}' best streak: {best_streak} days.",
+            f"Habit '{tr.title}' best streak: {best_streak} days.",
             "Longest streak found in tracker history.",
             f"Try to beat your {best_streak}-day streak this week."
         )
@@ -171,7 +171,7 @@ def insight_missed_goals(trackers):
         if target and progress < target:
             add_insight(
                 insights,
-                f"Goal for '{tr['title']}': {progress} / {target} so far.",
+                f"Goal for '{tr.title}': {progress} / {target} so far.",
                 "Progress toward your defined goal.",
                 "Consider adjusting your approach or setting a smaller target."
             )

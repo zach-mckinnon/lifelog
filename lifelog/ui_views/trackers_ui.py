@@ -188,10 +188,7 @@ def edit_tracker_tui(stdscr, tracker_id):
     if npyscreen.notify_yes_no("Would you like to add or edit this tracker's goals?", title="Goals"):
         # Fetch current goals
         goals = track_repository.get_goals_for_tracker(tracker.id)
-        goal_titles = [g.get("title", f"Goal {i+1}")
-                       for i, g in enumerate(goals)]
-        goal_titles.append("[Add new goal]")
-        goal_titles.append("[Done]")
+        goal_titles = [g.title for g in goals] + ["[Add new goal]", "[Done]"]
         while True:
             sel = npyscreen.selectOne(
                 goal_titles, title="Select Goal to Edit/Add")
@@ -215,42 +212,45 @@ def edit_tracker_tui(stdscr, tracker_id):
 
                 class EditGoalApp(npyscreen.NPSAppManaged):
                     def onStart(selfx):
-                        selfx.goal_kind = goal.get("kind")
+                        selfx.goal_kind = goal.kind
                         form = selfx.addForm(
                             "MAIN", GoalDetailForm, name="Edit Goal")
-                        form.title.value = goal.get("title", "")
-                        period_val = goal.get("period", "")
+                        form.title.value = goal.title
+                        period_val = goal.period or ""
                         if period_val in [p for p in form.period.values]:
                             form.period.value = form.period.values.index(
                                 period_val)
                         else:
                             form.period.value = 0
-                        form.amount.value = str(goal.get("amount") or "")
-                        form.unit.value = str(goal.get("unit") or "")
+                        form.amount.value = str(
+                            getattr(goal, "amount", "") or "")
+                        form.unit.value = str(getattr(goal, "unit", "") or "")
                         form.min_amount.value = str(
-                            goal.get("min_amount") or "")
+                            getattr(goal, "min_amount", "") or "")
                         form.max_amount.value = str(
-                            goal.get("max_amount") or "")
-                        form.mode.value = str(goal.get("mode") or "")
-                        form.target.value = str(goal.get("target") or "")
-                        form.current.value = str(goal.get("current") or "")
+                            getattr(goal, "max_amount", "") or "")
+                        form.mode.value = str(getattr(goal, "mode", "") or "")
+                        form.target.value = str(
+                            getattr(goal, "target", "") or "")
+                        form.current.value = str(
+                            getattr(goal, "current", "") or "")
                         form.target_streak.value = str(
-                            goal.get("target_streak") or "")
+                            getattr(goal, "target_streak", "") or "")
                         form.target_percentage.value = str(
-                            goal.get("target_percentage") or "")
+                            getattr(goal, "target_percentage", "") or "")
                         form.current_percentage.value = str(
-                            goal.get("current_percentage") or "")
+                            getattr(goal, "current_percentage", "") or "")
                         form.old_behavior.value = str(
-                            goal.get("old_behavior") or "")
+                            getattr(goal, "old_behavior", "") or "")
                         form.new_behavior.value = str(
-                            goal.get("new_behavior") or "")
+                            getattr(goal, "new_behavior", "") or "")
                         form.display()
 
                 app = EditGoalApp()
                 app.run()
                 updated_data = getattr(app, 'form_data', None)
                 if updated_data:
-                    track_repository.update_goal(goal["id"], updated_data)
+                    track_repository.update_goal(goal.id, updated_data)
                     npyscreen.notify_confirm("Goal updated!", title="Updated")
                 else:
                     npyscreen.notify_confirm(
@@ -296,16 +296,16 @@ def log_tracker_entry_tui(stdscr, sel):
 
 def view_tracker_tui(stdscr, sel):
     t = track_repository.get_all_trackers()[sel]
-    goals = track_repository.get_goals_for_tracker(t["id"])
-    entries = track_repository.get_entries_for_tracker(t["id"])
+    goals = track_repository.get_goals_for_tracker(t.id)
+    entries = track_repository.get_entries_for_tracker(t.id)
     lines = [
-        f"ID:       {t['id']}",
-        f"Title:    {t['title']}",
-        f"Type:     {t['type']}",
-        f"Category: {t.get('category') or '-'}",
-        f"Created:  {t['created']}",
-        f"Tags:     {t.get('tags') or '-'}",
-        f"Notes:    {t.get('notes') or '-'}",
+        f"ID:       {t.id}",
+        f"Title:    {t.title}",
+        f"Type:     {t.type}",
+        f"Category: {t.category or '-'}",
+        f"Created:  {t.created}",
+        f"Tags:     {t.tags or '-'}",
+        f"Notes:    {t.notes or '-'}",
         f"Goals:    {len(goals)}",
         f"Entries:  {len(entries)}",
     ]
@@ -313,112 +313,230 @@ def view_tracker_tui(stdscr, sel):
 
 
 def draw_goal_progress_tui(stdscr, tracker):
-    # tracker: Tracker dataclass
+    """
+    For each goal of the given Tracker instance, fetch a report via generate_goal_report(tracker)
+    and display summary lines (using display_format and status).
+    """
+    # Fetch goals as dataclass instances
     goals = track_repository.get_goals_for_tracker(tracker.id)
     if not goals:
         return
-    for goal in goals:
-        report = generate_goal_report(
-            tracker, goal)  # use your reporting logic
-        lines = [
-            f"Goal: {goal.title} ({goal.kind})",
-            f"Progress: {report['progress']}",
-            f"Target: {report['target']}",
-            f"Current: {report['current']}"
-        ]
-        for idx, line in enumerate(lines):
-            stdscr.addstr(idx + 2, 2, line)
+
+    # For each goal, generate report and display
+    # Starting at row 2; we may want to clear or manage scrolling externally
+    row_offset = 2
+    for idx_goal, goal in enumerate(goals):
+        # generate_goal_report now takes only tracker, uses first goal internally
+        # If you have generate_goal_report(tracker, goal), adjust accordingly.
+        report = generate_goal_report(tracker)
+
+        # Display goal header
+        header = f"Goal {idx_goal+1}: {goal.title} ({goal.kind})"
+        try:
+            stdscr.addstr(row_offset, 2, header, curses.A_BOLD)
+        except Exception:
+            # In case of width issues; ignore or trim
+            stdscr.addstr(row_offset, 2, header[:max(
+                0, curses.COLS - 4)], curses.A_BOLD)
+        row_offset += 1
+
+        # Use display_format for primary/secondary/tertiary
+        disp = report.get("display_format", {})
+        primary = disp.get("primary", "")
+        secondary = disp.get("secondary", "")
+        tertiary = disp.get("tertiary", "")
+
+        # Status line
+        status = report.get("status", "")
+
+        # Display lines
+        for text in (f"  {primary}", f"  {secondary}", f"  {tertiary}", f"  Status: {status}"):
+            if text is None:
+                continue
+            try:
+                stdscr.addstr(row_offset, 4, text)
+            except Exception:
+                stdscr.addstr(row_offset, 4, text[:max(0, curses.COLS - 6)])
+            row_offset += 1
+
+        # Add a blank line between goals
+        row_offset += 1
 
 
 def view_goal_tui(stdscr, tracker_sel, goal_idx=0):
+    """
+    Display details of a selected goal for a tracker.
+    tracker_sel: index in list of trackers
+    goal_idx: index in list of goals for that tracker
+    """
+    # Fetch tracker
     trackers = track_repository.get_all_trackers()
+    if tracker_sel < 0 or tracker_sel >= len(trackers):
+        return popup_show(stdscr, [f"Invalid tracker selection: {tracker_sel}"])
     t = trackers[tracker_sel]
-    goals = track_repository.get_goals_for_tracker(t["id"])
+
+    # Fetch goals
+    goals = track_repository.get_goals_for_tracker(t.id)
     if not goals:
         return popup_show(stdscr, ["No goals found"])
+
+    if goal_idx < 0 or goal_idx >= len(goals):
+        return popup_show(stdscr, [f"Invalid goal selection: {goal_idx}"])
+
     g = goals[goal_idx]
-    kind = g.get('kind')
-    lines = [
-        f"Title:   {g.get('title', '-')}",
-        f"Kind:    {kind}",
-        f"Period:  {g.get('period', '-')}"
-    ]
-    # Show fields based on kind
-    if kind == "sum" or kind == "count":
-        lines += [
-            f"Target:  {g.get('amount', '-')}",
-            f"Unit:    {g.get('unit', '-')}"
-        ]
+    kind = g.kind  # attribute
+
+    # Fetch detail fields via repository
+    # Use generic get_goal_details if available, else call specific wrapper
+    try:
+        # If you implemented get_goal_details:
+        details = track_repository.get_goal_details(g.id)
+    except AttributeError:
+        # Fallback to kind-based wrapper
+        if kind == "range":
+            details = track_repository.get_goal_range(g.id)
+        elif kind == "sum":
+            details = track_repository.get_goal_sum(g.id)
+        elif kind == "count":
+            details = track_repository.get_goal_count(g.id)
+        elif kind == "streak":
+            details = track_repository.get_goal_streak(g.id)
+        elif kind == "duration":
+            details = track_repository.get_goal_duration(g.id)
+        elif kind == "milestone":
+            details = track_repository.get_goal_milestone(g.id)
+        elif kind == "reduction":
+            details = track_repository.get_goal_reduction(g.id)
+        elif kind == "percentage":
+            details = track_repository.get_goal_percentage(g.id)
+        elif kind == "replacement":
+            details = track_repository.get_goal_replacement(g.id)
+        else:
+            details = {}
+    except Exception as e:
+        # Log exception if you have logging; for now, show minimal
+        details = {}
+
+    # Build lines to display
+    lines = []
+    lines.append(f"Title:   {g.title or '-'}")
+    lines.append(f"Kind:    {kind}")
+    lines.append(f"Period:  {g.period or '-'}")
+
+    # Based on kind, add detail lines
+    if kind in ("sum", "count", "reduction", "duration"):
+        # common field 'amount'
+        amt = details.get("amount")
+        unit = details.get("unit", "")
+        if kind == "sum":
+            lines.append(f"Target amount: {amt if amt is not None else '-'}")
+            lines.append(f"Unit:          {unit or '-'}")
+        elif kind == "count":
+            lines.append(f"Target count:  {amt if amt is not None else '-'}")
+            lines.append(f"Unit:          {unit or '-'}")
+        elif kind == "reduction":
+            lines.append(f"Target amount: {amt if amt is not None else '-'}")
+            lines.append(f"Unit:          {unit or '-'}")
+        elif kind == "duration":
+            lines.append(
+                f"Target duration: {amt if amt is not None else '-'} {unit or ''}")
     elif kind == "bool":
-        lines += [f"Amount:  {g.get('amount', '-') or 'True'}"]
+        # No extra detail fields typically
+        lines.append("Completion: Yes/No entries (True counts as done)")
     elif kind == "streak":
-        lines += [
-            f"Target Streak:   {g.get('target_streak', '-')}",
-            f"Current Streak:  {g.get('current_streak', '-')}",
-            f"Best Streak:     {g.get('best_streak', '-')}"
-        ]
-    elif kind == "duration":
-        lines += [
-            f"Duration: {g.get('amount', '-')}",
-            f"Unit:     {g.get('unit', '-')}"
-        ]
+        tgt = details.get("target_streak")
+        lines.append(f"Target streak: {tgt if tgt is not None else '-'} days")
     elif kind == "milestone":
-        lines += [
-            f"Target:   {g.get('target', '-')}",
-            f"Current:  {g.get('current', '-')}",
-            f"Unit:     {g.get('unit', '-')}"
-        ]
-    elif kind == "reduction":
-        lines += [
-            f"Target:   {g.get('amount', '-')}",
-            f"Unit:     {g.get('unit', '-')}"
-        ]
+        tgt = details.get("target")
+        unit = details.get("unit", "")
+        lines.append(
+            f"Target:         {tgt if tgt is not None else '-'} {unit or ''}")
+        # For milestone you might show current progress here, but usually via report
     elif kind == "range":
-        lines += [
-            f"Min:      {g.get('min_amount', '-')}",
-            f"Max:      {g.get('max_amount', '-')}",
-            f"Unit:     {g.get('unit', '-')}",
-            f"Mode:     {g.get('mode', '-')}"
-        ]
+        min_amt = details.get("min_amount")
+        max_amt = details.get("max_amount")
+        unit = details.get("unit", "")
+        mode = details.get("mode", "goal")
+        lines.append(
+            f"Min:            {min_amt if min_amt is not None else '-'}")
+        lines.append(
+            f"Max:            {max_amt if max_amt is not None else '-'}")
+        lines.append(f"Unit:           {unit or '-'}")
+        lines.append(f"Mode:           {mode}")
     elif kind == "percentage":
-        lines += [
-            f"Target %: {g.get('target_percentage', '-')}",
-            f"Current %:{g.get('current_percentage', '-')}"
-        ]
+        tgt_pct = details.get("target_percentage")
+        curr_pct = details.get("current_percentage")
+        lines.append(
+            f"Target %:       {tgt_pct if tgt_pct is not None else '-'}")
+        # current_percentage stored is usually initial; actual current from report
     elif kind == "replacement":
-        lines += [
-            f"Old Behavior:    {g.get('old_behavior', '-')}",
-            f"New Behavior:    {g.get('new_behavior', '-')}",
-            f"Amount:          {g.get('amount', '-') or '1'}"
-        ]
-    # General progress field (if present)
-    if "progress" in g:
-        lines += [f"Progress: {g['progress']}"]
+        old_beh = details.get("old_behavior", "")
+        new_beh = details.get("new_behavior", "")
+        amt = details.get("amount")
+        lines.append(f"Old Behavior:   {old_beh or '-'}")
+        lines.append(f"New Behavior:   {new_beh or '-'}")
+        lines.append(f"Amount target:  {amt if amt is not None else '1'}")
+    else:
+        # Unknown or no detail
+        pass
+
+    # Optionally show latest report metrics
+    # For extra context, generate a fresh report and show primary/secondary/status
+    try:
+        report = generate_goal_report(t)
+        disp = report.get("display_format", {})
+        primary = disp.get("primary", "")
+        secondary = disp.get("secondary", "")
+        tertiary = disp.get("tertiary", "")
+        status = report.get("status", "")
+        lines.append("")  # blank separator
+        lines.append(f"Report Summary:")
+        lines.append(f"  {primary}")
+        if secondary:
+            lines.append(f"  {secondary}")
+        if tertiary:
+            lines.append(f"  {tertiary}")
+        lines.append(f"  Status: {status}")
+    except Exception:
+        # If report generation fails, ignore
+        pass
+
     popup_show(stdscr, lines, title=" Goal Details ")
 
 
 def view_goals_list_tui(stdscr, tracker_sel):
+    """
+    List all goals for selected tracker and allow viewing details.
+    """
     trackers = track_repository.get_all_trackers()
+    if tracker_sel < 0 or tracker_sel >= len(trackers):
+        return popup_show(stdscr, [f"Invalid tracker selection: {tracker_sel}"])
     t = trackers[tracker_sel]
-    goals = track_repository.get_goals_for_tracker(t["id"])
+    goals = track_repository.get_goals_for_tracker(t.id)
     if not goals:
         return popup_show(stdscr, ["No goals found"])
-    # List all goals and allow selection
+
     idx = 0
     while True:
         lines = []
+        # Build list of goal titles with kind
         for i, g in enumerate(goals):
-            line = f"{i+1:>2}. {g.get('title','-')[:20]:20} [{g.get('kind','-')}]"
+            title = g.title or "-"
+            kind = g.kind or "-"
+            display = f"{i+1:>2}. {title[:20]:20} [{kind}]"
             if i == idx:
-                line = "> " + line
-            lines.append(line)
-        lines.append("")
+                display = "> " + display
+            else:
+                display = "  " + display
+            lines.append(display)
+        lines.append("")  # blank
         lines.append("Enter: view goal  ↑/↓: select  q: quit")
-        popup_show(stdscr, lines, title=f"Goals for {t['title']}", wait=False)
+        popup_show(stdscr, lines, title=f"Goals for {t.title}", wait=False)
         c = stdscr.getch()
         if c in (ord('q'), 27):
             break
         elif c in (10, 13):
+            # view selected goal details
             view_goal_tui(stdscr, tracker_sel, idx)
         elif c == curses.KEY_DOWN:
             idx = min(idx + 1, len(goals) - 1)
@@ -485,7 +603,7 @@ def create_goal_interactive_tui(stdscr, tracker_type: str):
 
     # 4. Additional fields by goal kind
     if kind == GoalKind.BOOL.value:
-        goal["amount"] = True
+        goal.amount = True
 
     elif kind == GoalKind.RANGE.value:
         min_amt = popup_input(stdscr, "Minimum value:")
@@ -503,7 +621,7 @@ def create_goal_interactive_tui(stdscr, tracker_type: str):
             stdscr, "Number of replacements to target (default 1):")
         goal["old_behavior"] = old
         goal["new_behavior"] = new
-        goal["amount"] = float(amt) if amt else 1
+        goal.amount = float(amt) if amt else 1
 
     elif kind == GoalKind.PERCENTAGE.value:
         target_pct = popup_input(stdscr, "Target percentage (0-100):")
@@ -528,14 +646,14 @@ def create_goal_interactive_tui(stdscr, tracker_type: str):
         amt = popup_input(stdscr, "Target duration amount (number):")
         unit = popup_input(
             stdscr, "Time unit (e.g. minutes, hours):", max_length=20) or "minutes"
-        goal["amount"] = float(amt) if amt else 0
+        goal.amount = float(amt) if amt else 0
         goal["unit"] = unit
 
     elif kind in [GoalKind.SUM.value, GoalKind.COUNT.value, GoalKind.REDUCTION.value]:
         amt = popup_input(stdscr, "Target amount:")
         unit = popup_input(
             stdscr, "Unit (e.g. 'oz', 'times', leave blank if none):", max_length=20) or ""
-        goal["amount"] = float(amt) if amt else 0
+        goal.amount = float(amt) if amt else 0
         goal["unit"] = unit
 
     # For other goal types, add logic as needed.
@@ -595,7 +713,7 @@ def edit_goal_tui(stdscr, tracker_id, goal_id):
     class EditGoalApp(npyscreen.NPSAppManaged):
         def onStart(selfx):
             # Set kind for dynamic field logic
-            selfx.goal_kind = goal.get("kind")
+            selfx.goal_kind = goal.kind
             form = selfx.addForm("MAIN", GoalDetailForm, name="Edit Goal")
 
             # Prefill main fields
@@ -639,7 +757,7 @@ def edit_goal_tui(stdscr, tracker_id, goal_id):
 def delete_goal_tui(stdscr, tracker_sel):
     trackers = track_repository.get_all_trackers()
     t = trackers[tracker_sel]
-    goals = track_repository.get_goals_for_tracker(t["id"])
+    goals = track_repository.get_goals_for_tracker(t.id)
     if not goals:
         return popup_show(stdscr, ["No goal to delete"])
     g = goals[0]
@@ -650,7 +768,7 @@ def delete_goal_tui(stdscr, tracker_sel):
             popup_show(stdscr, ["Cancelled"])
             return
         try:
-            track_repository.delete_goal(g["id"])
+            track_repository.delete_goal(g.id)
             popup_show(stdscr, ["Goal deleted"])
         except Exception as e:
             popup_show(stdscr, [f"Error deleting goal: {e}"])

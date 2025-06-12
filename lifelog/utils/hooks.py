@@ -80,9 +80,9 @@ def build_payload(module: str, action: str, entity: Any) -> Dict[str, Any]:
 def entity_to_dict(entity) -> Dict[str, Any]:
     """Convert entity to serializable dict"""
     if hasattr(entity, "__dict__"):
-        return entity.__dict__
+        return entity.to_dict()
     if hasattr(entity, "_asdict"):
-        return entity._asdict()
+        return entity.to_dict()
     if isinstance(entity, dict):
         return entity
     return {"raw": str(entity)}

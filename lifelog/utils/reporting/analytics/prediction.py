@@ -11,8 +11,8 @@ import csv
 import json
 import numpy as np
 from rich.console import Console
-from lifelog.utils.reporting.insight_engine import load_metric_data, daily_averages
 from lifelog.utils.reporting.analytics.report_utils import render_line_chart
+from lifelog.utils.db.track_repository import get_all_trackers, get_entries_for_tracker
 
 console = Console()
 
@@ -20,32 +20,32 @@ console = Console()
 def report_prediction(model: str = "simple", days: int = 7, export: str = None):
     """
     📈 Forecast future trends for each tracker.
-
-    model: "simple" (flat last value) or "regression" (linear trend)
-    days: number of days ahead to forecast
-    export: optional CSV or JSON filepath to export results
     """
-    # 1. Load daily averages for all trackers
-    entries = load_metric_data()
-    tracker_daily = daily_averages(entries)  # {tracker: {date: avg}}
 
-    # 2. Process each tracker
-    for tracker, day_map in tracker_daily.items():
-        # Sort by date
-        dates = sorted(day_map.keys())
-        values = [day_map[d] for d in dates]
-        console.print(f"\n[bold]Forecast for '{tracker}':[/bold]")
+    trackers = get_all_trackers()
+    for tracker in trackers:
+        entries = get_entries_for_tracker(tracker.id)
+        if not entries:
+            continue
+        # Build daily avg map for this tracker
+        day_map = {}
+        for e in entries:
+            date_str = e.timestamp.date().isoformat()
+            day_map.setdefault(date_str, []).append(e.value)
+        day_avg = {d: sum(vals)/len(vals) for d, vals in day_map.items()}
+        dates = sorted(day_avg.keys())
+        values = [day_avg[d] for d in dates]
+        console.print(f"\n[bold]Forecast for '{tracker.title}':[/bold]")
 
         if not dates:
             console.print("[yellow]No data available to forecast.[/yellow]")
             continue
 
-        # 3. Generate forecast
+        # Forecast logic
         if model == "simple":
             last_val = values[-1]
             forecast_vals = [last_val] * days
         elif model == "regression":
-            # Fit linear trend
             x = np.arange(len(values))
             coeffs = np.polyfit(x, values, 1)
             slope, intercept = coeffs[0], coeffs[1]
@@ -55,22 +55,21 @@ def report_prediction(model: str = "simple", days: int = 7, export: str = None):
             console.print(f"[red]Unknown model '{model}'. Skipping.\n")
             continue
 
-        # 4. Build future dates
+        # Future dates
         last_date = datetime.fromisoformat(dates[-1]).date()
         future_dates = [(last_date + timedelta(days=i + 1)).isoformat()
                         for i in range(days)]
 
-        # 5. Render line chart combining history + forecast
+        # Render chart
         combined_dates = dates + future_dates
         combined_vals = values + forecast_vals
         render_line_chart(combined_dates, combined_vals,
                           label="Value & Forecast")
 
-        # 6. Export if requested
+        # Export if requested
         if export:
-            _export_forecast(
-                tracker, dates, values, future_dates, forecast_vals, export
-            )
+            _export_forecast(tracker.title, dates, values,
+                             future_dates, forecast_vals, export)
 
 
 def _export_forecast(
