@@ -15,6 +15,7 @@ import pandas as pd
 from rich.console import Console
 import typer
 import lifelog.config.config_manager as cf
+from lifelog.utils.db.models import Task
 
 console = Console()
 
@@ -41,6 +42,29 @@ def log_error(error_msg, traceback=None):
         logger.error(f"{error_msg}\n{traceback}")
     else:
         logger.error(error_msg)
+
+
+def calculate_priority(task: Task) -> float:
+    if isinstance(task, dict):
+        importance = task.get("importance", 3)
+        due_val = task.get("due", None)
+    else:  # assume Task instance
+        importance = getattr(task, "importance", 3) or 3
+        due_val = getattr(task, "due", None)
+    urgency = 0.0
+    if due_val:
+        # due_val is likely a datetime already (repository parsed ISO into datetime)
+        if isinstance(due_val, str):
+            try:
+                due_date = datetime.fromisoformat(due_val)
+            except Exception:
+                due_date = None
+        else:
+            due_date = due_val
+        if due_date:
+            days_left = (due_date - datetime.now()).days
+            urgency = max(0.0, 1.0 - days_left / 10)
+    return (importance * 0.6) + (urgency * 0.4)
 
 
 def parse_date_string(time_string: str, future: bool = False, now: datetime = datetime.now()) -> datetime:

@@ -27,11 +27,11 @@ import calendar
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, validate_task_inputs
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, validate_task_inputs
 import lifelog.config.config_manager as cf
 from lifelog.config.schedule_manager import IS_POSIX, apply_scheduled_jobs, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
-from lifelog.utils.get_quotes import get_feedback_saying, get_motivational_quote
+from lifelog.utils.get_quotes import get_feedback_saying
 from lifelog.utils.hooks import build_payload, run_hooks
 
 
@@ -991,29 +991,6 @@ def priority_color(priority_value):
         return "blueviolet"
 
 # Calculate the priority using an Eisenhower Matrix.
-
-
-def calculate_priority(task: Task) -> float:
-    if isinstance(task, dict):
-        importance = task.get("importance", 3)
-        due_val = task.get("due", None)
-    else:  # assume Task instance
-        importance = getattr(task, "importance", 3) or 3
-        due_val = getattr(task, "due", None)
-    urgency = 0.0
-    if due_val:
-        # due_val is likely a datetime already (repository parsed ISO into datetime)
-        if isinstance(due_val, str):
-            try:
-                due_date = datetime.fromisoformat(due_val)
-            except Exception:
-                due_date = None
-        else:
-            due_date = due_val
-        if due_date:
-            days_left = (due_date - datetime.now()).days
-            urgency = max(0.0, 1.0 - days_left / 10)
-    return (importance * 0.6) + (urgency * 0.4)
 
 
 def parse_due_offset(due_str):

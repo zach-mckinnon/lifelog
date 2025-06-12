@@ -10,13 +10,13 @@ import calendar
 import re
 
 from lifelog.utils.db.models import Task
-from lifelog.commands.task_module import calculate_priority, create_due_alert
+from lifelog.commands.task_module import create_due_alert
 from lifelog.utils.db import task_repository, time_repository
 from lifelog.ui_views.popups import popup_confirm, popup_error, popup_input, popup_multiline_input, popup_show
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr
 from lifelog.ui_views.forms import TaskCloneForm, TaskEditForm, TaskForm, TaskViewForm, run_form
-from lifelog.utils.hooks import build_payload, run_hooks
-from lifelog.utils.shared_utils import parse_date_string
+from lifelog.utils.hooks import run_hooks
+from lifelog.utils.shared_utils import parse_date_string, calculate_priority
 
 
 # Module‐level state for task filter:
