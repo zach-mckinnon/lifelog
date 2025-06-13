@@ -126,246 +126,83 @@ def _filter_and_validate_task_data(data: dict, partial: bool = False) -> tuple[d
     # Return Python-native dict for repository
     return task_obj.asdict(), None
 
-
-def _get_task_or_404(task_id: int) -> Task:
-    """
-    Fetch task by numeric ID or raise ApiError(404).
-    """
-    task = task_repository.get_task_by_id(task_id)
-    if not task:
-        error('Task not found', 404)
-    return task
+# 1) Replace _get_task_or_404(task_id) with:
 
 
-def _get_task_by_uid_or_404(uid_val: str) -> Task:
-    tasks = task_repository.query_tasks(uid=uid_val, show_completed=True)
+def _get_task_by_uid_or_404(uid: str):
+    tasks = task_repository.query_tasks(uid=uid, show_completed=True)
     if not tasks:
         error('Task not found', 404)
     return tasks[0]
 
-
-@tasks_bp.route('/', methods=['GET'])
-@require_device_token
-@debug_api
-def list_tasks():
-    """
-    List tasks, optionally filtered by uid, status, category, project, etc.
-    Inline validation: raises ApiError on bad filters.
-    """
-    filters: dict = {}
-
-    # uid filter
-    uid = request.args.get('uid')
-    if uid:
-        filters['uid'] = uid
-
-    # status filter
-    status = request.args.get('status')
-    if status:
-        allowed_status = {s.value for s in TaskStatus}
-        if status not in allowed_status:
-            error(
-                f'Invalid status filter: must be one of {", ".join(sorted(allowed_status))}', 400)
-        filters['status'] = status
-
-    # category/project
-    category = request.args.get('category')
-    if category:
-        filters['category'] = category
-    project = request.args.get('project')
-    if project:
-        filters['project'] = project
-
-    # importance
-    imp = request.args.get('importance', type=int)
-    if imp is not None:
-        if imp < 0 or imp > 5:
-            error('Invalid importance filter: must be between 0 and 5', 400)
-        filters['importance'] = imp
-
-    # due_contains
-    due_contains = request.args.get('due_contains')
-    if due_contains:
-        filters['due_contains'] = due_contains
-
-    # show_completed
-    show_completed = request.args.get(
-        'show_completed', 'false').lower() == 'true'
-    filters['show_completed'] = show_completed
-
-    # sort
-    sort = request.args.get('sort', 'priority')
-    filters['sort'] = sort
-
-    tasks = task_repository.query_tasks(**filters)
-    return jsonify([t.to_dict() for t in tasks]), 200
+# 2) POST /tasks   (create) stays almost the same, but returns the UID:
 
 
 @tasks_bp.route('/', methods=['POST'])
 @require_device_token
 @debug_api
 def create_task():
-    """
-    Create a new task. Uses centralized validation & conversion.
-    """
-    data = parse_json()              # raises ApiError if invalid JSON
-    # Ensure required fields
+    data = parse_json()
     require_fields(data, 'title')
-    # Validate & clean
     cleaned, err = _filter_and_validate_task_data(data, partial=False)
     if err:
         error(err, 400)
-    try:
-        new_task = task_repository.add_task(cleaned)
-    except Exception as e:
-        logger.exception("Error in create_task")
-        error('Failed to create task', 500)
 
-    if not new_task:
-        error('Failed to create task', 500)
-
+    new_task = task_repository.add_task(cleaned)
     return jsonify(new_task.to_dict()), 201
 
 
-@tasks_bp.route('/<int:task_id>', methods=['GET'])
+# 3) REMOVE or DEPRECATE @tasks_bp.route('/<int:task_id>') for GET/PUT/DELETE
+#    and replace with UID-based routes only:
+
+@tasks_bp.route('/uid/<string:uid>', methods=['GET'])
 @require_device_token
 @debug_api
-def get_task(task_id):
-    """
-    Fetch single task by numeric ID.
-    """
-    task = _get_task_or_404(task_id)
-    return jsonify(task.to_dict()), 200
+def get_task_by_uid(uid):
+    t = _get_task_by_uid_or_404(uid)
+    return jsonify(t.to_dict()), 200
 
 
-@tasks_bp.route('/uid/<string:uid_val>', methods=['GET'])
+@tasks_bp.route('/uid/<string:uid>', methods=['PUT'])
 @require_device_token
 @debug_api
-def get_task_by_uid(uid_val):
-    """
-    Fetch a single task by its global UID.
-    """
-    task = _get_task_by_uid_or_404(uid_val)
-    return jsonify(task.to_dict()), 200
-
-
-@tasks_bp.route('/<int:task_id>', methods=['PUT'])
-@require_device_token
-@debug_api
-def update_task_api(task_id):
-    """
-    Update a task by numeric ID. Uses centralized validation.
-    """
-    _get_task_or_404(task_id)  # raises if not found
+def update_task_by_uid_api(uid):
+    if not is_host_server():
+        error('Endpoint only available on host', 403)
+    _get_task_by_uid_or_404(uid)
 
     data = parse_json()
     cleaned, err = _filter_and_validate_task_data(data, partial=True)
     if err:
         error(err, 400)
     if not cleaned:
-        error('No valid fields provided for update', 400)
+        error('No valid fields', 400)
 
-    try:
-        task_repository.update_task(task_id, cleaned)
-    except Exception:
-        logger.exception(f"Error updating task {task_id}")
-        error('Failed to update task', 500)
-
-    # Return fresh copy
-    updated = task_repository.get_task_by_id(task_id)
-    if not updated:
-        error('Task not found after update', 500)
+    task_repository.update_task_by_uid(uid, cleaned)
+    updated = _get_task_by_uid_or_404(uid)
     return jsonify(updated.to_dict()), 200
 
 
-@tasks_bp.route('/uid/<string:uid_val>', methods=['PUT'])
+@tasks_bp.route('/uid/<string:uid>', methods=['DELETE'])
 @require_device_token
 @debug_api
-def update_task_by_uid_api(uid_val):
-    """
-    Update a task by its global UID. Only in host mode.
-    """
+def delete_task_by_uid_api(uid):
     if not is_host_server():
         error('Endpoint only available on host', 403)
+    _get_task_by_uid_or_404(uid)
 
-    _get_task_by_uid_or_404(uid_val)
-
-    data = parse_json()
-    cleaned, err = _filter_and_validate_task_data(data, partial=True)
-    if err:
-        error(err, 400)
-    if not cleaned:
-        error('No valid fields provided for update', 400)
-
-    try:
-        task_repository.update_task_by_uid(uid_val, cleaned)
-    except Exception:
-        logger.exception(f"Error updating task UID={uid_val}")
-        error('Failed to update task', 500)
-
-    # Fetch fresh copy
-    updated = _get_task_by_uid_or_404(uid_val)
-    return jsonify(updated.to_dict()), 200
-
-
-@tasks_bp.route('/<int:task_id>', methods=['DELETE'])
-@require_device_token
-@debug_api
-def delete_task_api(task_id):
-    """
-    Delete a task by numeric ID.
-    """
-    _get_task_or_404(task_id)
-
-    try:
-        task_repository.delete_task(task_id)
-    except Exception:
-        logger.exception(f"Error deleting task {task_id}")
-        error('Failed to delete task', 500)
+    task_repository.delete_task_by_uid(uid)
     return jsonify({'status': 'success'}), 200
 
+# 4) If you want to keep numeric-ID endpoints for backward-compat:
+#    simply look up the UID, then delegate:
 
-@tasks_bp.route('/uid/<string:uid_val>', methods=['DELETE'])
+
+@tasks_bp.route('/<int:task_id>', methods=['GET', 'PUT', 'DELETE'])
 @require_device_token
 @debug_api
-def delete_task_by_uid_api(uid_val):
-    """
-    Delete a task by global UID. Only in host mode.
-    """
-    if not is_host_server():
-        error('Endpoint only available on host', 403)
-
-    _get_task_by_uid_or_404(uid_val)
-
-    try:
-        task_repository.delete_task_by_uid(uid_val)
-    except Exception:
-        logger.exception(f"Error deleting task UID={uid_val}")
-        error('Failed to delete task', 500)
-
-    # Verify deletion
-    remaining = task_repository.query_tasks(uid=uid_val, show_completed=True)
-    if remaining:
-        error('Failed to delete task', 500)
-    return jsonify({'status': 'success'}), 200
-
-
-@tasks_bp.route('/<int:task_id>/done', methods=['POST'])
-@require_device_token
-@debug_api
-def mark_task_done(task_id):
-    """
-    Mark a task as done by numeric ID. Convenience endpoint.
-    """
-    _get_task_or_404(task_id)
-
-    try:
-        task_repository.update_task(task_id, {'status': 'done'})
-    except Exception:
-        logger.exception(f"Error marking task {task_id} done")
-        error('Failed to mark done', 500)
-
-    updated = task_repository.get_task_by_id(task_id)
-    if not updated:
-        error('Task not found after marking done', 500)
-    return jsonify({'status': 'success', 'task': updated.to_dict()}), 200
+def task_id_fallback(task_id):
+    t = task_repository.get_task_by_id(task_id)
+    if not t:
+        error('Task not found', 404)
+    return jsonify(t.to_dict()), 200  # or redirect internally to the UID logic

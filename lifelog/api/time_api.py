@@ -3,48 +3,39 @@
 from datetime import datetime
 import logging
 from flask import request, jsonify, Blueprint
+
 from lifelog.api.errors import debug_api, parse_json, error, validate_iso
 from lifelog.api.auth import require_device_token
-from lifelog.utils.db import time_repository
+from lifelog.utils.db import time_repository, task_repository
 from lifelog.config.config_manager import is_host_server
 
 time_bp = Blueprint('time', __name__, url_prefix='/time')
 logger = logging.getLogger(__name__)
 
 
-def _get_time_entry_or_404(uid_val: str):
-    """
-    Fetch a TimeLog by UID or raise ApiError(404).
-    """
-    entry = time_repository.get_time_log_by_uid(uid_val)
+def _require_host_mode():
+    if not is_host_server():
+        error('Endpoint only available on host', 403)
+
+
+def _get_entry_or_404(uid: str):
+    entry = time_repository.get_time_log_by_uid(uid)
     if not entry:
         error('TimeLog not found', 404)
     return entry
-
-
-def _require_host_mode():
-    """
-    Raise ApiError(403) if not host server.
-    """
-    if not is_host_server():
-        error('Endpoint only available on host', 403)
 
 
 @time_bp.route('/entries', methods=['GET'])
 @require_device_token
 @debug_api
 def list_time_entries():
-    """
-    GET /time/entries?since=<ISO>
-    """
     since = request.args.get('since')
     if since:
-        # validate ISO or raise ApiError
         validate_iso('since', since)
+
     try:
         entries = time_repository.get_all_time_logs(since=since)
-        result = [entry.to_dict() for entry in entries]
-        return jsonify(result), 200
+        return jsonify([e.to_dict() for e in entries]), 200
     except Exception:
         logger.exception("Failed to fetch time entries")
         error('Failed to fetch entries', 500)
@@ -54,161 +45,150 @@ def list_time_entries():
 @require_device_token
 @debug_api
 def create_time_entry():
-    """
-    POST /time/entries
-    Start a new time entry.
-    """
-    data = parse_json()  # raises ApiError if invalid JSON
+    data = parse_json()
 
-    # Required: title
-    title = data.get("title")
-    if not title or not isinstance(title, str) or not title.strip():
-        error('Missing or invalid "title" field', 400)
-    repo_data = {"title": title.strip()}
+    # title is required
+    title = data.get('title')
+    if not isinstance(title, str) or not title.strip():
+        error('Missing or invalid "title"', 400)
 
-    # Optional: start
-    if "start" in data and data["start"] is not None:
-        start_val = data["start"]
-        # validate ISO or raise
-        validate_iso("start", start_val)
-        repo_data["start"] = start_val
+    # build repo payload
+    repo_data = {'title': title.strip()}
 
-    # Optional string fields
-    for fld in ("category", "project", "tags", "notes"):
+    # optional start
+    start = data.get('start')
+    if start is not None:
+        validate_iso('start', start)
+        repo_data['start'] = start
+
+    # optional end => historical entry
+    end = data.get('end')
+    if end is not None:
+        validate_iso('end', end)
+        repo_data['end'] = end
+
+    # optional string fields
+    for fld in ('category', 'project', 'tags', 'notes'):
         if fld in data:
-            val = data.get(fld)
+            val = data[fld]
             if val is not None and not isinstance(val, str):
                 error(f'Field "{fld}" must be a string', 400)
             repo_data[fld] = val
 
-    # Optional: task_id
-    if "task_id" in data and data.get("task_id") is not None:
-        try:
-            task_id_val = int(data["task_id"])
-        except Exception:
-            error(f'Invalid "task_id": {data["task_id"]}', 400)
-        repo_data["task_id"] = task_id_val
+    # optional link to task by its UID
+    task_uid = data.get('task_uid')
+    if task_uid is not None:
+        if not isinstance(task_uid, str) or not task_uid.strip():
+            error('Field "task_uid" must be a non-empty string', 400)
+        task = task_repository.get_task_by_uid(task_uid.strip())
+        if not task:
+            error('Parent task not found', 404)
+        repo_data['task_id'] = task.id
 
     try:
-        new_log = time_repository.start_time_entry(repo_data)
-        if not new_log:
-            error('Failed to start entry', 500)
-        return jsonify(new_log.to_dict()), 201
-    except Exception:
-        logger.exception("Failed to start time entry")
-        error('Failed to start entry', 500)
+        # start_time_entry handles creating active entries;
+        # if 'end' is provided, it treats it as a historical entry
+        new_entry = time_repository.start_time_entry(repo_data)
+        return jsonify(new_entry.to_dict()), 201
+    except Exception as e:
+        logger.exception("Failed to create time entry")
+        error('Failed to create entry', 500)
 
 
 @time_bp.route('/entries/current', methods=['PUT'])
 @require_device_token
 @debug_api
 def stop_time_entry():
-    """
-    Stop the current active time entry.
-    """
     data = parse_json()
 
-    end_str = data.get("end")
-    if not end_str:
-        error('Missing "end" timestamp', 400)
-    # validate ISO or raise
-    validate_iso("end", end_str)
+    end = data.get('end')
+    if not isinstance(end, str):
+        error('Missing or invalid "end" timestamp', 400)
+    validate_iso('end', end)
 
-    # Optional tags/notes
-    tags = data.get("tags")
-    if "tags" in data and tags is not None and not isinstance(tags, str):
+    tags = data.get('tags')
+    if 'tags' in data and tags is not None and not isinstance(tags, str):
         error('Field "tags" must be a string', 400)
-    notes = data.get("notes")
-    if "notes" in data and notes is not None and not isinstance(notes, str):
+
+    notes = data.get('notes')
+    if 'notes' in data and notes is not None and not isinstance(notes, str):
         error('Field "notes" must be a string', 400)
 
     try:
-        updated = time_repository.stop_active_time_entry(
-            end_str, tags=tags, notes=notes)
-        if not updated:
+        stopped = time_repository.stop_active_time_entry(
+            end, tags=tags, notes=notes)
+        if not stopped:
             error('No active time entry to stop', 400)
-        return jsonify(updated.to_dict()), 200
+        return jsonify(stopped.to_dict()), 200
     except RuntimeError as e:
-        # e.g. no active entry
         error(str(e), 400)
     except Exception:
         logger.exception("Failed to stop active time entry")
         error('Failed to stop entry', 500)
 
 
-@time_bp.route('/entries/uid/<string:uid_val>', methods=['GET'])
+@time_bp.route('/entries/uid/<string:uid>', methods=['GET'])
 @require_device_token
 @debug_api
-def get_time_entry_by_uid(uid_val):
-    """
-    Fetch a single TimeLog by global UID.
-    """
-    entry = _get_time_entry_or_404(uid_val)
+def get_time_entry_by_uid(uid):
+    entry = _get_entry_or_404(uid)
     return jsonify(entry.to_dict()), 200
 
 
-@time_bp.route('/entries/<string:uid_val>', methods=['PUT'])
+@time_bp.route('/entries/uid/<string:uid>', methods=['PUT'])
 @require_device_token
 @debug_api
-def update_time_entry_by_uid(uid_val):
-    """
-    Update fields of a TimeLog by UID. Host-only.
-    """
+def update_time_entry_by_uid(uid):
     _require_host_mode()
-    _get_time_entry_or_404(uid_val)  # ensure exists
+    _get_entry_or_404(uid)
 
     data = parse_json()
-    # Prevent overriding id/uid
-    data.pop("id", None)
-    data.pop("uid", None)
+    # strip any accidental numeric id
+    data.pop('id', None)
+    data.pop('uid', None)
 
-    # Validate ISO fields if present
-    for fld in ("start", "end"):
+    # validate ISO fields
+    for fld in ('start', 'end'):
         if fld in data and data[fld] is not None:
             validate_iso(fld, data[fld])
 
-    # Validate numeric task_id
-    if "task_id" in data and data.get("task_id") is not None:
-        try:
-            task_id_val = int(data["task_id"])
-        except Exception:
-            error(f'Invalid "task_id": {data["task_id"]}', 400)
-        data["task_id"] = task_id_val
+    # optional link to task by UID
+    if 'task_uid' in data:
+        tu = data.pop('task_uid')
+        if tu is not None:
+            if not isinstance(tu, str) or not tu.strip():
+                error('Field "task_uid" must be non-empty string', 400)
+            task = task_repository.get_task_by_uid(tu.strip())
+            if not task:
+                error('Parent task not found', 404)
+            data['task_id'] = task.id
 
-    # Validate string fields
-    for fld in ("title", "category", "project", "tags", "notes"):
-        if fld in data and data[fld] is not None and not isinstance(data[fld], str):
-            error(f'Field "{fld}" must be a string', 400)
+    # no numeric id allowed:
+    if 'task_id' in data:
+        error('Direct "task_id" not supported; use "task_uid"', 400)
 
     try:
-        time_repository.update_time_log_by_uid(uid_val, data)
+        time_repository.update_time_log_by_uid(uid, data)
+        updated = _get_entry_or_404(uid)
+        return jsonify(updated.to_dict()), 200
     except Exception:
-        logger.exception(f"Failed to update TimeLog uid={uid_val}")
+        logger.exception(f"Failed to update TimeLog uid={uid}")
         error('Failed to update entry', 500)
 
-    # Fetch updated
-    updated = _get_time_entry_or_404(uid_val)
-    return jsonify(updated.to_dict()), 200
 
-
-@time_bp.route('/entries/<string:uid_val>', methods=['DELETE'])
+@time_bp.route('/entries/uid/<string:uid>', methods=['DELETE'])
 @require_device_token
 @debug_api
-def delete_time_entry_by_uid(uid_val):
-    """
-    Delete a TimeLog by UID. Host-only.
-    """
+def delete_time_entry_by_uid(uid):
     _require_host_mode()
-    _get_time_entry_or_404(uid_val)
+    _get_entry_or_404(uid)
 
     try:
-        time_repository.delete_time_log_by_uid(uid_val)
+        time_repository.delete_time_log_by_uid(uid)
+        # verify deletion
+        if time_repository.get_time_log_by_uid(uid):
+            error('Delete failed', 500)
+        return jsonify({'status': 'success'}), 200
     except Exception:
-        logger.exception(f"Failed to delete TimeLog uid={uid_val}")
+        logger.exception(f"Failed to delete TimeLog uid={uid}")
         error('Failed to delete entry', 500)
-
-    # Verify deletion
-    still = time_repository.get_time_log_by_uid(uid_val)
-    if still:
-        error('Delete failed', 500)
-    return jsonify({'status': 'success'}), 200
