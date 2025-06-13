@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 import uuid
 from lifelog.config.config_manager import is_host_server
 from lifelog.utils.db.models import Task, TaskStatus, get_task_fields, task_from_row
-from lifelog.utils.db.db_helper import get_connection
+from lifelog.utils.db.db_helper import get_connection, normalize_for_db
 from lifelog.utils.db.database_manager import add_record, update_record
 from datetime import datetime
 import sqlite3
@@ -34,29 +34,21 @@ def get_all_tasks() -> List[Task]:
 
 
 def _pull_changed_tasks_from_host() -> None:
-    """
-    If we are in client mode, fetch only tasks changed on the host since last sync,
-    upsert them locally, and update sync_state.
-    """
     if not should_sync():
         return
 
-    # 1) Push any pending local changes first
+    # push local changes
     process_sync_queue()
 
-    # 2) Ask the host for only the tasks changed since `last_synced_at`
-    last_ts = get_last_synced("tasks")  # e.g. "2025-06-03T22:15:00"
-    params: Dict[str, Any] = {}
-    if last_ts:
-        params["since"] = last_ts
-
-    remote_list = fetch_from_server("tasks", params=params)
+    # pull remote deltas
+    last_ts = get_last_synced("tasks")
+    params: Dict[str, Any] = {"since": last_ts} if last_ts else {}
+    remote_list = fetch_from_server("tasks", params=params) or []
     for remote in remote_list:
         upsert_local_task(remote)
 
-    # 3) Update our last‐sync time to right now (UTC ISO format)
-    now_iso = datetime.utcnow().isoformat()
-    set_last_synced("tasks", now_iso)
+    # bump last‐sync
+    set_last_synced("tasks", datetime.utcnow().isoformat())
 
 
 def get_task_by_id(task_id):
@@ -92,114 +84,66 @@ def get_task_by_id(task_id):
     return task_from_row(dict(rows[0]))
 
 
-def add_task(task_data) -> Task:
-    """
-    Accept dict or Task object; fill in defaults only if missing:
-      - created: now if missing
-      - status: 'backlog' if missing
-      - importance: DEFAULT_IMPORTANCE (e.g. 1) if missing
-      - priority: calculate_priority(data) if missing
-      - uid: auto-generate if missing
-    Then INSERT into tasks table and return the created Task object.
-    """
-    # 1) Convert dataclass to dict or copy dict
-    if hasattr(task_data, "__dataclass_fields__"):
-        data = asdict(task_data)
-    else:
-        data = task_data.copy()
-
-    # 2) Ensure all known fields exist in data (set to None if completely absent)
+def add_task(task_data: Any) -> Task:
+    # prepare dict
+    data = asdict(task_data) if hasattr(
+        task_data, "__dataclass_fields__") else task_data.copy()
     fields = get_task_fields()
     for f in fields:
         data.setdefault(f, None)
 
-    # 3) Defaults only when missing (None)
-    # created timestamp
-    if data.get("created") is None:
-        data.id = datetime.now().isoformat()
-
-    # status default
-    status_val = data.get("status")
-    if status_val is not None:
-        try:
-            data["status"] = TaskStatus(status_val)
-        except ValueError:
-            raise ValueError(f"Invalid status: {status_val}")
-    else:
+    # defaults
+    if data["created"] is None:
+        data["created"] = datetime.utcnow()
+    if data.get("status") is None:
         data["status"] = TaskStatus.BACKLOG
-
-    # importance default: only if missing
+    else:
+        data["status"] = TaskStatus(data["status"])  # will raise if invalid
     if data.get("importance") is None:
-        # You may define a module-level constant DEFAULT_IMPORTANCE = 1
-        data.importance = 1
-
-    # priority default: only if missing; calculate via calculate_priority()
+        data["importance"] = 1
     if data.get("priority") is None:
-        # calculate_priority expects a dict-like with at least "importance" and possibly "due"
         try:
             data["priority"] = calculate_priority(data)
         except Exception as e:
-            # In case calculation fails, fallback to a safe default, e.g. 1.0
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f"Failed to calculate priority for new task: {e}", exc_info=True)
+            logger.error("Priority calc failed: %s", e, exc_info=True)
             data["priority"] = 1.0
-
-    if 'due' in data and data['due'] is not None:
-        data['due'] = datetime.fromisoformat(data['due'])
-
-    # 4) UID: auto-generate if missing
+    if data.get("due") is not None and isinstance(data["due"], str):
+        data["due"] = datetime.fromisoformat(data["due"])
     if not data.get("uid"):
         data["uid"] = str(uuid.uuid4())
 
+    # normalize before writing
+    db_data = normalize_for_db(data)
+
     if is_direct_db_mode():
-        new_id = add_record("tasks", data, fields)
+        new_id = add_record("tasks", db_data, fields)
         return get_task_by_id(new_id)
     else:
-        add_record("tasks", data, fields)
-        queue_sync_operation("tasks", "create", data)
+        add_record("tasks", db_data, fields)
+        queue_sync_operation("tasks", "create", db_data)
         process_sync_queue()
-        rows = safe_query("SELECT * FROM tasks WHERE uid = ?", (data["uid"],))
+        rows = safe_query(
+            "SELECT * FROM tasks WHERE uid = ?", (db_data["uid"],))
         return task_from_row(dict(rows[0]))
 
 
-def update_task(task_id, updates):
-    """
-    Update fields of a task by numeric ID.
-      • In host/direct-DB mode: do UPDATE … WHERE id = ?.
-      • In client mode:
-         a) UPDATE local row by ID.
-         b) Fetch that row’s UID.
-         c) Build a FULL payload from the local row (dict(row)).
-         d) Queue an “update” by UID.
-         e) Attempt to process_sync_queue().
-    """
+def update_task(task_id: int, updates: Dict[str, Any]) -> None:
+    # normalize
+    db_updates = normalize_for_db(updates)
+
     if is_direct_db_mode():
-        # Host mode: direct update
-        update_record("tasks", task_id, updates)
+        update_record("tasks", task_id, db_updates)
+        return
 
-    else:
-        # Client mode:
-        # a) Update local
-        update_record("tasks", task_id, updates)
+    # client mode
+    update_record("tasks", task_id, db_updates)
 
-        # b) Fetch entire local row to get the UID (and all other fields)
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            conn.row_factory = sqlite3.Row
-
-            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-            row = cursor.fetchone()
-            # fetch full row to get UID
-            rows = safe_query("SELECT * FROM tasks WHERE id = ?", (task_id,))
-            full_payload = dict(rows[0]) if rows else {
-                "id": task_id, **updates}
-
-        # d) Queue update
-        queue_sync_operation("tasks", "update", full_payload)
-
-        # e) Attempt to drain queue right away
-        process_sync_queue()
+    # fetch full row and queue
+    rows = safe_query("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    full = dict(rows[0]) if rows else {"id": task_id, **db_updates}
+    normalize_for_db(full)
+    queue_sync_operation("tasks", "update", full)
+    process_sync_queue()
 
 
 def delete_task(task_id):
@@ -228,27 +172,20 @@ def delete_task(task_id):
         process_sync_queue()
 
 
-def upsert_local_task(data: dict):
-    """
-    Given a dict “data” from fetch_from_server(…), insert or update local row by UID:
-      • If UID exists locally → UPDATE local row.
-      • Else → INSERT new record locally.
-    This should only run in “client” code paths (pulling remote data). 
-    """
+def upsert_local_task(data: dict) -> None:
     uid_val = data.get("uid")
     if not uid_val:
         return
 
-    # does it exist?
     rows = safe_query("SELECT id FROM tasks WHERE uid = ?", (uid_val,))
     fields = get_task_fields()
+    db_data = normalize_for_db(data)
 
     if rows:
-        local_id = rows[0]["id"]
-        updates = {k: data[k] for k in fields if k in data}
-        update_record("tasks", local_id, updates)
+        update_record("tasks", rows[0]["id"], {
+                      k: db_data[k] for k in fields if k in db_data})
     else:
-        add_record("tasks", data, fields)
+        add_record("tasks", db_data, fields)
 
 
 def query_tasks(
@@ -325,14 +262,11 @@ def query_tasks(
 
 
 def update_task_by_uid(uid: str, updates: Dict[str, Any]) -> None:
-    """
-    Host-only update by UID.
-    """
     if not is_host_server():
         return
-
-    cols = ", ".join(f"{k}=?" for k in updates)
-    params = tuple(updates.values()) + (uid,)
+    db_updates = normalize_for_db(updates)
+    cols = ", ".join(f"{k}=?" for k in db_updates)
+    params = tuple(db_updates.values()) + (uid,)
     safe_execute(f"UPDATE tasks SET {cols} WHERE uid = ?", params)
 
 

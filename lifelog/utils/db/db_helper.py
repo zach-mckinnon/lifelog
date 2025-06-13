@@ -1,3 +1,4 @@
+from enum import Enum
 from contextlib import contextmanager
 import json
 import logging
@@ -71,6 +72,15 @@ def direct_db_execute(query: str, params: tuple = ()) -> sqlite3.Cursor:
     cursor.execute(query, params)
     conn.commit()
     return cursor
+
+
+def normalize_for_db(d: dict) -> dict:
+    for k, v in list(d.items()):
+        if isinstance(v, Enum):
+            d[k] = v.value
+        elif isinstance(v, datetime):
+            d[k] = v.isoformat()
+    return d
 
 
 def queue_sync_operation(table: str, operation: str, data: Dict[str, Any]):
