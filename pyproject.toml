@@ -23,6 +23,7 @@ dependencies = [
     "npyscreen",
     "pyyaml", 
     "gunicorn",
+    "pendulum>=2.0",
 
     # Windows only
     "windows-curses; sys_platform == 'win32'",

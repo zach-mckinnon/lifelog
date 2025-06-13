@@ -246,6 +246,11 @@ def setup_location(config):
                     "latitude": lat,
                     "longitude": lon
                 }
+                import pendulum
+                tz = pendulum.local_timezone().name
+
+                config["location"]["timezone"] = tz
+                console.print(f"[green]✔ Saved time zone: {tz}[/green]")
                 return
     except (requests.RequestException, ValueError) as e:
         console.print(
