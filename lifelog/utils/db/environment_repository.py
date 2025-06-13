@@ -14,8 +14,6 @@ def save_environment_data(section, data):
             INSERT INTO environment_data (timestamp, {section})
             VALUES (?, ?)
         """, (datetime.now().isoformat(), json.dumps(data)))
-        conn.commit()
-        conn.close()
 
 
 def get_latest_environment_data(source: str) -> Optional[EnvironmentData]:
@@ -27,5 +25,5 @@ def get_latest_environment_data(source: str) -> Optional[EnvironmentData]:
             ORDER BY timestamp DESC LIMIT 1
         """, (source,))
         row = cur.fetchone()
-        conn.close()
+
     return EnvironmentData(**json.loads(row[0])) if row else None

@@ -4,6 +4,8 @@ from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
+from lifelog.utils.db.db_helper import get_connection
+
 
 # _ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
 # if _ENV_DB:
@@ -15,12 +17,15 @@ from pathlib import Path
 class DBConnection:
     def __enter__(self):
         from lifelog.utils.db.db_helper import get_connection
-        self.conn = get_connection()
-        return self.conn.cursor()
+        self.conn = get_connection().__enter__()
+        return self.conn
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.conn.commit()
-        self.conn.close()
+        try:
+            self.conn.commit()
+        finally:
+            # now exit the get_connection() context properly
+            get_connection().__exit__(exc_type, exc_val, exc_tb)
 
 
 def _resolve_db_path():

@@ -229,21 +229,17 @@ def set_last_synced(table_name: str, iso_ts: str) -> None:
     """
     Upsert `sync_state(table_name, last_synced_at = iso_ts)`.
     """
-    conn = get_connection()
-    cur = conn.cursor()
-    # Try an update first
-    cur.execute(
-        "UPDATE sync_state SET last_synced_at = ? WHERE table_name = ?",
-        (iso_ts, table_name)
-    )
-    if cur.rowcount == 0:
-        # no existing row → insert
+    with get_connection() as conn:
+        cur = conn.cursor()
         cur.execute(
-            "INSERT INTO sync_state (table_name, last_synced_at) VALUES (?, ?)",
-            (table_name, iso_ts)
+            "UPDATE sync_state SET last_synced_at = ? WHERE table_name = ?",
+            (iso_ts, table_name),
         )
-    conn.commit()
-    conn.close()
+        if cur.rowcount == 0:
+            cur.execute(
+                "INSERT INTO sync_state (table_name, last_synced_at) VALUES (?, ?)",
+                (table_name, iso_ts),
+            )
 
 
 def safe_execute(

@@ -25,8 +25,8 @@ def load_feedback_sayings():
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT context, sayings FROM feedback_sayings")
-        conn.close()
-    return {row['context']: json.loads(row['sayings']) for row in cur.fetchall()}
+        rows = cur.fetchall()
+    return {r['context']: json.loads(r['sayings']) for r in rows}
 
 
 _sayings_cache: Optional[Dict[str, List[str]]] = None
@@ -56,16 +56,13 @@ def save_feedback_sayings(sayings: dict):
     try:
         with get_connection() as conn:
             cur = conn.cursor()
-        for context, saying_list in sayings.items():
-            cur.execute("""
-                INSERT OR REPLACE INTO feedback_sayings (context, sayings)
-                VALUES (?, ?)
-            """, (context, json.dumps(saying_list)))
-        conn.commit()
+            for context, saying_list in sayings.items():
+                cur.execute("""
+                    INSERT OR REPLACE INTO feedback_sayings (context, sayings)
+                    VALUES (?, ?)
+                """, (context, json.dumps(saying_list)))
     except sqlite3.Error as e:
         print(f"Database error saving feedback: {e}")
-    finally:
-        conn.close()
 
 
 def save_motivation_quote(date: str, quote: str):
@@ -75,8 +72,6 @@ def save_motivation_quote(date: str, quote: str):
             INSERT OR REPLACE INTO daily_quotes (date, quote)
             VALUES (?, ?)
         """, (date, quote))
-        conn.commit()
-        conn.close()
 
 
 def get_motivational_quote(date: str = None):
