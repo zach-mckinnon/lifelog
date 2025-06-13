@@ -1,17 +1,45 @@
+from contextlib import contextmanager
 import json
 import logging
 import sqlite3
+import time
 import requests
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from lifelog.config.config_manager import get_deployment_mode_and_url, load_config
-from lifelog.utils.db.database_manager import get_connection
+from lifelog.utils.db.database_manager import _resolve_db_path
 
 
 # Database paths
 LOCAL_DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
 SYNC_QUEUE_PATH = Path.home() / ".lifelog" / "sync_queue.db"
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def get_connection():
+    """
+    Yields an sqlite3.Connection that:
+      • has PRAGMA foreign_keys=ON
+      • will COMMIT on normal exit,
+      • ROLLBACK on exception,
+      • and ALWAYS CLOSE.
+    """
+    db_path = _resolve_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    try:
+        yield conn
+        conn.commit()
+    except:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def get_mode() -> Tuple[str, str]:
@@ -214,3 +242,74 @@ def set_last_synced(table_name: str, iso_ts: str) -> None:
         )
     conn.commit()
     conn.close()
+
+
+def safe_execute(
+    sql: str,
+    params: Tuple[Any, ...] = (),
+    retries: int = 5,
+    backoff: float = 0.1
+) -> sqlite3.Cursor:
+    """
+    Execute a write operation with retry on OperationalError.
+    Commits on success (via get_connection), rolls back on exception.
+    Returns the cursor so you can inspect lastrowid, rowcount, etc.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, retries + 1):
+        try:
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(sql, params)
+                return cur
+        except sqlite3.OperationalError as e:
+            last_exc = e
+            logger.warning(
+                "safe_execute: DB locked, attempt %d/%d: %s",
+                attempt, retries, e, exc_info=False
+            )
+            time.sleep(backoff * attempt)
+        except sqlite3.DatabaseError as e:
+            logger.error(
+                "safe_execute: unrecoverable DB error: %s", e, exc_info=True)
+            raise
+    logger.error(
+        "safe_execute: failed after %d retries, last error: %s",
+        retries, last_exc, exc_info=True
+    )
+    raise last_exc  # type: ignore
+
+
+def safe_query(
+    sql: str,
+    params: Tuple[Any, ...] = (),
+    retries: int = 5,
+    backoff: float = 0.1
+) -> List[sqlite3.Row]:
+    """
+    Execute a read operation with retry on OperationalError.
+    Returns a list of sqlite3.Row (cursor.fetchall()).
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, retries + 1):
+        try:
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(sql, params)
+                return cur.fetchall()
+        except sqlite3.OperationalError as e:
+            last_exc = e
+            logger.warning(
+                "safe_query: DB locked, attempt %d/%d: %s",
+                attempt, retries, e, exc_info=False
+            )
+            time.sleep(backoff * attempt)
+        except sqlite3.DatabaseError as e:
+            logger.error("safe_query: unrecoverable DB error: %s",
+                         e, exc_info=True)
+            raise
+    logger.error(
+        "safe_query: failed after %d retries, last error: %s",
+        retries, last_exc, exc_info=True
+    )
+    raise last_exc

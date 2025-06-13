@@ -4,6 +4,8 @@ from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
+from lifelog.utils.db.db_helper import get_connection
+
 # _ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
 # if _ENV_DB:
 #     DB_PATH = Path(_ENV_DB).expanduser().resolve()
@@ -27,18 +29,6 @@ def _resolve_db_path():
     if env_db:
         return Path(env_db).expanduser().resolve()
     return BASE_DIR / "lifelog.db"
-
-
-def get_connection():
-    # 1) pick up the current DB_PATH
-    db_path = _resolve_db_path()
-    # 2) ensure the directory exists
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    # 3) open (or create) the DB file
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
 
 
 def is_initialized() -> bool:

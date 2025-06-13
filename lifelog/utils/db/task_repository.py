@@ -1,6 +1,6 @@
 from dataclasses import asdict
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import uuid
 from lifelog.config.config_manager import is_host_server
 from lifelog.utils.db.models import Task, TaskStatus, get_task_fields, task_from_row
@@ -13,7 +13,7 @@ from lifelog.utils.db import (
     should_sync,
     queue_sync_operation,
 )
-from lifelog.utils.db.db_helper import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced
+from lifelog.utils.db.db_helper import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced, safe_execute, safe_query
 from lifelog.utils.shared_utils import calculate_priority
 logger = logging.getLogger(__name__)
 
@@ -28,14 +28,7 @@ def get_all_tasks() -> List[Task]:
         # Fetch all remote tasks (no filters)
         _pull_changed_tasks_from_host()
 
-    # 2. Now run the local SELECT
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tasks ORDER BY due ASC")
-    rows = cursor.fetchall()
-    conn.close()
-
+    rows = safe_query("SELECT * FROM tasks ORDER BY due ASC")
     return [task_from_row(dict(row)) for row in rows]
 
 
@@ -92,14 +85,10 @@ def get_task_by_id(task_id):
                 upsert_local_task(remote_list[0])
 
     # 4) Now read the (possibly updated) task from local SQLite
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-    task_row = cursor.fetchone()
-    conn.close()
-
-    return task_from_row(dict(task_row)) if task_row else None
+    rows = safe_query("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    if not rows:
+        return None
+    return task_from_row(dict(rows[0]))
 
 
 def add_task(task_data) -> Task:
@@ -162,33 +151,15 @@ def add_task(task_data) -> Task:
     if not data.get("uid"):
         data["uid"] = str(uuid.uuid4())
 
-    # 5) INSERT into DB
     if is_direct_db_mode():
-        try:
-            new_id = add_record("tasks", data, fields)
-            return get_task_by_id(new_id)
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f"Error inserting new task into DB: {e}", exc_info=True)
-            raise
+        new_id = add_record("tasks", data, fields)
+        return get_task_by_id(new_id)
     else:
-        # client mode: insert locally, queue sync, then re-fetch by UID
-        try:
-            add_record("tasks", data, fields)
-            queue_sync_operation("tasks", "create", data)
-            process_sync_queue()
-            conn = get_connection()
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM tasks WHERE uid = ?",
-                               (data["uid"],)).fetchone()
-            conn.close()
-            return task_from_row(dict(row))
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f"Error inserting/syncing new task in client mode: {e}", exc_info=True)
-            raise
+        add_record("tasks", data, fields)
+        queue_sync_operation("tasks", "create", data)
+        process_sync_queue()
+        rows = safe_query("SELECT * FROM tasks WHERE uid = ?", (data["uid"],))
+        return task_from_row(dict(rows[0]))
 
 
 def update_task(task_id, updates):
@@ -219,12 +190,9 @@ def update_task(task_id, updates):
         row = cursor.fetchone()
         conn.close()
 
-        # c) Build full_payload
-        if row and row["uid"]:
-            full_payload = dict(row)
-        else:
-            # Fallback: if the UID is missing, queue numeric‐ID based update
-            full_payload = {"id": task_id, **updates}
+        # fetch full row to get UID
+        rows = safe_query("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        full_payload = dict(rows[0]) if rows else {"id": task_id, **updates}
 
         # d) Queue update
         queue_sync_operation("tasks", "update", full_payload)
@@ -243,33 +211,19 @@ def delete_task(task_id):
          c) Queue a “delete” by UID (or numeric ID if UID missing).
          d) Attempt to drain queue.
     """
-    conn = get_connection()
-    cursor = conn.cursor()
-
     if is_direct_db_mode():
-        # Host mode: delete directly by ID
-        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        conn.commit()
-        conn.close()
-
+        safe_execute("DELETE FROM tasks WHERE id = ?", (task_id,))
     else:
-        # Client mode:
-        # a) Fetch UID
-        cursor.execute("SELECT uid FROM tasks WHERE id = ?", (task_id,))
-        row = cursor.fetchone()
+        # fetch UID
+        rows = safe_query("SELECT uid FROM tasks WHERE id = ?", (task_id,))
+        uid_val = rows[0]["uid"] if rows and rows[0]["uid"] else None
 
-        # b) Delete locally
-        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        conn.commit()
-        conn.close()
+        # delete locally
+        safe_execute("DELETE FROM tasks WHERE id = ?", (task_id,))
 
-        # c) Queue delete by UID or fallback to numeric ID
-        if row and row["uid"]:
-            queue_sync_operation("tasks", "delete", {"uid": row["uid"]})
-        else:
-            queue_sync_operation("tasks", "delete", {"id": task_id})
-
-        # d) Attempt to drain queue now
+        # queue
+        payload = {"uid": uid_val} if uid_val else {"id": task_id}
+        queue_sync_operation("tasks", "delete", payload)
         process_sync_queue()
 
 
@@ -282,155 +236,110 @@ def upsert_local_task(data: dict):
     """
     uid_val = data.get("uid")
     if not uid_val:
-        return  # cannot upsert without a UID
+        return
 
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    # does it exist?
+    rows = safe_query("SELECT id FROM tasks WHERE uid = ?", (uid_val,))
+    fields = get_task_fields()
 
-    # 1) Check if that UID already exists locally
-    cursor.execute("SELECT id FROM tasks WHERE uid = ?", (uid_val,))
-    existing = cursor.fetchone()
-
-    fields = get_task_fields()  # includes "uid"
-    if existing:
-        # 2a) Build updates-only dict from data
-        local_id = existing["id"]
+    if rows:
+        local_id = rows[0]["id"]
         updates = {k: data[k] for k in fields if k in data}
         update_record("tasks", local_id, updates)
     else:
-        # 2b) Insert a brand-new record locally
         add_record("tasks", data, fields)
-
-    conn.close()
 
 
 def query_tasks(
-    title_contains=None,
-    uid=None,
-    category=None,
-    project=None,
-    importance=None,
-    due_contains=None,
-    status=None,
-    show_completed=False,
-    sort="priority",
+    title_contains: Optional[str] = None,
+    uid: Optional[str] = None,
+    category: Optional[str] = None,
+    project: Optional[str] = None,
+    importance: Optional[int] = None,
+    due_contains: Optional[str] = None,
+    status: Optional[str] = None,
+    show_completed: bool = False,
+    sort: str = "priority",
     **kwargs
-):
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+) -> List[Task]:
+    """
+    Flexible query against local tasks, with optional remote pull in client mode.
+    """
+    if should_sync():
+        _pull_changed_tasks_from_host()
 
-    # If host‐mode OR client‐mode (i.e. direct DB or should_sync), we always work off local SQLite.
     if is_direct_db_mode() or should_sync():
-        # —––––––––––— Step A: In client mode, “pull” new/updated rows from the host first —––––––––––—
-        if should_sync():
-            _pull_changed_tasks_from_host()
-
-        # —––––––––––— Step B: Now run the local SELECT exactly as before —––––––––––—
         query = "SELECT * FROM tasks WHERE 1=1"
-        sql_params = []
+        params: List[Any] = []
 
-        if uid is not None:
+        if uid:
             query += " AND uid = ?"
-            sql_params.append(uid)
-
+            params.append(uid)
         if title_contains:
             query += " AND title LIKE ?"
-            sql_params.append(f"%{title_contains}%")
-
+            params.append(f"%{title_contains}%")
         if category:
             query += " AND category = ?"
-            sql_params.append(category)
-
+            params.append(category)
         if project:
             query += " AND project = ?"
-            sql_params.append(project)
-
+            params.append(project)
         if importance is not None:
             query += " AND importance = ?"
-            sql_params.append(importance)
-
+            params.append(importance)
         if due_contains:
             query += " AND due LIKE ?"
-            sql_params.append(f"%{due_contains}%")
-
+            params.append(f"%{due_contains}%")
         if status:
             query += " AND status = ?"
-            sql_params.append(status)
-
+            params.append(status)
         if not show_completed and status is None:
             query += " AND (status IS NULL OR status != 'done')"
 
-        sort_field = {
+        sort_map = {
             "priority": "priority DESC",
-            "due": "due ASC",
-            "created": "created ASC",
-            "id": "id ASC",
-            "status": "status ASC"
-        }.get(sort, "priority DESC")
-
-        query += f" ORDER BY {sort_field}"
-        cursor.execute(query, sql_params)
-        rows = cursor.fetchall()
-        conn.close()
-        return [task_from_row(dict(row)) for row in rows]
-
-    else:
-        # Pure “remote‐only” fallback
-        params = {
-            "title_contains": title_contains,
-            "category": category,
-            "project": project,
-            "importance": importance,
-            "due_contains": due_contains,
-            "status": status,
-
-            "sort": sort
+            "due":      "due ASC",
+            "created":  "created ASC",
+            "id":       "id ASC",
+            "status":   "status ASC",
         }
-        params.update(kwargs)
-        params = {k: v for k, v in params.items() if v is not None}
+        query += f" ORDER BY {sort_map.get(sort, 'priority DESC')}"
 
-        return fetch_from_server("tasks", params=params)
+        rows = safe_query(query, tuple(params))
+        return [task_from_row(dict(r)) for r in rows]
+
+    # pure-remote fallback
+    params = {k: v for k, v in {
+        "title_contains": title_contains,
+        "category":       category,
+        "project":        project,
+        "importance":     importance,
+        "due_contains":   due_contains,
+        "status":         status,
+        "sort":           sort,
+        **kwargs,
+    }.items() if v is not None}
+
+    return fetch_from_server("tasks", params=params)
 
 
-def update_task_by_uid(uid: str, updates: dict):
+def update_task_by_uid(uid: str, updates: Dict[str, Any]) -> None:
     """
-    UPDATE a task’s fields using its global UID.
-    This function should only be called when running in host/server mode.
-    """
-    if not is_host_server():
-        # Deny if someone invokes this on a non-host instance
-        return
-
-    fields = []
-    values = []
-    for key, val in updates.items():
-        fields.append(f"{key} = ?")
-        values.append(val)
-    values.append(uid)
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        f"UPDATE tasks SET {', '.join(fields)} WHERE uid = ?",
-        tuple(values)
-    )
-    conn.commit()
-    conn.close()
-
-
-def delete_task_by_uid(uid: str):
-    """
-    DELETE a task by its global UID.
-    This function should only be called when running in host/server mode.
+    Host-only update by UID.
     """
     if not is_host_server():
-        # Deny if someone invokes this on a non-host instance
         return
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM tasks WHERE uid = ?", (uid,))
-    conn.commit()
-    conn.close()
+    cols = ", ".join(f"{k}=?" for k in updates)
+    params = tuple(updates.values()) + (uid,)
+    safe_execute(f"UPDATE tasks SET {cols} WHERE uid = ?", params)
+
+
+def delete_task_by_uid(uid: str) -> None:
+    """
+    Host-only delete by UID.
+    """
+    if not is_host_server():
+        return
+
+    safe_execute("DELETE FROM tasks WHERE uid = ?", (uid,))

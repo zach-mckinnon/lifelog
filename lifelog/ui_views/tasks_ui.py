@@ -39,15 +39,18 @@ def draw_agenda(pane, h, w, selected_idx):
         status_filter = TASK_FILTERS[current_filter_idx]
         show_completed = (status_filter == "done")
         # If you want only backlog/active when status_filter != "done":
-        tasks = task_repository.query_tasks(
-            show_completed=show_completed,
-            sort="priority"
-        )
-        # If filtering by backlog vs active needed:
+        try:
+            tasks = task_repository.query_tasks(
+                show_completed=show_completed,
+                sort="priority"
+            )
+        except Exception as db_err:
+            popup_error(pane, f"Failed to load tasks: {db_err}")
+            return 0
+
         if status_filter in ("backlog", "active"):
             tasks = [t for t in tasks if getattr(
                 t, "status", None) == status_filter]
-
         # --- CALENDAR PANEL ---
         cal = calendar.TextCalendar(firstweekday=0)
         month_lines = cal.formatmonth(now.year, now.month).splitlines()
