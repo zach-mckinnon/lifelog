@@ -4,7 +4,7 @@ from lifelog.utils.db.database_manager import get_connection
 from datetime import datetime
 import json
 
-from utils.db.models import EnvironmentData
+from lifelog.utils.db.models import EnvironmentData
 
 
 def save_environment_data(section, data):

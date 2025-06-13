@@ -62,13 +62,8 @@ DOCKER_DIR = Path.home() / ".lifelog" / "docker"
 
 # Ensure the app is initialized
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
-sync_app.command()(environmental_sync.weather)
-sync_app.command()(environmental_sync.air)
-sync_app.command()(environmental_sync.moon)
-sync_app.command()(environmental_sync.satellite)
 app.add_typer(start_day.app, name="start-day",
               help="Guided, motivational start-of-day routine")
-app.add_typer(sync_app, name="sync", help="Fetch external environmental data")
 app.add_typer(track_module.app, name="track",
               help="Track recurring self-measurements and goals.")
 app.add_typer(time_module.app, name="time",
@@ -77,6 +72,8 @@ app.add_typer(task_module.app, name="task",
               help="Create, track, and complete actionable tasks.")
 app.add_typer(report.app, name="report",
               help="View detailed reports and insights.")
+app.add_typer(environmental_sync.app, name="environment sync",
+              help="Sync data about your local weather.")
 
 
 @app.command("ui")
@@ -624,7 +621,7 @@ def sync_command():
     """
     log_utils.setup_logging()
     try:
-        from lifelog.utils.db import process_sync_queue
+        from lifelog.utils.db.db_helper import process_sync_queue
         process_sync_queue()
         console.print("[green]Sync completed![/green]")
     except Exception as e:

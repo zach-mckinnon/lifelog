@@ -1,8 +1,17 @@
+import logging
+from lifelog.utils.db import (
+    task_repository,
+    track_repository,
+    time_repository,
+    environment_repository,
+)
+from rich.progress import Progress, BarColumn, TimeRemainingColumn, TextColumn
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timedelta, timezone, date
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from datetime import datetime, timedelta, date
-import requests
 
 from lifelog.utils.get_quotes import get_motivational_quote, get_feedback_saying
 from lifelog.utils.db import task_repository, track_repository, time_repository, environment_repository
@@ -10,19 +19,6 @@ from lifelog.commands.environmental_sync import fetch_today_forecast
 
 console = Console()
 app = typer.Typer(help="Guided, gamified start-of-day focus assistant (CLI).")
-# Helper: Get today's tasks (non-completed)
-
-
-def get_today_tasks():
-    return task_repository.get_all_tasks()
-
-# Helper: Get all trackers
-
-
-def get_all_trackers():
-    return track_repository.get_all_trackers()
-
-# Helper: Pomodoro timer (simplified: blocking, prints time)
 
 
 def pomodoro_timer(minutes):
@@ -34,344 +30,326 @@ def pomodoro_timer(minutes):
     console.print("[bold yellow]Pomodoro session complete![/bold yellow]")
 
 
+# ─── Setup ─────────────────────────────────────────────────────────────────────
+logger = logging.getLogger("start_day_cli")
+logger.setLevel(logging.DEBUG)
+handler = logging.FileHandler("start_day.log")
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)s %(message)s"))
+logger.addHandler(handler)
+
+console = Console()
+app = typer.Typer(help="Guided, gamified start-of-day focus assistant (CLI).")
+
+# ─── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def prompt_for_int(prompt: str, default: int) -> int:
+    """Prompt the user for an integer, falling back to default on bad input."""
+    val = typer.prompt(prompt, default=str(default))
+    try:
+        return int(val)
+    except ValueError:
+        console.print(
+            f"[yellow]Invalid number, using default {default}[/yellow]")
+        return default
+
+
+def prompt_continue(label: str = "Press Enter to continue...") -> None:
+    """Wait for the user to press Enter or exit if interrupted."""
+    try:
+        typer.prompt(label, default="")
+    except (KeyboardInterrupt, EOFError):
+        console.print("[red]Interrupted—exiting start-day.[/red]")
+        raise typer.Exit()
+
+
+def prompt_yes_no(prompt: str, default: bool = False) -> bool:
+    """Yes/No prompt wrapper."""
+    try:
+        return typer.confirm(prompt, default=default)
+    except (KeyboardInterrupt, EOFError):
+        return False
+
+
+def now_iso_utc() -> str:
+    """Return current UTC time as ISO string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def get_weather_service():
+    """Abstracted weather fetch—change implementation here if needed."""
+    return fetch_today_forecast
+
+# ─── Core Steps ────────────────────────────────────────────────────────────────
+
+
 @app.command("start-day")
-def start_day():
-    """Start a guided, motivational, structured focus day!"""
+def start_day(
+    overload_threshold: int = typer.Option(
+        480, help="Max planned minutes before warning")
+) -> None:
+    """
+    Start a guided, motivational, structured focus day!
+    """
     console.rule("[bold blue]🌞 Start Your Day 🌞[/bold blue]")
 
-    # Step 1: Greet & motivate
+    # Step 1: Motivation
     quote = get_motivational_quote()
-    console.print(Panel(quote, style="bold green",
-                  title="Motivation for Today"))
+    console.print(Panel(quote, title="Motivation for Today", style="green"))
 
-    # Step 1.a: Show today's weather forecast
+    # Step 1a: Weather
     show_today_weather_cli()
 
-    # Step 2: Select tasks
+    # Step 2: Task selection
     today_tasks = select_tasks_cli()
     if not today_tasks:
         return
 
-    # Step 3: Ask time allocation
-    focus_plan, total_minutes = ask_time_for_tasks_cli(today_tasks)
+    # Step 3: Time allocation
+    focus_plan, total = ask_time_for_tasks_cli(today_tasks)
 
-    # Step 4: Warn if overload
-    warn_overload_cli(total_minutes)
+    # Step 4: Overload warning
+    if total > overload_threshold:
+        console.print(
+            f"[bold yellow]⚠️ You planned {total} minutes (> {overload_threshold}). "
+            "Consider reducing to avoid burnout.[/]"
+        )
 
-    # Step 5: Initial tracker logs
-    trackers = track_repository.get_all_trackers()
+    # Step 5: Initial trackers
     log_initial_trackers_cli()
 
-    # Step 6: Guided Pomodoro for each task
+    # Step 6: Pomodoro loop
     for idx, item in enumerate(focus_plan, start=1):
         task = item["task"]
         minutes = item["minutes"]
 
-        console.rule(
-            f"[bold magenta]Task {idx}/{len(focus_plan)}: {task.title}[/bold magenta]")
-        console.print(
-            f"Total focus time: [bold]{minutes}[/bold] minutes. Press Enter to start.")
-        typer.prompt("Ready?")
+        console.rule(f"[magenta]Task {idx}/{len(focus_plan)}: {task.title}[/]")
+        console.print(f"Total focus time: [bold]{minutes}[/] minutes.")
+        prompt_continue("Ready? (Press Enter)")
 
-        # Pomodoro sessions
         distracted = run_pomodoro_sessions_cli(task, minutes)
-
-        # Makeup Pomodoros if needed
         run_makeup_sessions_cli(distracted)
-
-        # End-of-task notes
         record_task_notes_cli(task, minutes)
-
-        # Tracker logs between tasks
-        log_between_tasks_cli(trackers)
-
-        # Transition to next task
+        log_between_tasks_cli()
         if idx < len(focus_plan):
-            next_task = focus_plan[idx]["task"]
-            console.print(
-                f"[yellow]Transition: Next is [bold]{next_task.title}[/bold]. Take a short break. Press Enter when ready.[/yellow]")
-            typer.prompt("Press Enter to continue.")
+            console.print(f"[cyan]Next up: {focus_plan[idx]['task'].title}[/]")
+            prompt_continue()
 
     # Step 7: End-of-day feedback
-    show_end_of_day_cli()
+    feedback = get_feedback_saying("end_of_day")
+    console.print(Panel(feedback, title="🎉 Day Complete!", style="green"))
+
+# ─── Subroutines ──────────────────────────────────────────────────────────────
 
 
-def show_today_weather_cli():
-    """
-    Retrieve saved location from environment data, fetch today's forecast,
-    and display in the CLI via Rich.
-    """
-    env = environment_repository.get_latest_environment_data("weather")
-    if not env:
-        console.print(
-            "[yellow]No weather/location data available. Please sync environment first.[/yellow]")
-        return
-    lat = env.get("latitude")
-    lon = env.get("longitude")
-    if lat is None or lon is None:
-        console.print(
-            "[yellow]Location (latitude/longitude) missing in environment data.[/yellow]")
-        return
-
+def show_today_weather_cli() -> None:
+    env = None
     try:
-        # fetch_today_forecast returns list of dicts: time, temperature, precip_prob, description
-        forecast_entries = fetch_today_forecast(lat, lon)
+        env = environment_repository.get_latest_environment_data("weather")
     except Exception as e:
-        console.print(f"[red]Weather fetch error: {e}[/red]")
+        logger.exception("Failed loading environment data")
+    if not env:
+        console.print("[yellow]No weather data. Run 'llog sync' first.[/]")
         return
 
-    if not forecast_entries:
-        console.print("[yellow]No forecast available for today.[/yellow]")
+    lat, lon = env.get("latitude"), env.get("longitude")
+    if lat is None or lon is None:
+        console.print("[yellow]Incomplete location data.[/]")
         return
 
-    # Build lines for display
-    lines = []
-    today_str = date.today().isoformat()
-    lines.append(f"Today's forecast ({today_str}), every 4 hours:")
-    for entry in forecast_entries:
-        # entry["time"] is "YYYY-MM-DDThh:MM"
-        t_local = entry["time"][11:]  # "hh:MM"
-        temp = entry["temperature"]
-        precip = entry["precip_prob"]
-        desc = entry["description"]
-        # Format temperature
-        if temp is None:
-            temp_str = "-"
-        else:
-            temp_str = f"{temp:.1f}°C" if isinstance(
-                temp, float) else f"{temp}°C"
-        precip_str = f"{precip}%" if precip is not None else "-"
-        lines.append(f"{t_local} — {temp_str}, Precip {precip_str}, {desc}")
+    fetcher = get_weather_service()
+    try:
+        forecast = fetcher(lat, lon)
+    except Exception as e:
+        logger.exception("Weather fetch error")
+        console.print(f"[red]Failed fetching weather: {e}[/]")
+        return
 
-    # Display in a Rich Panel for clarity
-    panel_content = "\n".join(lines)
+    if not forecast:
+        console.print("[yellow]No forecast for today.[/]")
+        return
+
+    lines = [f"Forecast for {date.today().isoformat()} (4h intervals):"]
+    for e in forecast:
+        t_local = e["time"][11:]
+        temp = f"{e['temperature']:.1f}°C" if isinstance(
+            e["temperature"], float) else f"{e['temperature']}°C"
+        pop = f"{e['precip_prob']}%" if e["precip_prob"] is not None else "-"
+        lines.append(f"{t_local} — {temp}, Precip {pop}, {e['description']}")
+
     console.print(
-        Panel(panel_content, title="🌤️ Today's Forecast", style="cyan"))
+        Panel("\n".join(lines), title="🌤️ Today's Forecast", style="cyan"))
 
 
-def select_tasks_cli():
-    """
-    Show all non-completed tasks, let user pick via comma-separated indices.
-    Returns list of Task instances or None if cancelled/invalid.
-    """
-    all_tasks = task_repository.get_all_tasks()
+def select_tasks_cli() -> Optional[List]:
+    try:
+        all_tasks = task_repository.get_all_tasks()
+    except Exception as e:
+        logger.exception("Failed querying tasks")
+        console.print("[red]Could not load tasks. Check logs.[/]")
+        return None
+
     if not all_tasks:
-        console.print(
-            "[yellow]No tasks found. Add tasks with 'llog task add'![/yellow]")
+        console.print("[yellow]No tasks. Add with 'llog task add'.[/]")
         return None
 
-    console.print(
-        "\n[bold]Which tasks do you want to focus on today? (Separate numbers by commas, e.g., 1,3,5)[/bold]")
+    console.print("[bold]Select tasks for today (e.g. 1,3):[/]")
     for i, t in enumerate(all_tasks, 1):
-        due_str = ""
-        if getattr(t, "due", None):
-            # original code splits on 'T' to get date
+        due = ""
+        if t.due:
             try:
-                due_date = t.due.split('T')[0]
+                due = datetime.fromisoformat(t.due).date().isoformat()
             except Exception:
-                due_date = str(t.due)
-            due_str = f"(due: {due_date})"
-        console.print(f"{i}. [cyan]{t.title}[/cyan] {due_str}")
+                due = str(t.due)
+        console.print(f"{i}. [cyan]{t.title}[/] (due: {due or 'N/A'})")
 
-    selection = typer.prompt("Enter task numbers", default="")
-    if not selection.strip():
-        console.print("[yellow]No tasks selected. Exiting start-day.[/yellow]")
+    sel = typer.prompt("Enter numbers", default="")
+    if not sel.strip():
+        console.print("[yellow]No tasks selected—aborting.[/]")
         return None
 
-    idx_list = []
-    for part in selection.split(","):
+    chosen, invalid = [], False
+    for part in sel.split(","):
         part = part.strip()
-        if not part:
-            continue
         if not part.isdigit():
-            console.print(f"[red]Invalid selection: '{part}'. Exiting.[/red]")
-            return None
-        ii = int(part) - 1
-        if ii < 0 or ii >= len(all_tasks):
-            console.print(
-                f"[red]Selection out of range: {part}. Exiting.[/red]")
-            return None
-        idx_list.append(ii)
-    if not idx_list:
-        console.print("[yellow]No valid selections made. Exiting.[/yellow]")
+            invalid = True
+            break
+        idx = int(part) - 1
+        if idx < 0 or idx >= len(all_tasks):
+            invalid = True
+            break
+        chosen.append(all_tasks[idx])
+    if invalid or not chosen:
+        console.print("[red]Invalid selection—aborting.[/]")
         return None
-
-    today_tasks = [all_tasks[i] for i in idx_list]
-    return today_tasks
+    return chosen
 
 
-def ask_time_for_tasks_cli(tasks):
-    """
-    For each Task in tasks, prompt “How many minutes?” with default 25.
-    Returns list of dicts {"task": Task, "minutes": int}.
-    """
-    plan = []
-    total = 0
-    for task in tasks:
-        prompt_text = f"How many minutes do you want to spend on [bold]{task.title}[/bold]? "
-        mins_str = typer.prompt(prompt_text, default="25")
-        try:
-            mins = int(mins_str)
-        except Exception:
-            console.print("[red]Invalid input, using 25 minutes.[/red]")
-            mins = 25
-        plan.append({"task": task, "minutes": mins})
+def ask_time_for_tasks_cli(tasks: List) -> (Tuple[List[Dict], int]):
+    plan, total = [], 0
+    for t in tasks:
+        mins = prompt_for_int(f"Minutes for '{t.title}'?", 25)
+        plan.append({"task": t, "minutes": mins})
         total += mins
     return plan, total
 
 
-def warn_overload_cli(total_minutes, threshold=480):
-    """
-    Warn if total planned minutes exceed threshold (default 480 = 8 hours).
-    """
-    if total_minutes > threshold:
-        console.print(
-            "[bold yellow]⚠️ You planned more than 8 hours! Consider narrowing your focus to prevent burnout. You can always do more after your day plan is over![/bold yellow]"
-        )
-
-
-def log_initial_trackers_cli():
-    """
-    Prompt for tracker logs at start of day.
-    """
-    trackers = track_repository.get_all_trackers()
-    if not trackers:
+def log_initial_trackers_cli() -> None:
+    try:
+        trackers = track_repository.get_all_trackers()
+    except Exception:
+        logger.exception("Failed loading trackers")
         return
-    console.print("\n[bold]Would you like to log any trackers now?[/bold]")
     for tr in trackers:
-        log_now = typer.confirm(f"Log [bold]{tr.title}[/bold]?", default=False)
-        if log_now:
-            value = typer.prompt(f"Enter value for {tr.title}")
-            # Use repository to add entry
-            track_repository.add_tracker_entry(
-                tracker_id=tr.id,
-                timestamp=datetime.now().isoformat(),
-                value=value
-            )
-            console.print(f"[green]Logged {tr.title} ➡️ {value}[/green]")
+        if prompt_yes_no(f"Log '{tr.title}' now?", default=False):
+            val = typer.prompt(f"Value for {tr.title}", default="")
+            if val:
+                try:
+                    track_repository.add_tracker_entry(
+                        tracker_id=tr.id,
+                        timestamp=now_iso_utc(),
+                        value=val,
+                    )
+                    console.print(f"[green]Logged {tr.title} → {val}[/]")
+                except Exception:
+                    logger.exception("Failed logging tracker")
 
 
-def pomodoro_timer(minutes):
-    import time as _t
-    for min_left in range(minutes, 0, -1):
-        console.print(
-            f"[bold green]⏳ {min_left} min left...[/bold green]", end='\r')
-        _t.sleep(60)
-    console.print("[bold yellow]\nPomodoro session complete![/bold yellow]")
+def run_pomodoro_sessions_cli(task, total_minutes: int) -> int:
+    """Runs focus/break cycles, returns total distracted minutes."""
+    focus, brk = (25, 5) if total_minutes <= 120 else (45, 10)
+    console.print(f"[blue]Using {focus}min focus / {brk}min break.[/]")
+    sessions = (total_minutes + focus - 1) // focus
+    left, distracted = total_minutes, 0
 
+    for i in range(sessions):
+        length = min(focus, left)
+        console.print(f"[bold]Pomodoro {i+1}/{sessions}: {length}min[/]")
+        prompt_continue("Start session (Enter)...")
 
-def run_pomodoro_sessions_cli(task, total_minutes):
-    """
-    Run Pomodoro focus/break cycles for a single task.
-    Returns total distracted minutes.
-    """
-    # Decide Pomodoro pattern
-    if total_minutes <= 120:
-        focus_length = 25
-        break_length = 5
-    else:
-        focus_length = 45
-        break_length = 10
-    console.print(
-        f"[blue]We'll use {focus_length} min focus, {break_length} min break cycles.[/blue]")
+        # Rich Progress bar countdown
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        ) as prog:
+            task_id = prog.add_task("⏳ Focus", total=length * 60)
+            for _ in range(length * 60):
+                prog.update(task_id, advance=1)
+                typer.sleep(1)
 
-    sessions_needed = (total_minutes + focus_length - 1) // focus_length
-    minutes_left = total_minutes
-    distracted_total = 0
+        console.print("[green]Session complete![/]")
+        extra = prompt_for_int("Distracted minutes?", 0)
+        distracted += extra
+        left -= length
 
-    for session in range(sessions_needed):
-        session_time = min(focus_length, minutes_left)
-        console.print(
-            f"[blue]Pomodoro {session+1}/{sessions_needed} for {session_time} min[/blue]")
-        typer.prompt("Press Enter to start this session...")
-        pomodoro_timer(session_time)
-
-        distracted_str = typer.prompt(
-            "Were you distracted? Enter distracted minutes (or 0)", default="0")
-        try:
-            distracted = int(distracted_str)
-        except Exception:
-            distracted = 0
-        distracted_total += distracted
-
-        minutes_left -= session_time
-        if session < sessions_needed - 1:
-            # Transition break feedback
+        if i < sessions - 1:
             console.print(Panel(get_feedback_saying(
                 "transition_break"), style="yellow"))
-            console.print(
-                f"Take a {break_length}-min break! Press Enter to continue when ready.")
-            typer.prompt("Press Enter after your break.")
-    return distracted_total
+            prompt_continue(f"Break {brk}min (Enter when ready)")
+
+    return distracted
 
 
-def run_makeup_sessions_cli(distracted_total):
-    """
-    If distracted_total > 0, run makeup Pomodoro sessions equal to distracted minutes.
-    """
-    if distracted_total <= 0:
+def run_makeup_sessions_cli(distracted: int) -> None:
+    if distracted <= 0:
         return
-    # Choose same focus length? For simplicity, use 25 min (or you could pass focus_length)
-    console.print(
-        f"[red]You were distracted for {distracted_total} minutes. Let's make up for it![/red]")
-    # For makeup, assume same focus_length=25
-    focus_length = 25
-    extra_sessions = (distracted_total + focus_length - 1) // focus_length
-    for es in range(extra_sessions):
-        session_time = min(focus_length, distracted_total)
-        console.print(
-            f"[magenta]Makeup Pomodoro: {session_time} min[/magenta]")
-        typer.prompt("Press Enter to start makeup session...")
-        pomodoro_timer(session_time)
-        distracted_total -= session_time
-        if distracted_total > 0:
-            console.print(
-                f"[blue]Take a short break. Press Enter when ready for next makeup session.[/blue]")
-            typer.prompt("Press Enter to continue.")
+    console.print(f"[red]Need {distracted}min makeup focus![/]")
+    focus = 25
+    sessions = (distracted + focus - 1) // focus
+    rem = distracted
+
+    for i in range(sessions):
+        length = min(focus, rem)
+        console.print(f"[magenta]Makeup {i+1}/{sessions}: {length}min[/]")
+        prompt_continue("Press Enter to start...")
+        pomodoro_timer(length)
+        rem -= length
+        if rem > 0:
+            prompt_continue("Enter after short break...")
 
 
-def record_task_notes_cli(task, total_minutes):
-    """
-    Prompt for notes at end of task; if provided, record a separate time entry scaled by total_minutes.
-    """
-    notes = typer.prompt(
-        "Any notes about this session? (leave blank to skip)", default="")
-    if notes.strip():
-        now = datetime.now()
-        # Start a new time entry for notes (similar to UI)
+def record_task_notes_cli(task, minutes: int) -> None:
+    notes = typer.prompt("Any notes? (blank to skip)", default="")
+    if not notes.strip():
+        return
+    try:
         time_repository.start_time_entry(
             title=task.title,
             task_id=task.id,
-            start_time=now.isoformat(),
+            start_time=now_iso_utc(),
             category=task.category,
             project=task.project,
             notes=notes,
         )
-        end_time = now + timedelta(minutes=total_minutes)
-        # Use ISO format string
-        time_repository.stop_active_time_entry(end_time=end_time.isoformat())
-        console.print(f"[green]Session for '{task.title}' logged.[/green]")
+        time_repository.stop_active_time_entry(
+            end_time=(datetime.now(timezone.utc) +
+                      timedelta(minutes=minutes)).isoformat()
+        )
+        console.print("[green]Notes logged.[/]")
+    except Exception:
+        logger.exception("Failed logging task notes")
 
 
-def log_between_tasks_cli(trackers):
-    """
-    Prompt for tracker logs between tasks.
-    """
-    if not trackers:
+def log_between_tasks_cli() -> None:
+    try:
+        trackers = track_repository.get_all_trackers()
+    except Exception:
         return
-    console.print("\n[bold]Log trackers between tasks?[/bold]")
     for tr in trackers:
-        log_now = typer.confirm(f"Log [bold]{tr.title}[/bold]?", default=False)
-        if log_now:
-            value = typer.prompt(f"Enter value for {tr.title}")
-            track_repository.add_tracker_entry(
-                tracker_id=tr.id,
-                timestamp=datetime.now().isoformat(),
-                value=value
-            )
-            console.print(f"[green]Logged {tr.title} ➡️ {value}[/green]")
+        if prompt_yes_no(f"Log '{tr.title}' now?", False):
+            val = typer.prompt(f"Value for {tr.title}", default="")
+            if val:
+                try:
+                    track_repository.add_tracker_entry(
+                        tracker_id=tr.id, timestamp=now_iso_utc(), value=val
+                    )
+                    console.print(f"[green]Logged {tr.title} → {val}[/]")
+                except Exception:
+                    logger.exception("Failed logging between tasks")
 
 
-def show_end_of_day_cli():
-    feedback = get_feedback_saying("end_of_day")
-    console.print(Panel(feedback, title="🎉 Day Complete!", style="green"))
+if __name__ == "__main__":
+    app()

@@ -1,16 +1,24 @@
-# reports_ui.py
-
 import curses
 from datetime import datetime, timedelta
 from lifelog.utils.db import task_repository
-from lifelog.commands.report import daily_tracker, show_clinical_insights, show_insights, summary_time, summary_trackers
+from lifelog.commands.report import (
+    daily_tracker,
+    show_clinical_insights,
+    show_insights,
+    summary_time,
+    summary_trackers
+)
 from lifelog.ui_views.popups import log_and_popup_error, popup_input, popup_error
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr
+
+# Minimum terminal characters to approximate 180×180 px (≈8×16 px per char)
+MIN_ROWS = 11
+MIN_COLS = 22
 
 
 def _drop_to_console(func, *args):
     try:
-        curses.endwin()  # Only call if initialized
+        curses.endwin()
     except curses.error:
         pass
     try:
@@ -18,7 +26,7 @@ def _drop_to_console(func, *args):
     except Exception as e:
         print(f"\n[red]Error running report: {e}[/]")
     input("\nPress Enter to return to the TUI…")
-    curses.initscr()  # Reinitialize curses
+    curses.initscr()
 
 
 def run_summary_trackers(stdscr):
@@ -49,108 +57,141 @@ def run_clinical_insights(stdscr):
 
 
 def draw_report(pane, h, w):
-    try:
-        pane.erase()
-        max_h, max_w = pane.getmaxyx()
-        pane.border()
-        title = " Reports "
-        safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
-                    title, curses.A_BOLD)
-        y = 2
-        lines = [
-            "1. Tracker Summary   - Overview of all trackers",
-            "2. Time Summary      - Overview of all time logs",
-            "3. Daily Tracker     - Detail for a single metric",
-            "4. Insights          - AI-driven insights",
-            "5. Clinical Insights - Clinical/Behavioral patterns (NEW)",
-            "",
-            "Use 1-5 to select. ESC/q to return."
-        ]
-        for i, line in enumerate(lines):
-            if y + i < max_h - 1:
-                safe_addstr(pane, y + i, 2, line[:max_w-4])
+    """
+    Main menu for report selection.
+    """
+    pane.erase()
+    max_h, max_w = pane.getmaxyx()
+    pane.border()
+
+    # Screen size check
+    if max_h < MIN_ROWS or max_w < MIN_COLS:
+        msg = f"Screen too small: need ≥{MIN_COLS}×{MIN_ROWS} chars"
+        safe_addstr(pane, max_h//2, max((max_w - len(msg))//2, 0),
+                    msg, curses.A_BOLD | curses.A_REVERSE)
         pane.noutrefresh()
-    except Exception as e:
-        safe_addstr(pane, h-2, 2, f"Report err: {e}", curses.A_BOLD)
-        pane.noutrefresh()
-        log_exception("draw_report", e)
+        curses.doupdate()
+        return
+
+    # Title
+    title = " Reports "
+    safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
+                title, curses.A_BOLD)
+
+    # Menu items
+    options = [
+        "1. Tracker Summary   - Overview of all trackers",
+        "2. Time Summary      - Overview of all time logs",
+        "3. Daily Tracker     - Detail for a single metric",
+        "4. Insights          - AI-driven insights",
+        "5. Clinical Insights - Clinical/Behavioral patterns (NEW)",
+        "",
+        "Use 1-5 to select. ESC/q to return."
+    ]
+    for idx, line in enumerate(options):
+        y = 2 + idx
+        if y < max_h - 1:
+            safe_addstr(pane, y, 2, line[:max_w-4])
+
+    pane.noutrefresh()
+    curses.doupdate()
 
 
 def draw_burndown(pane, h, w):
-    try:
-        pane.erase()
-        pane.border()
-        title = " Task Burndown "
-        safe_addstr(pane, 0, max((w - len(title)) // 2, 1),
-                    title, curses.A_BOLD)
+    """
+    Scaled burndown chart of outstanding vs. overdue tasks
+    over a 5-day window.
+    """
+    pane.erase()
+    max_h, max_w = pane.getmaxyx()
+    pane.border()
 
-        tasks = task_repository.get_all_tasks()
-        now = datetime.now()
-        start_date = now - timedelta(days=2)
-        end_date = now + timedelta(days=3)
-
-        all_dates = []
-        date_labels = []
-        current_date = start_date
-        while current_date <= end_date:
-            all_dates.append(current_date)
-            date_labels.append(current_date.strftime("%m/%d"))
-            current_date += timedelta(days=1)
-
-        not_done_counts = []
-        overdue_counts = []
-        for d in all_dates:
-            not_done = 0
-            overdue = 0
-            for task in tasks:
-                if task and task.get("status") != "done":
-                    due_str = task.get("due")
-                    if due_str:
-                        try:
-                            due_date = datetime.fromisoformat(due_str)
-                            if due_date.date() <= d.date():
-                                not_done += 1
-                                if due_date.date() < now.date() and d.date() >= now.date():
-                                    overdue += 1
-                        except Exception:
-                            continue
-            not_done_counts.append(not_done)
-            overdue_counts.append(overdue)
-
-        # Y-axis: max outstanding
-        max_count = max(not_done_counts + [1])
-        chart_height = max(5, min(h-6, max_count + 1))
-        left_margin = 4
-
-        # Draw Y-axis
-        for i in range(chart_height):
-            y = 2 + i
-            val = max_count - i
-            if y < h - 2:
-                safe_addstr(pane, y, left_margin-2, f"{val:2d}|")
-
-        # Draw bars
-        for x, (count, overdue) in enumerate(zip(not_done_counts, overdue_counts)):
-            bar_height = int((count / max_count) *
-                             (chart_height-1)) if max_count > 0 else 0
-            for i in range(bar_height):
-                y = 2 + chart_height - 1 - i
-                if y < h - 2:
-                    safe_addstr(pane, y, left_margin + x, "#" if overdue == 0 else "!",
-                                curses.A_BOLD if overdue else curses.A_NORMAL)
-
-        # X-axis (dates)
-        safe_addstr(pane, 2+chart_height, left_margin, "".join(
-            date_labels[i][3:]+" " for i in range(len(date_labels)))[:w-left_margin-1])
-
-        # Stats
-        safe_addstr(pane,
-                    h-3, left_margin, f"Outstanding: {not_done_counts[-1]}, Overdue: {overdue_counts[-1]}")
-        safe_addstr(pane, h-2, left_margin, "Key: # = open, ! = overdue")
-
+    # Screen size check
+    if max_h < MIN_ROWS or max_w < MIN_COLS:
+        msg = f"Screen too small for burndown: need ≥{MIN_COLS}×{MIN_ROWS} chars"
+        safe_addstr(pane, max_h//2, max((max_w - len(msg))//2, 0),
+                    msg, curses.A_BOLD | curses.A_REVERSE)
         pane.noutrefresh()
+        curses.doupdate()
+        return
 
-    except Exception as e:
-        safe_addstr(pane, h-2, 2, f"Burndown err: {e}", curses.A_BOLD)
-        pane.noutrefresh()
-        log_exception("burndown_tui", e)
+    # Title
+    title = " Task Burndown "
+    safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
+                title, curses.A_BOLD)
+
+    # Fetch data
+    tasks = task_repository.get_all_tasks()
+    now = datetime.now()
+    start = now - timedelta(days=2)
+    end = now + timedelta(days=3)
+
+    # Build date list
+    dates = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    labels = [d.strftime("%m/%d") for d in dates]
+
+    # Count outstanding & overdue per day
+    outstanding, overdue = [], []
+    for d in dates:
+        not_done = overdue_count = 0
+        for t in tasks:
+            if t.get("status") != "done":
+                due = t.get("due")
+                if due:
+                    try:
+                        dd = datetime.fromisoformat(due)
+                        if dd.date() <= d.date():
+                            not_done += 1
+                            if dd.date() < now.date() and d.date() >= now.date():
+                                overdue_count += 1
+                    except Exception:
+                        pass
+        outstanding.append(not_done)
+        overdue.append(overdue_count)
+
+    # Determine chart area
+    top = 2
+    bottom = max_h - 4
+    height = bottom - top + 1
+    chart_h = max(3, height)
+    left = 6
+    right = max_w - 2
+    chart_w = right - left
+
+    # Y-axis scaling
+    max_val = max(outstanding + [1])
+    for row in range(chart_h):
+        y = top + row
+        val = int(max_val * (chart_h - 1 - row) / (chart_h - 1))
+        label = f"{val:2d}|"
+        safe_addstr(pane, y, left - len(label), label)
+
+    # X-axis positions
+    step = chart_w / max(len(dates)-1, 1)
+
+    # Draw bars
+    for i, (o, ov) in enumerate(zip(outstanding, overdue)):
+        bar_height = int((o / max_val) * (chart_h - 1))
+        x = left + int(round(step * i))
+        # Draw each segment of bar
+        for hgt in range(bar_height):
+            y = top + chart_h - 1 - hgt
+            char = "!" if ov > 0 else "#"
+            attr = curses.A_BOLD if ov > 0 else curses.A_NORMAL
+            if 0 < y < max_h-1 and 0 < x < max_w-1:
+                safe_addstr(pane, y, x, char, attr)
+
+    # X-axis labels (abbreviated)
+    label_row = top + chart_h
+    for i, lbl in enumerate(labels):
+        x = left + int(round(step * i)) - 1
+        if 0 < label_row < max_h-1 and 0 < x < max_w-5:
+            safe_addstr(pane, label_row, x,
+                        lbl[-2:], curses.A_DIM)
+
+    # Stats footer
+    footer = f"Open: {outstanding[-1]}  Overdue: {overdue[-1]}"
+    safe_addstr(pane, max_h-2, 2, footer[:max_w-4], curses.A_BOLD)
+
+    pane.noutrefresh()
+    curses.doupdate()

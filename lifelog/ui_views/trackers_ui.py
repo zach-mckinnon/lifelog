@@ -12,29 +12,79 @@ from lifelog.commands.report import generate_goal_report
 from lifelog.utils.db.models import Tracker, TrackerEntry
 from lifelog.utils.goal_util import get_description_for_goal_kind
 from lifelog.utils.db import track_repository
-from lifelog.utils.shared_utils import add_category_to_config, get_available_categories, get_available_tags, parse_date_string
+from lifelog.utils.shared_utils import add_category_to_config, filter_entries_for_current_period, get_available_categories, get_available_tags, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
 from lifelog.ui_views.forms import GoalDetailForm, TrackerEntryForm, TrackerForm, run_form, run_goal_form
 
 
 def draw_trackers(pane, h, w, selected_idx, color_pair=None):
-    trackers = track_repository.get_all_trackers()
+    """
+    pane: the curses window
+    h, w: pane dimensions
+    selected_idx: which tracker is highlighted
+    color_pair: optional curses color-pair number
+    """
     pane.erase()
     max_h, max_w = pane.getmaxyx()
     pane.border()
+
+    # Title :contentReference[oaicite:0]{index=0}
     title = " Trackers "
-    y = 1
+    safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
+                title, curses.A_BOLD)
+
+    # Start drawing items two rows down
+    y = 2
+    # :contentReference[oaicite:1]{index=1}
+    trackers = track_repository.get_all_trackers()
+
     for i, tracker in enumerate(trackers):
+        if y >= max_h - 1:
+            break  # no more room
+
+        # Build the tracker line
         line = f"{tracker.id:>2} {tracker.title:20} {tracker.category or '-':8} {tracker.type:6}"
-        if i == selected_idx:
-            # Use color_pair if set, otherwise reverse
-            attr = curses.color_pair(
-                color_pair) if color_pair else curses.A_REVERSE
-        else:
-            attr = curses.A_NORMAL
-        safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
-                    title, curses.A_BOLD)
+        # Highlight selected
+        attr = curses.color_pair(color_pair) if (i == selected_idx and color_pair) else \
+            curses.A_REVERSE if i == selected_idx else curses.A_NORMAL
+
+        # Draw tracker :contentReference[oaicite:2]{index=2}
+        safe_addstr(pane, y, 2, line[:max_w-4], attr)
+        y += 1
+
+        # Now fetch and render any goals for this tracker
+        goals = track_repository.get_goals_for_tracker(
+            tracker.id)  # :contentReference[oaicite:3]{index=3}
+        if goals:
+            # Fetch all entries once, then filter per goal
+            entries = track_repository.get_entries_for_tracker(tracker.id)
+            for goal in goals:
+                if y >= max_h - 1:
+                    break
+
+                # Filter entries by the goal’s period (day/week/month/all) :contentReference[oaicite:4]{index=4}
+                df = filter_entries_for_current_period(
+                    [e.__dict__ for e in entries], period=goal.period
+                )
+
+                # Compute a simple progress summary
+                if goal.kind == "range":
+                    # assume goal.amount is upper bound
+                    current = df['value'].iloc[-1] if not df.empty else 0
+                    status = f"{current}/{goal.amount}"
+                elif goal.kind in ("count", "percentage"):
+                    count = len(df)
+                    target = goal.target or goal.amount
+                    status = f"{count}/{target}"
+                else:
+                    # fallback: show last value
+                    status = df['value'].iloc[-1] if not df.empty else "-"
+
+                goal_line = f"   • {goal.title} [{goal.kind}] → {status}"
+                safe_addstr(pane, y, 4, goal_line[:max_w-6], curses.A_DIM)
+                y += 1
+
     pane.noutrefresh()
 
 
@@ -108,37 +158,6 @@ def log_entry_tui(stdscr):
     )
     track_repository.add_tracker_entry(entry)
     npyscreen.notify_confirm(f"Entry logged for '{tracker.title}'.")
-
-
-def edit_tracker_tui(stdscr, tracker_id):
-    """Edit a tracker."""
-    tracker = track_repository.get_tracker_by_id(tracker_id)
-    if not tracker:
-        npyscreen.notify_confirm(
-            f"Tracker ID {tracker_id} not found.", title="Error")
-        return
-
-    form = TrackerForm()
-    form.title.value = tracker.title
-    form.type.value = tracker.type
-    form.category.value = tracker.category
-    form.tags.value = tracker.tags
-    form.notes.value = tracker.notes
-    form.edit()
-    data = form.parentApp.form_data
-    if not data:
-        return
-
-    updates = {}
-    for key in ["title", "type", "category", "tags", "notes"]:
-        if data.get(key) != getattr(tracker, key):
-            updates[key] = data[key]
-    if updates:
-        track_repository.update_tracker(tracker.id, updates)
-        npyscreen.notify_confirm(
-            f"Tracker '{tracker.title}' updated!", title="Updated")
-    else:
-        npyscreen.notify_confirm("No changes made.")
 
 
 def delete_tracker_tui(stdscr, sel):

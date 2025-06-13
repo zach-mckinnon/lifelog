@@ -29,7 +29,7 @@ def draw_agenda(pane, h, w, selected_idx):
         pane.erase()
         max_h, max_w = pane.getmaxyx()
         pane.border()
-        title = f" Tasks [{status_filter}] "
+        title = f" Tasks "
         safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
                     title, curses.A_BOLD)
         now = datetime.now()
