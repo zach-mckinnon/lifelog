@@ -4,7 +4,6 @@ from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
-from lifelog.utils.db.db_helper import get_connection
 
 # _ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
 # if _ENV_DB:
@@ -15,6 +14,7 @@ from lifelog.utils.db.db_helper import get_connection
 
 class DBConnection:
     def __enter__(self):
+        from lifelog.utils.db.db_helper import get_connection
         self.conn = get_connection()
         return self.conn.cursor()
 
@@ -39,6 +39,7 @@ def is_initialized() -> bool:
 
     try:
         # Open a connection
+        from lifelog.utils.db.db_helper import get_connection
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -50,6 +51,7 @@ def is_initialized() -> bool:
 
 
 def initialize_schema():
+    from lifelog.utils.db.db_helper import get_connection
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -280,6 +282,7 @@ def initialize_schema():
 
 
 def add_record(table, data, fields):
+    from lifelog.utils.db.db_helper import get_connection
     conn = get_connection()
     cursor = conn.cursor()
     if "uid" in fields and not data.get("uid"):
@@ -299,6 +302,7 @@ def add_record(table, data, fields):
 
 
 def update_record(table, record_id, updates):
+    from lifelog.utils.db.db_helper import get_connection
     conn = get_connection()
     cursor = conn.cursor()
     fields = []
@@ -314,6 +318,7 @@ def update_record(table, record_id, updates):
 
 
 def get_all_api_devices():
+    from lifelog.utils.db.db_helper import get_connection
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""

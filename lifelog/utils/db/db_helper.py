@@ -7,8 +7,6 @@ import requests
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from lifelog.config.config_manager import get_deployment_mode_and_url, load_config
-from lifelog.utils.db.database_manager import _resolve_db_path
 
 
 # Database paths
@@ -26,6 +24,7 @@ def get_connection():
       • ROLLBACK on exception,
       • and ALWAYS CLOSE.
     """
+    from lifelog.utils.db.database_manager import _resolve_db_path
     db_path = _resolve_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
@@ -44,6 +43,7 @@ def get_connection():
 
 def get_mode() -> Tuple[str, str]:
     """Returns (mode, server_url)"""
+    from lifelog.config.config_manager import get_deployment_mode_and_url
     return get_deployment_mode_and_url()
 
 
@@ -92,6 +92,7 @@ def queue_sync_operation(table: str, operation: str, data: Dict[str, Any]):
 
 def process_sync_queue():
     """Process queued sync operations (for client mode)"""
+    from lifelog.config.config_manager import load_config
     if not should_sync():
         return
 
@@ -179,6 +180,7 @@ def get_sync_queue_connection() -> sqlite3.Connection:
 
 def fetch_from_server(endpoint: str, params: Dict = None) -> List[Dict]:
     """Fetch data from server in client mode"""
+    from lifelog.config.config_manager import load_config
     if not should_sync():
         return []
 
