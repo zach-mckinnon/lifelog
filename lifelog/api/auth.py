@@ -3,7 +3,7 @@ import string
 import time
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
-from lifelog.utils.db.database_manager import get_connection
+from lifelog.utils.db.db_helper import get_connection
 
 auth_bp = Blueprint('auth', __name__)
 

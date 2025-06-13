@@ -4,7 +4,8 @@ from typing import Any, Dict, List, Optional
 import uuid
 from lifelog.config.config_manager import is_host_server
 from lifelog.utils.db.models import Task, TaskStatus, get_task_fields, task_from_row
-from lifelog.utils.db.database_manager import get_connection, add_record, update_record
+from lifelog.utils.db.db_helper import get_connection
+from lifelog.utils.db.database_manager import add_record, update_record
 from datetime import datetime
 import sqlite3
 
