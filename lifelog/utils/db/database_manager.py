@@ -13,19 +13,14 @@ from lifelog.utils.db.db_helper import get_connection
 # else:
 #     DB_PATH = BASE_DIR / "lifelog.db"
 
-
 class DBConnection:
     def __enter__(self):
-        from lifelog.utils.db.db_helper import get_connection
-        self.conn = get_connection().__enter__()
+        self._cm = get_connection()
+        self.conn = self._cm.__enter__()
         return self.conn
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        try:
-            self.conn.commit()
-        finally:
-            # now exit the get_connection() context properly
-            get_connection().__exit__(exc_type, exc_val, exc_tb)
+        return self._cm.__exit__(exc_type, exc_val, exc_tb)
 
 
 def _resolve_db_path():
@@ -56,260 +51,262 @@ def is_initialized() -> bool:
 
 
 def initialize_schema():
-    from lifelog.utils.db.db_helper import get_connection
-    with get_connection() as conn:
-        cursor = conn.cursor()
-
+    """
+    Create all tables, indexes and do a simple test query.
+    Uses get_connection() as a context‐manager, which:
+      • commits on normal exit,
+      • rolls back on exception,
+      • and always closes.
+    """
     try:
-        cursor.executescript("""          
-        CREATE TABLE IF NOT EXISTS trackers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid TEXT UNIQUE,
-            title TEXT,
-            type TEXT,
-            category TEXT,
-            created DATETIME,
-            notes TEXT, 
-            tags TEXT
-        );
+        with get_connection() as conn:
+            cursor = conn.cursor()
 
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid TEXT UNIQUE,
-            title TEXT,
-            project TEXT,
-            category TEXT,
-            importance INTEGER,
-            created DATETIME,
-            due DATETIME,
-            status TEXT,
-            start DATETIME,
-            end DATETIME,
-            priority FLOAT,
-            recur_interval INTEGER,
-            recur_unit TEXT,
-            recur_days_of_week TEXT,
-            recur_base DATETIME,
-            notes TEXT, 
-            tags TEXT
-            
-        );
-        
-        CREATE TABLE IF NOT EXISTS goals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid TEXT UNIQUE,
-            tracker_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            kind TEXT NOT NULL, -- redundant but useful for quick joins or debugging
-            period TEXT DEFAULT 'day',
-            FOREIGN KEY (tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
-        );
+            # ───────────────────────────────────────────────────────────────────────────
+            # Core tables
+            # ───────────────────────────────────────────────────────────────────────────
+            cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS trackers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT UNIQUE,
+                title TEXT,
+                type TEXT,
+                category TEXT,
+                created DATETIME,
+                notes TEXT,
+                tags TEXT
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_sum (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            amount REAL NOT NULL,
-            unit TEXT,
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT UNIQUE,
+                title TEXT,
+                project TEXT,
+                category TEXT,
+                importance INTEGER,
+                created DATETIME,
+                due DATETIME,
+                status TEXT,
+                start DATETIME,
+                end DATETIME,
+                priority FLOAT,
+                recur_interval INTEGER,
+                recur_unit TEXT,
+                recur_days_of_week TEXT,
+                recur_base DATETIME,
+                notes TEXT,
+                tags TEXT
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_count (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            amount INTEGER NOT NULL,
-            unit TEXT,
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT UNIQUE,
+                tracker_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                period TEXT DEFAULT 'day',
+                FOREIGN KEY (tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_bool (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            -- No special fields, treated as True once any value is logged per period
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_sum (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                amount REAL NOT NULL,
+                unit TEXT,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_streak (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            target_streak INTEGER NOT NULL,
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_count (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                amount INTEGER NOT NULL,
+                unit TEXT,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_duration (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            amount REAL NOT NULL,
-            unit TEXT DEFAULT 'minutes',
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_bool (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_milestone (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            target REAL NOT NULL,
-            unit TEXT,
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_streak (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                target_streak INTEGER NOT NULL,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_reduction (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            amount REAL NOT NULL,
-            unit TEXT,
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_duration (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                amount REAL NOT NULL,
+                unit TEXT DEFAULT 'minutes',
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_range (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            min_amount REAL NOT NULL,
-            max_amount REAL NOT NULL,
-            unit TEXT,
-            mode TEXT CHECK (mode IN ('goal', 'tracker')) DEFAULT 'goal',
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_milestone (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                target REAL NOT NULL,
+                unit TEXT,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_percentage (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            target_percentage REAL NOT NULL,
-            current_percentage REAL DEFAULT 0,
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_reduction (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                amount REAL NOT NULL,
+                unit TEXT,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS goal_replacement (
-            goal_id INTEGER PRIMARY KEY,
-            uid TEXT UNIQUE,
-            old_behavior TEXT NOT NULL,
-            new_behavior TEXT NOT NULL,
-            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS goal_range (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                min_amount REAL NOT NULL,
+                max_amount REAL NOT NULL,
+                unit TEXT,
+                mode TEXT CHECK (mode IN ('goal','tracker')) DEFAULT 'goal',
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-            
-        CREATE TABLE IF NOT EXISTS task_tracking (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid TEXT UNIQUE,
-            task_id INTEGER,
-            start DATETIME,
-            end DATETIME,
-            duration_minutes FLOAT,
-            tags TEXT,
-            notes TEXT,
-            FOREIGN KEY(task_id) REFERENCES tasks(id)
-        );
+            CREATE TABLE IF NOT EXISTS goal_percentage (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                target_percentage REAL NOT NULL,
+                current_percentage REAL DEFAULT 0,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        
-        CREATE TABLE IF NOT EXISTS tracker_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        uid TEXT UNIQUE,
-        tracker_id INTEGER,
-        timestamp DATETIME,
-        value FLOAT,
-        FOREIGN KEY(tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
-    );
+            CREATE TABLE IF NOT EXISTS goal_replacement (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                old_behavior TEXT NOT NULL,
+                new_behavior TEXT NOT NULL,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS time_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid TEXT UNIQUE,
-            title TEXT NOT NULL,               
-            start DATETIME NOT NULL,
-            end DATETIME,                     
-            duration_minutes FLOAT,           
-            task_id INTEGER,                   
-            category TEXT,
-            project TEXT,
-            tags TEXT,
-            notes TEXT,
-            distracted_minutes FLOAT DEFAULT 0,
-            FOREIGN KEY(task_id) REFERENCES tasks(id)
-        );
+            CREATE TABLE IF NOT EXISTS task_tracking (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT UNIQUE,
+                task_id INTEGER,
+                start DATETIME,
+                end DATETIME,
+                duration_minutes FLOAT,
+                tags TEXT,
+                notes TEXT,
+                FOREIGN KEY (task_id) REFERENCES tasks(id)
+            );
 
-        CREATE TABLE IF NOT EXISTS environment_data (
-            uid TEXT UNIQUE,
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME,
-            weather TEXT,
-            air_quality TEXT,
-            moon TEXT,
-            satellite TEXT
-        );
+            CREATE TABLE IF NOT EXISTS tracker_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT UNIQUE,
+                tracker_id INTEGER,
+                timestamp DATETIME,
+                value FLOAT,
+                FOREIGN KEY (tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS daily_quote (
-            date DATE PRIMARY KEY,
-            quote TEXT
-        );
-        
-        CREATE TABLE IF NOT EXISTS feedback_sayings (
-            context TEXT PRIMARY KEY,
-            sayings JSON NOT NULL
-        );
-        
-        CREATE TABLE IF NOT EXISTS first_command_flags (
-            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-            uid TEXT UNIQUE,
-            last_executed DATE
-        );
-        
-        CREATE TABLE IF NOT EXISTS sync_state (
-            table_name TEXT PRIMARY KEY,
-            last_synced_at TEXT  -- ISO‐8601 timestamp of last successful pull
-        );
-        
-        CREATE TABLE IF NOT EXISTS api_devices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_name TEXT,
-            device_token TEXT UNIQUE NOT NULL,
-            paired_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
+            CREATE TABLE IF NOT EXISTS time_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT UNIQUE,
+                title TEXT NOT NULL,
+                start DATETIME NOT NULL,
+                end DATETIME,
+                duration_minutes FLOAT,
+                task_id INTEGER,
+                category TEXT,
+                project TEXT,
+                tags TEXT,
+                notes TEXT,
+                distracted_minutes FLOAT DEFAULT 0,
+                FOREIGN KEY (task_id) REFERENCES tasks(id)
+            );
 
-        CREATE TABLE IF NOT EXISTS api_pairing_codes (
-            code TEXT PRIMARY KEY,
-            expires_at DATETIME,
-            device_name TEXT
-        );
+            CREATE TABLE IF NOT EXISTS environment_data (
+                uid TEXT UNIQUE,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME,
+                weather TEXT,
+                air_quality TEXT,
+                moon TEXT,
+                satellite TEXT
+            );
 
-        
-        """)
-        cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS daily_quote (
+                date DATE PRIMARY KEY,
+                quote TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS feedback_sayings (
+                context TEXT PRIMARY KEY,
+                sayings JSON NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS first_command_flags (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                uid TEXT UNIQUE,
+                last_executed DATE
+            );
+
+            CREATE TABLE IF NOT EXISTS sync_state (
+                table_name TEXT PRIMARY KEY,
+                last_synced_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS api_devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_name TEXT,
+                device_token TEXT UNIQUE NOT NULL,
+                paired_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS api_pairing_codes (
+                code TEXT PRIMARY KEY,
+                expires_at DATETIME,
+                device_name TEXT
+            );
+            """)
+
+            # ───────────────────────────────────────────────────────────────────────
+            # Indexes
+            # ───────────────────────────────────────────────────────────────────────
+            cursor.executescript("""
             CREATE INDEX IF NOT EXISTS idx_tracker_entries_tracker_id ON tracker_entries(tracker_id);
             CREATE INDEX IF NOT EXISTS idx_time_history_task_id ON time_history(task_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due);
             CREATE INDEX IF NOT EXISTS idx_goals_tracker_id ON goals(tracker_id);
             """)
-        cursor.executescript("SELECT COUNT(*) FROM feedback_sayings")
-        conn.commit()
+
+            # simple test query
+            cursor.execute("SELECT COUNT(*) FROM feedback_sayings")
+            # all done; on exiting the with-block, commit & close happen automatically
+
     except sqlite3.Error as e:
+        # any error inside 'with' has already been rolled back
         print(f"Schema initialization error: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
 
 
 def add_record(table, data, fields):
-    from lifelog.utils.db.db_helper import get_connection
-    conn = get_connection()
-    cursor = conn.cursor()
-    if "uid" in fields and not data.get("uid"):
-        data["uid"] = str(uuid.uuid4())
-
-    cols = ', '.join(fields)
-    placeholders = ', '.join(['?'] * len(fields))
-    values = [data.get(f) for f in fields]
-
-    cursor.execute(f"""
-        INSERT INTO {table} ({cols}) VALUES ({placeholders})
-    """, values)
-    new_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if "uid" in fields and not data.get("uid"):
+            data["uid"] = str(uuid.uuid4())
+        cols = ', '.join(fields)
+        ph = ', '.join('?' for _ in fields)
+        vals = [data[f] for f in fields]
+        cursor.execute(f"INSERT INTO {table} ({cols}) VALUES ({ph})", vals)
+        new_id = cursor.lastrowid
+        # no conn.commit() or conn.close() here—handled by the contextmanager
     return new_id
 
 
 def update_record(table, record_id, updates):
-    from lifelog.utils.db.db_helper import get_connection
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
     fields = []
     values = []
     for key, value in updates.items():
@@ -323,8 +320,8 @@ def update_record(table, record_id, updates):
 
 
 def get_all_api_devices():
-    from lifelog.utils.db.db_helper import get_connection
-    conn = get_connection()
+    with get_connection() as conn:
+        cursor = conn.cursor()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT device_name, device_token, paired_at

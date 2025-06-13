@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from lifelog.config.config_manager import load_config
+
 
 # Database paths
 LOCAL_DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
@@ -76,63 +78,65 @@ def queue_sync_operation(table: str, operation: str, data: Dict[str, Any]):
     if not should_sync():
         return
 
-    conn = sqlite3.connect(str(SYNC_QUEUE_PATH))
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS sync_queue "
-        "(id INTEGER PRIMARY KEY, table_name TEXT, operation TEXT, data TEXT, created_at TEXT)"
-    )
-
-    conn.execute(
-        "INSERT INTO sync_queue (table_name, operation, data, created_at) VALUES (?, ?, ?, ?)",
-        (table, operation, json.dumps(data), datetime.now().isoformat())
-    )
-    conn.commit()
-    conn.close()
+    # use a context‐manager so we don’t accidentally leave it open
+    # get_sync_queue_connection() just returns sqlite3.connect(...)
+    with get_sync_queue_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sync_queue (
+              id INTEGER PRIMARY KEY,
+              table_name TEXT,
+              operation TEXT,
+              data TEXT,
+              created_at TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO sync_queue (table_name, operation, data, created_at) VALUES (?, ?, ?, ?)",
+            (table, operation, json.dumps(data), datetime.utcnow().isoformat())
+        )
 
 
 def process_sync_queue():
-    """Process queued sync operations (for client mode)"""
-    from lifelog.config.config_manager import load_config
+    """Process queued sync operations (for client mode)."""
     if not should_sync():
         return
 
+    # get server URL & API key
     _, server_url = get_mode()
-    config = load_config()
-    api_key = config.get('api', {}).get('key', '')
-
+    api_key = load_config().get('api', {}).get('key', '')
     if not api_key:
         return
 
-    conn = sqlite3.connect(str(SYNC_QUEUE_PATH))
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM sync_queue ORDER BY created_at ASC")
-    queue = cursor.fetchall()
+    # Open the sync‐queue DB directly (no extra contextmanager needed)
+    conn = get_sync_queue_connection()
+    try:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sync_queue ORDER BY created_at ASC")
+        rows = cursor.fetchall()
 
-    for item in queue:
-        id, table, operation, data, created_at = item
-        try:
-            # Send to host server
-            response = requests.post(
-                f"{server_url}/sync/{table}",
-                json={
-                    'operation': operation,
-                    'data': json.loads(data)
-                },
-                headers={'X-API-Key': api_key}
-            )
-
-            if response.status_code == 200:
-                # Remove successful sync
-                conn.execute("DELETE FROM sync_queue WHERE id = ?", (id,))
-                conn.commit()
-                logger = logging.getLogger(__name__)
-                logger.info("process_sync_queue: synced %s id=%d", table, id)
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.error(
-                "process_sync_queue: Sync error for table %s id=%d: %s", table, id, e, exc_info=True)
-
-    conn.close()
+        for row in rows:
+            id_ = row['id']
+            table = row['table_name']
+            operation = row['operation']
+            data_json = row['data']
+            try:
+                resp = requests.post(
+                    f"{server_url}/sync/{table}",
+                    json={'operation': operation,
+                          'data': json.loads(data_json)},
+                    headers={'X-API-Key': api_key}
+                )
+                if resp.status_code == 200:
+                    conn.execute("DELETE FROM sync_queue WHERE id = ?", (id_,))
+                    conn.commit()
+                    logger.info(
+                        "process_sync_queue: synced %s id=%d", table, id_)
+            except Exception:
+                logger.exception(
+                    "process_sync_queue: error syncing %s id=%d", table, id_)
+    finally:
+        conn.close()
 
 
 def auto_sync():
@@ -212,17 +216,16 @@ def fetch_from_server(endpoint: str, params: Dict = None) -> List[Dict]:
 
 def get_last_synced(table_name: str) -> Optional[str]:
     """
-    Return the ISO‐8601 timestamp (string) for when we last synced `table_name`.
-    If no entry exists, returns None.
+    Return the ISO‐8601 timestamp for when we last synced `table_name`.
     """
     with get_connection() as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT last_synced_at FROM sync_state WHERE table_name = ?", (table_name,))
+        cur = conn.execute(
+            "SELECT last_synced_at FROM sync_state WHERE table_name = ?",
+            (table_name,)
+        )
         row = cur.fetchone()
-        conn.close()
-        return row["last_synced_at"] if row else None
+        # no manual conn.close(), commit() or rollback() needed
+    return row["last_synced_at"] if row else None
 
 
 def set_last_synced(table_name: str, iso_ts: str) -> None:

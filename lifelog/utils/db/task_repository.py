@@ -184,16 +184,16 @@ def update_task(task_id, updates):
         update_record("tasks", task_id, updates)
 
         # b) Fetch entire local row to get the UID (and all other fields)
-        conn = get_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        row = cursor.fetchone()
-        conn.close()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            conn.row_factory = sqlite3.Row
 
-        # fetch full row to get UID
-        rows = safe_query("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        full_payload = dict(rows[0]) if rows else {"id": task_id, **updates}
+            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            row = cursor.fetchone()
+            # fetch full row to get UID
+            rows = safe_query("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            full_payload = dict(rows[0]) if rows else {
+                "id": task_id, **updates}
 
         # d) Queue update
         queue_sync_operation("tasks", "update", full_payload)
