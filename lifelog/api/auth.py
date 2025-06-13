@@ -13,7 +13,7 @@ PAIRING_EXPIRY_MINUTES = 5
 def require_device_token(f):
     from functools import wraps
     from flask import request, jsonify
-    from lifelog.utils.db.database_manager import get_connection
+    from lifelog.utils.db.db_helper import get_connection
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
