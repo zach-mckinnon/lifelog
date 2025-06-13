@@ -57,8 +57,8 @@ def is_initialized() -> bool:
 
 def initialize_schema():
     from lifelog.utils.db.db_helper import get_connection
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
     try:
         cursor.executescript("""          
