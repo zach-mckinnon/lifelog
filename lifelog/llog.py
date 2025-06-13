@@ -43,7 +43,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from lifelog.utils.db.db_helper import auto_sync, should_sync
+from lifelog.utils.db.db_helper import auto_sync, get_connection, should_sync
 from lifelog.utils import hooks as hooks_util
 from lifelog.utils import log_utils
 from lifelog.commands import start_day
@@ -899,7 +899,7 @@ def check_first_command_of_day() -> bool:
     """
     try:
         today = datetime.now().date()
-        with database_manager.get_connection() as conn:
+        with get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 "SELECT last_executed FROM first_command_flags WHERE id = 1")
@@ -931,12 +931,8 @@ def save_first_command_flag(date_str: str):
     Save execution date to database for first-command-of-day logic.
     """
     try:
-        with database_manager.get_connection() as conn:
+        with get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "INSERT OR REPLACE INTO first_command_flags (id, last_executed) VALUES (1, ?)",
-                (date_str,)
-            )
             conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Failed to save first command flag: {e}", exc_info=True)

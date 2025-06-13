@@ -40,11 +40,11 @@ def is_initialized() -> bool:
     try:
         # Open a connection
         from lifelog.utils.db.db_helper import get_connection
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cur.fetchall()
-        conn.close()
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = cur.fetchall()
+            conn.close()
         return len(tables) > 0
     except sqlite3.Error:
         return False

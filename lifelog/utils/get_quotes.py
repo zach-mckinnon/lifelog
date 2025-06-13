@@ -18,13 +18,14 @@ from datetime import datetime
 import json
 import sqlite3
 from lifelog.utils.db import database_manager
+from lifelog.utils.db.db_helper import get_connection
 
 
 def load_feedback_sayings():
-    conn = database_manager.get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT context, sayings FROM feedback_sayings")
-    conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT context, sayings FROM feedback_sayings")
+        conn.close()
     return {row['context']: json.loads(row['sayings']) for row in cur.fetchall()}
 
 
@@ -53,8 +54,8 @@ def get_feedback_saying(context: str, *, fallback: str = "encouragement") -> str
 
 def save_feedback_sayings(sayings: dict):
     try:
-        conn = database_manager.get_connection()
-        cur = conn.cursor()
+        with get_connection() as conn:
+            cur = conn.cursor()
         for context, saying_list in sayings.items():
             cur.execute("""
                 INSERT OR REPLACE INTO feedback_sayings (context, sayings)
@@ -68,32 +69,32 @@ def save_feedback_sayings(sayings: dict):
 
 
 def save_motivation_quote(date: str, quote: str):
-    conn = database_manager.get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT OR REPLACE INTO daily_quotes (date, quote)
-        VALUES (?, ?)
-    """, (date, quote))
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT OR REPLACE INTO daily_quotes (date, quote)
+            VALUES (?, ?)
+        """, (date, quote))
+        conn.commit()
+        conn.close()
 
 
 def get_motivational_quote(date: str = None):
     date = date or str(datetime.now().date())
-    conn = database_manager.get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT quote FROM daily_quotes WHERE date = ?", (date,))
-    row = cur.fetchone()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT quote FROM daily_quotes WHERE date = ?", (date,))
+        row = cur.fetchone()
 
-    # If no quote in DB, fetch a new one
-    if not row:
-        new_quote = fetch_daily_zen_quote()
-        if new_quote:
-            save_motivation_quote(date, new_quote)
-            return new_quote
-        return None
+        # If no quote in DB, fetch a new one
+        if not row:
+            new_quote = fetch_daily_zen_quote()
+            if new_quote:
+                save_motivation_quote(date, new_quote)
+                return new_quote
+            return None
 
-    return row[0]
+        return row[0]
 
 
 def fetch_on_this_day():

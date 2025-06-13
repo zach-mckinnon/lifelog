@@ -215,14 +215,14 @@ def get_last_synced(table_name: str) -> Optional[str]:
     Return the ISO‐8601 timestamp (string) for when we last synced `table_name`.
     If no entry exists, returns None.
     """
-    conn = get_connection()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT last_synced_at FROM sync_state WHERE table_name = ?", (table_name,))
-    row = cur.fetchone()
-    conn.close()
-    return row["last_synced_at"] if row else None
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT last_synced_at FROM sync_state WHERE table_name = ?", (table_name,))
+        row = cur.fetchone()
+        conn.close()
+        return row["last_synced_at"] if row else None
 
 
 def set_last_synced(table_name: str, iso_ts: str) -> None:
