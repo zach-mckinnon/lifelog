@@ -75,7 +75,8 @@ def save_motivation_quote(date: str, quote: str):
 
 
 def get_motivational_quote(date: str = None):
-    date = date or str(datetime.now().date())
+    from lifelog.utils.shared_utils import now_utc
+    date = date or str(now_utc().date())
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT quote FROM daily_quotes WHERE date = ?", (date,))
@@ -93,7 +94,8 @@ def get_motivational_quote(date: str = None):
 
 
 def fetch_on_this_day():
-    today = datetime.now()
+    from lifelog.utils.shared_utils import now_utc
+    today = now_utc()
     url = f"https://today.zenquotes.io/api/{today.month}/{today.day}"
     try:
         response = requests.get(url)
@@ -245,5 +247,22 @@ def default_feedback_sayings():
             "Showing up is half the battle. Well done!",
             "Small consistent steps lead to big changes.",
             "Your dedication will pay off. Keep going!"
+        ],
+        "transition_break": [
+            "Great sprint—time to stretch and reset!",
+            "High five yourself! Next round in 5…",
+            "Breathe in, breathe out—ready for another blast!",
+            "Mini victory lap! Let’s gear up for more focus.",
+            "Brain break! Snack, stretch, and then back at it.",
+            "You rocked that last bit—now refuel and go!",
+            "Quick dance break! Then, back to conquering tasks.",
+            "Awesome focus—time to recharge those neurons!",
+            "Give your mind a hug—next session awaits!",
+            "Power nap of ideas—wake ’em up in 5 minutes!",
+            "Hydrate, wiggle your toes, then hit it again!",
+            "You’re on fire—let it cool for just a sec.",
+            "Mission accomplished—new mission in T-minus 5.",
+            "Take five like a pro—then let’s crush the next one!",
+            "Brain’s reset—ready for the next power play?"
         ]
     }

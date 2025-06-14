@@ -1,10 +1,10 @@
 # lifelog.utils/db/environment_repository.py
 from typing import Optional
 from lifelog.utils.db.db_helper import get_connection
-from datetime import datetime
 import json
 
 from lifelog.utils.db.models import EnvironmentData
+from lifelog.utils.shared_utils import now_utc
 
 
 def save_environment_data(section, data):
@@ -13,7 +13,7 @@ def save_environment_data(section, data):
         cur.execute(f"""
             INSERT INTO environment_data (timestamp, {section})
             VALUES (?, ?)
-        """, (datetime.now().isoformat(), json.dumps(data)))
+        """, (now_utc(), json.dumps(data)))
 
 
 def get_latest_environment_data(source: str) -> Optional[EnvironmentData]:

@@ -5,7 +5,8 @@ This module provides functionality to generate various reports based on the user
 It includes features for generating daily, weekly, and monthly reports, as well as custom date range reports.
 '''
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from dateutil import tz
 import logging
 from dateutil.relativedelta import relativedelta
 
@@ -18,6 +19,13 @@ import lifelog.config.config_manager as cf
 from lifelog.utils.db.models import Task
 
 console = Console()
+
+
+def now_utc() -> datetime:
+    """
+    Return current time as UTC-aware datetime.
+    """
+    return datetime.now(timezone.utc)
 
 
 def setup_logging():
@@ -62,12 +70,12 @@ def calculate_priority(task: Task) -> float:
         else:
             due_date = due_val
         if due_date:
-            days_left = (due_date - datetime.now()).days
+            days_left = (due_date - now_utc()).days
             urgency = max(0.0, 1.0 - days_left / 10)
     return (importance * 0.6) + (urgency * 0.4)
 
 
-def parse_date_string(time_string: str, future: bool = False, now: datetime = datetime.now()) -> datetime:
+def parse_date_string(time_string: str, future: bool = False, now: datetime = now_utc()) -> datetime:
     """
     Parses a smart or relative time string into a datetime.
     Supports:
@@ -79,7 +87,7 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
     - combinations like '2wT15:00'
     """
     if now is None:
-        now = datetime.now()
+        now = now_utc()
 
     ts = time_string.strip()
     time_part = None
@@ -161,6 +169,111 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = da
         raise ValueError(f"Could not parse: '{time_string}'")
 
     return target
+
+
+def get_user_timezone():
+    """
+    Return a tzinfo object for the user’s configured timezone.
+    - Reads config["location"]["timezone"] (IANA name, e.g., "America/Los_Angeles").
+    - If missing or invalid, falls back to system local timezone.
+    """
+    try:
+        cfg = cf.load_config()
+        loc = cfg.get("location", {})
+        tz_name = loc.get("timezone")
+        if tz_name:
+            user_tz = tz.gettz(tz_name)
+            if user_tz is not None:
+                return user_tz
+            else:
+                console.print(
+                    f"[yellow]Warning: Unknown timezone '{tz_name}' in config; using system local.[/yellow]")
+        # fallback
+        return tz.tzlocal()
+    except Exception as e:
+        # If config load fails or other error, fallback to system local
+        console.print(
+            f"[yellow]Warning: Could not determine user timezone, defaulting to system local: {e}[/yellow]")
+        return tz.tzlocal()
+
+
+def to_utc(dt: datetime) -> datetime:
+    """
+    Convert a datetime to UTC-aware datetime.
+    - If dt is naïve, interpret it as in user’s local timezone.
+    - If dt is aware, convert from its tzinfo to UTC.
+    Returns a datetime with tzinfo=datetime.timezone.utc.
+    """
+    if dt.tzinfo is None:
+        # Interpret naïve dt as user-local
+        user_tz = get_user_timezone()
+        dt = dt.replace(tzinfo=user_tz)
+    # Convert to UTC
+    return dt.astimezone(timezone.utc)
+
+
+def to_local(dt: datetime) -> datetime:
+    """
+    Convert a datetime to the user’s local timezone.
+    - If dt is naïve, interpret as UTC.
+    - If dt is aware, convert from its tzinfo to user local.
+    Returns a datetime with tzinfo set to user’s tz.
+    """
+    if dt.tzinfo is None:
+        # Interpret naïve as UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    user_tz = get_user_timezone()
+    return dt.astimezone(user_tz)
+
+
+def now_local() -> datetime:
+    """
+    Return current time in user’s local timezone (aware datetime).
+    """
+    # Generate now in UTC, then convert
+    return now_utc().astimezone(get_user_timezone())
+
+
+def local_to_utc_iso(dt_local: datetime) -> str:
+    """
+    Convert a datetime in user’s local timezone to an ISO-format UTC string.
+    - If dt_local is naïve, interprets as local.
+    - Returns ISO string with 'Z' (or +00:00).
+    """
+    dt_utc = to_utc(dt_local)
+    # Use .isoformat(); for UTC you can append 'Z' if desired, but isoformat includes '+00:00'
+    return dt_utc.isoformat()
+
+
+def utc_iso_to_local(iso_str: str) -> datetime:
+    """
+    Parse an ISO-format UTC datetime string and convert to user’s local timezone.
+    - If string has no tzinfo, assume UTC.
+    - Returns a datetime with tzinfo=user local.
+    """
+    try:
+        # datetime.fromisoformat can parse offsets: e.g. "2025-06-13T17:00:00+00:00"
+        dt = datetime.fromisoformat(iso_str)
+    except Exception as e:
+        raise ValueError(f"Invalid ISO datetime string '{iso_str}': {e}")
+    # If parsed dt is naïve, assume UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return to_local(dt)
+
+
+def format_datetime_for_user(dt: datetime) -> str:
+    """
+    Convert any datetime (naïve=assumed UTC, or aware) to the user's local tz,
+    then format as MM/DD/YY HH:MM (24-hour).
+    """
+    # 1) If naïve, assume it's UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    # 2) Convert to user-local tz
+    local_dt = to_local(dt)
+    # 3) Format
+    return local_dt.strftime("%m/%d/%y %H:%M")
 
 
 def parse_offset_to_timedelta(offset_str: str) -> timedelta:
@@ -276,7 +389,7 @@ def create_recur_schedule(recur_str: str) -> dict:
                 "Days of week (separate with /)").lower().strip()
             if not days_input:
                 # default to today's weekday
-                recur_dict["days_of_week"] = [datetime.now().weekday()]
+                recur_dict["days_of_week"] = [now_utc().weekday()]
                 break
             day_parts = days_input.split("/")
             valid = True
@@ -309,7 +422,7 @@ def user_friendly_empty_message(module="insights"):
 
 
 def filter_entries_for_current_period(entries, period: str):
-    now = datetime.now()
+    now = now_utc()
     df = pd.DataFrame(entries)
     if df.empty:
         return df

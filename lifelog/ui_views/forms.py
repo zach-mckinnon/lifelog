@@ -3,7 +3,7 @@
 import npyscreen
 from datetime import datetime
 from lifelog.utils.goal_util import GoalKind, Period, get_description_for_goal_kind
-from lifelog.utils.shared_utils import get_available_categories, get_available_projects, get_available_tags, validate_task_inputs
+from lifelog.utils.shared_utils import get_available_categories, get_available_projects, get_available_tags, validate_task_inputs, now_utc
 
 # ---------- TASK FORMS ----------
 
@@ -218,8 +218,8 @@ class TaskForm(npyscreen.ActionFormV2):
                     "unit": unit,
                     "daysOfWeek": daysOfWeek,
                     "onFirstOfMonth": onFirst,
-                    "baseDueTime": datetime.now().isoformat(),
-                    "lastCreated": datetime.now().isoformat(),
+                    "baseDueTime": now_utc().isoformat(),
+                    "lastCreated": now_utc().isoformat(),
                 }
             else:
                 input_data["recurrence"] = None

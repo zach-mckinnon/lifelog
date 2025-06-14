@@ -21,6 +21,7 @@ from lifelog.utils.shared_utils import (
     add_project_to_config,
     get_available_categories,
     get_available_projects,
+    now_utc,
     parse_date_string,
     parse_args,
 )
@@ -43,7 +44,7 @@ def start(
     """
     Start tracking time for an activity.
     """
-    now = datetime.now()
+    now = now_utc()
     try:
         tags, notes = parse_args(args or [])
     except ValueError as e:
@@ -100,7 +101,7 @@ def stop(
     """
     Stop the current timer and record the time block.
     """
-    now = datetime.now()
+    now = now_utc()
     try:
         tags, notes = parse_args(args or [])
     except ValueError as e:
@@ -163,7 +164,7 @@ def time_summary(
     📊 Summarize time tracked by title, category, or project.
     Shows focused (duration minus distracted) and distracted minutes.
     """
-    now = datetime.now()
+    now = now_utc()
     # Determine 'since' cutoff
     if period:
         if period == "day":
@@ -240,7 +241,7 @@ def distracted(
     """
     Log a distracted block (does not stop the current session).
     """
-    now = datetime.now()
+    now = now_utc()
     # Parse duration like '5m', '10m', '1h'
     mins = None
     try:

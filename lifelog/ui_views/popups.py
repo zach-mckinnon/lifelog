@@ -4,7 +4,7 @@ from datetime import datetime
 import textwrap
 import curses
 import traceback
-
+from lifelog.utils.shared_utils import now_utc
 LOG_FILE = "/tmp/lifelog_tui.log"
 
 
@@ -115,7 +115,7 @@ def log_and_popup_error(stdscr, message, exc=None):
         print(f"Popup error: {popup_exc} -- {message}")
     try:
         with open(LOG_FILE, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] {message}\n")
+            f.write(f"[{now_utc()}] {message}\n")
             if exc:
                 f.write(f"{exc}\n")
                 f.write(traceback.format_exc())

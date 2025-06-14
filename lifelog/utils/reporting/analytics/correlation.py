@@ -13,6 +13,7 @@ import json
 from rich.console import Console
 from lifelog.utils.reporting.insight_engine import generate_insights
 from lifelog.utils.reporting.analytics.report_utils import render_scatter_plot
+from lifelog.utils.shared_utils import now_utc
 
 console = Console()
 
@@ -63,7 +64,7 @@ def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
 # Helper function to parse the "since" argument
 # and convert it to a datetime object.
 def _parse_since(s: str) -> datetime:
-    now = datetime.now()
+    now = now_utc()
     unit = s[-1]
     try:
         amt = int(s[:-1])

@@ -16,6 +16,8 @@ import lifelog.config.config_manager as cf
 from lifelog.utils.reporting.analytics.report_utils import render_pie_chart
 from rich.table import Table
 
+from lifelog.utils.shared_utils import now_utc
+
 console = Console()
 cfg = cf.load_config()
 
@@ -82,7 +84,7 @@ def summary_daily(since: str = "7d", export: str = None):
     """
     📅  Daily summary: tasks completed, average mood, total time.
     """
-    now = datetime.now()
+    now = now_utc()
     cutoff = _parse_since(since)
     today = now.date()
 
@@ -154,7 +156,7 @@ def summary_daily(since: str = "7d", export: str = None):
 
 
 def _parse_since(s: str) -> datetime:
-    now = datetime.now()
+    now = now_utc()
     unit = s[-1]
     try:
         amt = int(s[:-1])
@@ -176,7 +178,7 @@ def _load_trackers() -> list[str]:
 
 def _daily_series(data: dict[str, float]) -> dict[str, float]:
     days = len(data)
-    start = datetime.now().date() - timedelta(days=days)
+    start = now_utc().date() - timedelta(days=days)
     dates = [(start + timedelta(days=i)).isoformat() for i in range(days)]
     return dict(zip(dates, data.values()))
 

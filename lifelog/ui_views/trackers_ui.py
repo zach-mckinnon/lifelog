@@ -12,7 +12,7 @@ from lifelog.commands.report import generate_goal_report
 from lifelog.utils.db.models import Tracker, TrackerEntry
 from lifelog.utils.goal_util import get_description_for_goal_kind
 from lifelog.utils.db import track_repository
-from lifelog.utils.shared_utils import add_category_to_config, filter_entries_for_current_period, get_available_categories, get_available_tags, parse_date_string
+from lifelog.utils.shared_utils import add_category_to_config, filter_entries_for_current_period, get_available_categories, get_available_tags, now_utc, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
 from lifelog.ui_views.forms import GoalDetailForm, TrackerEntryForm, TrackerForm, run_form, run_goal_form
@@ -94,7 +94,7 @@ def add_tracker_tui(stdscr):
     if not data or not data.get("title"):
         return
 
-    now = datetime.now().isoformat()
+    now = now_utc().isoformat()
     tracker = Tracker(
         id=None,
         title=data["title"],
@@ -141,7 +141,7 @@ def log_entry_tui(stdscr):
 
     # Parse and validate
     value = entry_data["value"]
-    timestamp = entry_data.get("timestamp") or datetime.now().isoformat()
+    timestamp = entry_data.get("timestamp") or now_utc().isoformat()
     if tracker.type == "int":
         value = int(value)
     elif tracker.type == "float":
@@ -302,7 +302,7 @@ def log_tracker_entry_tui(stdscr, sel):
     else:
         value = value_str
 
-    timestamp = datetime.now().isoformat()
+    timestamp = now_utc().isoformat()
     entry = TrackerEntry(
         id=None,
         tracker_id=tracker.id,

@@ -27,7 +27,7 @@ import calendar
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, get_available_categories, get_available_projects, get_available_tags, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, validate_task_inputs
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, get_available_categories, get_available_projects, get_available_tags, now_utc, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, validate_task_inputs
 import lifelog.config.config_manager as cf
 from lifelog.config.schedule_manager import IS_POSIX, apply_scheduled_jobs, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
@@ -59,7 +59,7 @@ def add(
     """
     Add a new task.
     """
-    now = datetime.now()
+    now = now_utc()
     tags, notes = [], []
     if args:
         try:
@@ -238,7 +238,8 @@ def list(
         if due_raw:
             try:
                 due_dt = datetime.fromisoformat(due_raw)
-                due_str = due_dt.strftime("%m/%d")
+                due_str = format_datetime_for_user(
+                    datetime.fromisoformat(task.due))
             except Exception:
                 due_str = str(due_raw)
         prio = str(task.priority)
@@ -256,7 +257,7 @@ def agenda():
     """
     📅 View your calendar and top priority tasks side-by-side.
     """
-    now = datetime.now()
+    now = now_utc()
 
     # --- Get all non-completed tasks sorted by priority descending ---
     tasks = task_repository.query_tasks(
@@ -300,7 +301,8 @@ def agenda():
         prio_text = Text(str(prio_raw), style=priority_color(prio_raw))
         due_str = "-"
         if task.due:
-            due_str = datetime.fromisoformat(task.due).strftime("%m/%d")
+            due_str = format_datetime_for_user(
+                datetime.fromisoformat(task.due))
         title = task.title or "-"
 
         table.add_row(id_str, prio_text, due_str, title)
@@ -337,7 +339,7 @@ def start(id: int):
     """
     Start or resume a task. Only one task can be tracked at a time.
     """
-    now = datetime.now()
+    now = now_utc()
     task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
@@ -402,7 +404,7 @@ def modify(
     """
     Modify an existing task's fields. Only provide fields you want to update.
     """
-    now = datetime.now()
+    now = now_utc()
     task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
@@ -506,7 +508,7 @@ def stop(
     """
     Pause the currently active task and stop timing, without marking it done.
     """
-    now = datetime.now()
+    now = now_utc()
     # parse_args returns lists; if args is None, treat as empty
     try:
         tags, notes = parse_args(args or [])
@@ -573,7 +575,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     """
     Mark a task as completed.
     """
-    now = datetime.now()
+    now = now_utc()
     try:
         tags, notes = parse_args(args or [])
     except ValueError as e:
@@ -654,7 +656,7 @@ def burndown():
             console.print("[yellow]Using empty task list[/yellow]")
             tasks = []
 
-        now = datetime.now()
+        now = now_utc()
         start_date = now - timedelta(days=2)
         end_date = now + timedelta(days=3)
 
@@ -859,7 +861,7 @@ def auto_recur():
     Check all recurring tasks and create new instances if due.
     """
     tasks = task_repository.get_all_tasks()
-    now = datetime.now()
+    now = now_utc()
     today_weekday = now.weekday()
     new_tasks_count = 0
 
@@ -1038,7 +1040,7 @@ def create_due_alert(task, offset_str: str):
 
     # 3. Compute alert_time
     alert_time = due_time - offset
-    now = datetime.now()
+    now = now_utc()
     if alert_time < now:
         console.print(
             f"[yellow]⚠️ Reminder time {alert_time.strftime('%Y-%m-%d %H:%M')} is in the past. Scheduling immediately.[/yellow]"

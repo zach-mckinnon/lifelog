@@ -81,10 +81,11 @@ def tag_picker_tui(stdscr, existing_tags):
 
 
 def log_exception(context, exc):
+    from lifelog.utils.shared_utils import now_utc
     """Log any exception with traceback to the main log file."""
     try:
         with open("/tmp/lifelog_tui.log", "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] {context}: {exc}\n")
+            f.write(f"[{now_utc()}] {context}: {exc}\n")
             f.write(traceback.format_exc())
             f.write("\n\n")
     except Exception as e:

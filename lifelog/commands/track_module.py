@@ -13,7 +13,7 @@ from datetime import datetime
 
 from lifelog.utils.db import track_repository
 from lifelog.commands.report import generate_goal_report
-from lifelog.utils.shared_utils import parse_args, safe_format_notes
+from lifelog.utils.shared_utils import now_utc, parse_args, safe_format_notes
 import lifelog.config.config_manager as cf
 from lifelog.utils.shared_options import category_option
 from lifelog.utils.goal_util import create_goal_interactive, calculate_goal_progress
@@ -54,7 +54,7 @@ def add(
     '''
     Add a new tracker definition to the database.
     '''
-    now = datetime.now()
+    now = now_utc()
     try:
         tags, notes = parse_args(args) if args else ([], [])
     except ValueError as e:

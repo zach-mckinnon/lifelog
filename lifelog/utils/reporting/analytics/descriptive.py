@@ -7,7 +7,7 @@ It is designed to help users understand their data patterns and make informed de
 It also provides options to export the reports in JSON or CSV format.   
 '''
 
-from lifelog.utils.shared_utils import parse_date_string
+from lifelog.utils.shared_utils import parse_date_string, now_utc
 from lifelog.utils.db.time_repository import get_all_time_logs
 from lifelog.utils.db.track_repository import get_all_trackers, get_entries_for_tracker
 from datetime import datetime, timedelta
@@ -50,7 +50,7 @@ def report_descriptive(since: str = "30d", export: str = None):
     time_logs = get_all_time_logs(since=cutoff)
     total_time = sum(
         t.duration_minutes for t in time_logs if t.start >= cutoff)
-    days = (datetime.now().date() - cutoff.date()).days + 1
+    days = (now_utc().date() - cutoff.date()).days + 1
     avg_time = round(total_time / days, 2) if days > 0 else 0.0
     console.print(
         f"\n[blue]Time Usage:[/] total {total_time} min — avg/day {avg_time} min")

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from lifelog.config.config_manager import load_config
+from lifelog.utils.shared_utils import to_utc
 
 
 # Database paths
@@ -79,7 +80,8 @@ def normalize_for_db(d: dict) -> dict:
         if isinstance(v, Enum):
             d[k] = v.value
         elif isinstance(v, datetime):
-            d[k] = v.isoformat()
+            # Interpret naive as local, then convert to UTC
+            d[k] = to_utc(v).isoformat()
     return d
 
 

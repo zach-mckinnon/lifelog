@@ -16,6 +16,13 @@ from datetime import datetime, timedelta, date
 from lifelog.utils.get_quotes import get_motivational_quote, get_feedback_saying
 from lifelog.utils.db import task_repository, track_repository, time_repository, environment_repository
 from lifelog.commands.environmental_sync import fetch_today_forecast
+from lifelog.utils.shared_utils import (
+    format_datetime_for_user,
+    now_utc,
+    now_local,
+    utc_iso_to_local,
+    format_datetime_for_user
+)
 
 console = Console()
 app = typer.Typer(help="Guided, gamified start-of-day focus assistant (CLI).")
@@ -144,11 +151,16 @@ def start_day(
 
 
 def show_today_weather_cli() -> None:
+    """
+    Fetch today’s forecast, convert each timestamp to local time,
+    format as MM/DD/YY HH:MM, and display.
+    """
     env = None
     try:
         env = environment_repository.get_latest_environment_data("weather")
-    except Exception as e:
+    except Exception:
         logger.exception("Failed loading environment data")
+
     if not env:
         console.print("[yellow]No weather data. Run 'llog sync' first.[/]")
         return
@@ -158,9 +170,8 @@ def show_today_weather_cli() -> None:
         console.print("[yellow]Incomplete location data.[/]")
         return
 
-    fetcher = get_weather_service()
     try:
-        forecast = fetcher(lat, lon)
+        forecast = fetch_today_forecast(lat, lon)
     except Exception as e:
         logger.exception("Weather fetch error")
         console.print(f"[red]Failed fetching weather: {e}[/]")
@@ -170,22 +181,34 @@ def show_today_weather_cli() -> None:
         console.print("[yellow]No forecast for today.[/]")
         return
 
-    lines = [f"Forecast for {date.today().isoformat()} (4h intervals):"]
-    for e in forecast:
-        t_local = e["time"][11:]
-        temp = f"{e['temperature']:.1f}°C" if isinstance(
-            e["temperature"], float) else f"{e['temperature']}°C"
-        pop = f"{e['precip_prob']}%" if e["precip_prob"] is not None else "-"
-        lines.append(f"{t_local} — {temp}, Precip {pop}, {e['description']}")
+    # Use now_local() for “today” header, then format date-only
+    today_header = format_datetime_for_user(now_local()).split(" ")[0]
+    lines = [f"Forecast for {today_header} (4h intervals):"]
+    for entry in forecast:
+        # Convert the full UTC ISO timestamp to user-local datetime, then format
+        local_dt = utc_iso_to_local(entry["time"])
+        time_str = format_datetime_for_user(local_dt)
+        temp = (
+            f"{entry['temperature']:.1f}°C"
+            if isinstance(entry["temperature"], float)
+            else f"{entry['temperature']}°C"
+        )
+        pop = f"{entry['precip_prob']}%" if entry["precip_prob"] is not None else "-"
+        lines.append(
+            f"{time_str} — {temp}, Precip {pop}, {entry['description']}")
 
     console.print(
         Panel("\n".join(lines), title="🌤️ Today's Forecast", style="cyan"))
 
 
 def select_tasks_cli() -> Optional[List]:
+    """
+    Show the user all their open tasks with due-dates in local time,
+    then prompt them to pick a subset.
+    """
     try:
         all_tasks = task_repository.get_all_tasks()
-    except Exception as e:
+    except Exception:
         logger.exception("Failed querying tasks")
         console.print("[red]Could not load tasks. Check logs.[/]")
         return None
@@ -196,13 +219,15 @@ def select_tasks_cli() -> Optional[List]:
 
     console.print("[bold]Select tasks for today (e.g. 1,3):[/]")
     for i, t in enumerate(all_tasks, 1):
-        due = ""
+        due_str = "-"
         if t.due:
             try:
-                due = datetime.fromisoformat(t.due).date().isoformat()
+                # t.due is ISO UTC string or naive; format via our helper
+                dt = utc_iso_to_local(t.due)
+                due_str = format_datetime_for_user(dt)
             except Exception:
-                due = str(t.due)
-        console.print(f"{i}. [cyan]{t.title}[/] (due: {due or 'N/A'})")
+                due_str = str(t.due)
+        console.print(f"{i}. [cyan]{t.title}[/] (due: {due_str})")
 
     sel = typer.prompt("Enter numbers", default="")
     if not sel.strip():
@@ -220,9 +245,11 @@ def select_tasks_cli() -> Optional[List]:
             invalid = True
             break
         chosen.append(all_tasks[idx])
+
     if invalid or not chosen:
         console.print("[red]Invalid selection—aborting.[/]")
         return None
+
     return chosen
 
 
@@ -236,19 +263,23 @@ def ask_time_for_tasks_cli(tasks: List) -> (Tuple[List[Dict], int]):
 
 
 def log_initial_trackers_cli() -> None:
+    """
+    Offer to log each tracker now; record each entry with a UTC timestamp.
+    """
     try:
         trackers = track_repository.get_all_trackers()
     except Exception:
         logger.exception("Failed loading trackers")
         return
+
     for tr in trackers:
-        if prompt_yes_no(f"Log '{tr.title}' now?", default=False):
+        if typer.confirm(f"Log '{tr.title}' now?", default=False):
             val = typer.prompt(f"Value for {tr.title}", default="")
             if val:
                 try:
                     track_repository.add_tracker_entry(
                         tracker_id=tr.id,
-                        timestamp=now_iso_utc(),
+                        timestamp=now_utc().isoformat(),
                         value=val,
                     )
                     console.print(f"[green]Logged {tr.title} → {val}[/]")
@@ -312,39 +343,52 @@ def run_makeup_sessions_cli(distracted: int) -> None:
 
 
 def record_task_notes_cli(task, minutes: int) -> None:
-    notes = typer.prompt("Any notes? (blank to skip)", default="")
-    if not notes.strip():
+    """
+    Prompt the user for notes, then start+stop a time entry in UTC
+    covering exactly `minutes` minutes.
+    """
+    notes = typer.prompt("Any notes? (blank to skip)", default="").strip()
+    if not notes:
         return
+
     try:
+        # 1) record start in UTC
+        start_dt = now_utc()
         time_repository.start_time_entry(
             title=task.title,
             task_id=task.id,
-            start_time=now_iso_utc(),
+            start_time=start_dt.isoformat(),
             category=task.category,
             project=task.project,
             notes=notes,
         )
-        time_repository.stop_active_time_entry(
-            end_time=(datetime.now(timezone.utc) +
-                      timedelta(minutes=minutes)).isoformat()
-        )
+        # 2) record stop = start + minutes (also UTC)
+        end_dt = start_dt + timedelta(minutes=minutes)
+        time_repository.stop_active_time_entry(end_time=end_dt.isoformat())
         console.print("[green]Notes logged.[/]")
     except Exception:
         logger.exception("Failed logging task notes")
 
 
 def log_between_tasks_cli() -> None:
+    """
+    Between focus sessions, offer to log any tracker now,
+    stamping each entry in UTC.
+    """
     try:
         trackers = track_repository.get_all_trackers()
     except Exception:
         return
+
     for tr in trackers:
-        if prompt_yes_no(f"Log '{tr.title}' now?", False):
+        if typer.confirm(f"Log '{tr.title}' now?", default=False):
             val = typer.prompt(f"Value for {tr.title}", default="")
             if val:
                 try:
                     track_repository.add_tracker_entry(
-                        tracker_id=tr.id, timestamp=now_iso_utc(), value=val
+                        tracker_id=tr.id,
+                        timestamp=now_utc().isoformat(),
+                        value=val,
                     )
                     console.print(f"[green]Logged {tr.title} → {val}[/]")
                 except Exception:

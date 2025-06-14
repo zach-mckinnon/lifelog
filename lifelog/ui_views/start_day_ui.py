@@ -8,6 +8,7 @@ from lifelog.utils.get_quotes import get_motivational_quote, get_feedback_saying
 from lifelog.utils.db import task_repository, track_repository, time_repository
 from lifelog.ui_views.popups import popup_show, popup_input, popup_confirm, popup_error
 from lifelog.ui_views.tasks_ui import countdown_timer_ui
+from lifelog.utils.shared_utils import format_datetime_for_user, now_utc, utc_iso_to_local
 
 # Minimum terminal size to avoid curses errors
 MIN_LINES, MIN_COLS = 10, 40
@@ -78,21 +79,39 @@ def start_day_tui(stdscr):
     for idx, item in enumerate(plan, start=1):
         task = item["task"]
         mins = item["minutes"]
-        popup_show(stdscr, [
-                   f"Task {idx}/{len(plan)}: {task.title}", f"{mins} min focus"], title="Start Task")
+
+        # Announce start of focus block
+        popup_show(
+            stdscr,
+            [f"Task {idx}/{len(plan)}: {task.title}", f"{mins} min focus"],
+            title="Start Task"
+        )
         tty_continue = tui_continue  # alias
 
-        # Focus/Break sessions
+        # Run the focus and makeup sessions
         distracted = run_pomodoro_tui(stdscr, mins)
         run_makeup_tui(stdscr, distracted)
+
+        # After focus ends, show a fun transition quote
+        transition_quote = get_feedback_saying("transition_break")
+        popup_show(
+            stdscr,
+            [transition_quote],
+            title="💬 Take Five!"
+        )
+        tui_continue(stdscr)  # wait for user to absorb it
 
         # Notes & between-task trackers
         record_task_notes_tui(stdscr, task, mins)
         log_between_tasks(stdscr)
 
+        # If there’s another task coming up, show its title
         if idx < len(plan):
             popup_show(
-                stdscr, [f"Next: {plan[idx]['task'].title}"], title="Transition")
+                stdscr,
+                [f"Next up: {plan[idx]['task'].title}"],
+                title="🔜 On Deck"
+            )
             tui_continue(stdscr)
 
     # 7. End-of-day
@@ -101,12 +120,16 @@ def start_day_tui(stdscr):
 
 
 def show_today_weather_tui(stdscr):
+    """
+    Fetch today’s forecast, convert each timestamp to local time,
+    format as MM/DD/YY HH:MM, and display.
+    """
     try:
-        env = task_repository  # dummy to avoid lint errors
-        env = __import__("lifelog.utils.db.environment_repository", fromlist=[
-                         ""]).get_latest_environment_data("weather")
+        env = __import__("lifelog.utils.db.environment_repository", fromlist=[""])\
+            .get_latest_environment_data("weather")
     except Exception:
         env = None
+
     if not env:
         popup_show(
             stdscr, ["No weather data — run sync first"], title="Weather")
@@ -118,7 +141,7 @@ def show_today_weather_tui(stdscr):
         return
 
     try:
-        forecast = get_weather_service()(lat, lon)
+        forecast = fetch_today_forecast(lat, lon)
     except Exception as e:
         popup_error(stdscr, f"Weather fetch error: {e}")
         return
@@ -128,12 +151,16 @@ def show_today_weather_tui(stdscr):
         return
 
     lines = ["Today's forecast (4 h intervals):"]
-    for e in forecast:
-        t = e["time"][11:]
-        temp = f"{e['temperature']:.1f}°C" if isinstance(
-            e["temperature"], float) else f"{e['temperature']}°C"
-        pop = f"{e['precip_prob']}%" if e["precip_prob"] is not None else "-"
-        lines.append(f"{t} — {temp}, Precip {pop}, {e['description']}")
+    for entry in forecast:
+        # Parse the full UTC ISO string, convert to local tz, then format
+        local_dt = utc_iso_to_local(entry["time"])
+        time_str = format_datetime_for_user(local_dt)
+        temp = f"{entry['temperature']:.1f}°C" if isinstance(
+            entry["temperature"], float) else f"{entry['temperature']}°C"
+        pop = f"{entry['precip_prob']}%" if entry['precip_prob'] is not None else "-"
+        lines.append(
+            f"{time_str} — {temp}, Precip {pop}, {entry['description']}")
+
     popup_show(stdscr, lines, title="🌤️ Forecast")
 
 
@@ -177,19 +204,24 @@ def ask_time_for_tasks(stdscr, tasks):
 
 
 def log_initial_trackers(stdscr):
+    """
+    For each tracker in the repo, ask the user if they want to log it now.
+    If yes, prompt for a value and record the entry with a UTC timestamp.
+    """
     try:
         trackers = track_repository.get_all_trackers()
     except Exception:
         popup_error(stdscr, "Failed loading trackers")
         return
+
     for tr in trackers:
-        if tui_confirm(stdscr, f"Log '{tr.title}' now?"):
+        if popup_confirm(stdscr, f"Log '{tr.title}' now?", default=False):
             val = popup_input(stdscr, f"Value for {tr.title}:", default="")
             if val:
                 try:
                     track_repository.add_tracker_entry(
                         tracker_id=tr.id,
-                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        timestamp=now_utc().isoformat(),
                         value=val
                     )
                 except Exception:
@@ -215,7 +247,11 @@ def run_pomodoro_tui(stdscr, total_minutes):
             extra = focus - actual
         distracted += extra
         if s < sessions - 1:
-            popup_show(stdscr, [f"{brk} min break"], "Break")
+            # Show an automatic break timer instead of a static popup
+            countdown_timer_ui(stdscr, brk * 60, title="Break Time")
+            # Optionally give a “break’s over” message
+            popup_show(
+                stdscr, [f"Break’s over—back to work!"], title="💪 Ready?")
     return distracted
 
 
@@ -240,36 +276,52 @@ def run_makeup_tui(stdscr, total_distracted, focus_len=25, break_len=None):
 
 
 def record_task_notes_tui(stdscr, task, minutes):
+    """
+    Prompt the user for free-form notes on a just-completed focus period,
+    then start+stop a time entry in UTC based on those notes and the focus length.
+    """
     notes = popup_input(stdscr, "Notes? (blank to skip):", default="")
     if not notes:
         return
+
     try:
+        # Capture the start time in UTC
+        start_dt_utc = now_utc()
         time_repository.start_time_entry(
             title=task.title,
             task_id=task.id,
-            start_time=datetime.now(timezone.utc).isoformat(),
+            start_time=start_dt_utc.isoformat(),
             project=getattr(task, "project", None),
             notes=notes
         )
-        end = datetime.now(timezone.utc) + timedelta(minutes=minutes)
-        time_repository.stop_active_time_entry(end_time=end.isoformat())
+
+        # Compute the end time in UTC
+        end_dt_utc = start_dt_utc + timedelta(minutes=minutes)
+        time_repository.stop_active_time_entry(
+            end_time=end_dt_utc.isoformat()
+        )
     except Exception:
         popup_error(stdscr, "Failed logging notes")
 
 
 def log_between_tasks(stdscr):
+    """
+    After one focus session ends and before the next begins, offer to log
+    any tracker values now, using UTC timestamps for storage.
+    """
     try:
         trackers = track_repository.get_all_trackers()
     except Exception:
         return
+
     for tr in trackers:
-        if tui_confirm(stdscr, f"Log '{tr.title}' now?"):
+        if popup_confirm(stdscr, f"Log '{tr.title}' now?", default=False):
             val = popup_input(stdscr, f"Value for {tr.title}:", default="")
             if val:
                 try:
                     track_repository.add_tracker_entry(
                         tracker_id=tr.id,
-                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        timestamp=now_utc().isoformat(),
                         value=val
                     )
                 except Exception:

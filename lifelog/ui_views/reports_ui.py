@@ -10,6 +10,7 @@ from lifelog.commands.report import (
 )
 from lifelog.ui_views.popups import log_and_popup_error, popup_input, popup_error
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr
+from lifelog.utils.shared_utils import now_utc
 
 # Minimum terminal characters to approximate 180×180 px (≈8×16 px per char)
 MIN_ROWS = 11
@@ -122,7 +123,7 @@ def draw_burndown(pane, h, w):
 
     # Fetch data
     tasks = task_repository.get_all_tasks()
-    now = datetime.now()
+    now = now_utc()
     start = now - timedelta(days=2)
     end = now + timedelta(days=3)
 

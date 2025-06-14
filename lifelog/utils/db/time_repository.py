@@ -161,12 +161,13 @@ def get_active_time_entry() -> Optional[TimeLog]:
 
 
 def start_time_entry(data: Dict[str, Any]) -> TimeLog:
+    from lifelog.utils.shared_utils import now_utc
     # normalize start
     start_val = data.get("start")
     if isinstance(start_val, datetime):
         data["start"] = start_val.isoformat()
     elif not start_val:
-        data["start"] = datetime.now().isoformat()
+        data["start"] = now_utc().isoformat()
 
     # assign uid
     data.setdefault("uid", str(uuid.uuid4()))

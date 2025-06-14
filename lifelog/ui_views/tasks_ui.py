@@ -16,7 +16,7 @@ from lifelog.ui_views.popups import popup_confirm, popup_error, popup_input, pop
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr
 from lifelog.ui_views.forms import TaskCloneForm, TaskEditForm, TaskForm, TaskViewForm, run_form
 from lifelog.utils.hooks import run_hooks
-from lifelog.utils.shared_utils import parse_date_string, calculate_priority
+from lifelog.utils.shared_utils import now_local, now_utc, parse_date_string, calculate_priority
 
 
 # Module‐level state for task filter:
@@ -32,7 +32,7 @@ def draw_agenda(pane, h, w, selected_idx):
         title = f" Tasks "
         safe_addstr(pane, 0, max((max_w - len(title)) // 2, 1),
                     title, curses.A_BOLD)
-        now = datetime.now()
+        now = now_local()
 
         # Determine filter
         # e.g., "backlog", "active", "done"
@@ -195,7 +195,7 @@ def add_task_tui(_stdscr=None):
 
     try:
         # Add mandatory fields
-        task_data.setdefault('created', datetime.now().isoformat())
+        task_data.setdefault('created', now_utc().isoformat())
         task_data.setdefault('status', 'backlog')
         task_data.setdefault('importance', 3)
 
@@ -204,7 +204,7 @@ def add_task_tui(_stdscr=None):
         if "due" in task_data and task_data["due"]:
             try:
                 due_dt = parse_date_string(
-                    task_data["due"], future=True, now=datetime.now())
+                    task_data["due"], future=True, now=now_utc())
                 task_data["due"] = due_dt.isoformat()
             except Exception as e:
                 popup_error(_stdscr, f"Invalid due date: {e}")
@@ -233,7 +233,7 @@ def quick_add_task_tui(stdscr):
             return
 
         # Add default values like CLI does
-        now = datetime.now().isoformat()
+        now = now_utc().isoformat()
         task_data = {
             "title": title,
             "created": now,
@@ -276,7 +276,7 @@ def batch_add_tasks_tui(stdscr):
             return
         count = 0
         for line in lines:
-            now_iso = datetime.now().isoformat()
+            now_iso = now_utc().isoformat()
             task_data = {
                 "title": line,
                 "created": now_iso,
@@ -334,7 +334,7 @@ def clone_task_tui(_stdscr, sel):
     task_data = getattr(app, 'form_data', None)
     if not task_data:
         return
-    now = datetime.now().isoformat()
+    now = now_utc().isoformat()
     # Do NOT clone start/stop/time-tracking fields!
     task = Task(**{**task_data, "created": now,
                 "priority": calculate_priority(task_data), "status": "backlog"})
@@ -940,7 +940,7 @@ def start_task_tui(stdscr, sel):
         updates["tags"] = new_tags or None
     if new_notes != existing_notes:
         updates["notes"] = new_notes or None
-    now_iso = datetime.now().isoformat()
+    now_iso = now_utc().isoformat()
     updates["status"] = "active"
     updates["start"] = now_iso
 
@@ -1009,7 +1009,7 @@ def stop_task_tui(stdscr):
     if new_notes != existing_notes:
         updates["notes"] = new_notes or None
     updates["status"] = "backlog"
-    now_iso = datetime.now().isoformat()
+    now_iso = now_utc().isoformat()
 
     try:
         # Stop the active time entry
@@ -1062,10 +1062,10 @@ def done_task_tui(stdscr, sel):
         "notes": new_notes or None,
         "status": "done",
         # Optionally record completion timestamp on Task if schema has e.g. 'completed' field:
-        # "completed_at": datetime.now().isoformat()
+        # "completed_at": now_utc().isoformat()
     }
 
-    now_iso = datetime.now().isoformat()
+    now_iso = now_utc().isoformat()
     try:
         active = time_repository.get_active_time_entry()
         if active and getattr(active, "task_id", None) == t.id:

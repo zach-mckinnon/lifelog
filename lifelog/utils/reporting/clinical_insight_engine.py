@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 import statistics
 from scipy.stats import pearsonr
 
+from lifelog.utils.shared_utils import now_utc
+
 # ---------- Shared Helpers ----------
 
 
@@ -40,7 +42,7 @@ def is_tracker_present(trackers, name):
 
 
 def insight_task_adherence(tasks, days=14):
-    now = datetime.now()
+    now = now_utc()
     recent_tasks = [t for t in tasks if t.get('created') and
                     (now - safe_iso_date(t['created'])).days <= days]
     done = [t for t in recent_tasks if t.get('status') == 'done']

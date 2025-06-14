@@ -9,7 +9,7 @@ import time
 import npyscreen
 from lifelog.utils.db.models import TimeLog
 from lifelog.utils.db import time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, get_available_categories, get_available_projects, parse_date_string
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, get_available_categories, get_available_projects, now_local, now_utc, parse_date_string
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_multiline_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import safe_addstr
 from lifelog.ui_views.forms import TimeEntryForm, run_form
@@ -44,7 +44,7 @@ def _format_duration(minutes: float) -> str:
 
 
 def get_since_from_period(period):
-    now = datetime.now()
+    now = now_local()
     if period == 'day':
         return now - timedelta(days=1)
     elif period == 'week':
@@ -81,7 +81,7 @@ def draw_time(pane, h, w, selected_idx):
         if active:
             start_dt = getattr(active, "start", None)
             if isinstance(start_dt, datetime):
-                elapsed = (datetime.now() - start_dt).total_seconds() // 60
+                elapsed = (now_utc() - start_dt).total_seconds() // 60
             else:
                 elapsed = 0
             safe_addstr(
@@ -151,7 +151,7 @@ def start_time_tui(stdscr):
 
     past = popup_input(stdscr, "Start time (e.g. '30m ago') [optional]:")
     try:
-        start_dt = parse_date_string(past) if past else datetime.now()
+        start_dt = parse_date_string(past) if past else now_utc()
     except Exception as e:
         popup_confirm(stdscr, f"Invalid time: {e}")
         return
@@ -200,7 +200,7 @@ def add_manual_time_entry_tui(_stdscr=None):
             except Exception as e:
                 raise ValueError(f"Invalid start time: {e}")
         else:
-            start_dt = datetime.now()
+            start_dt = now_utc()
 
         # Parse end time if provided
         if entry_data.get("end"):
@@ -265,7 +265,7 @@ def edit_time_entry_tui(_stdscr, sel):
     # Fetch recent logs (past year)
     try:
         logs = time_repository.get_all_time_logs(
-            since=datetime.now() - timedelta(days=365))
+            since=now_utc() - timedelta(days=365))
     except Exception as e:
         popup_show(_stdscr, [f"Error fetching logs: {e}"], title="Error")
         return
@@ -413,7 +413,7 @@ def delete_time_entry_tui(stdscr, sel):
     """
     try:
         logs = time_repository.get_all_time_logs(
-            since=datetime.now() - timedelta(days=365))
+            since=now_utc() - timedelta(days=365))
     except Exception as e:
         popup_show(stdscr, [f"Error fetching logs: {e}"], title="Error")
         return
@@ -448,7 +448,7 @@ def stopwatch_tui(stdscr):
     start = active.start
     while True:
         stdscr.erase()
-        elapsed = datetime.now() - start
+        elapsed = now_utc() - start
         hms = str(elapsed).split(".")[0]
         stdscr.addstr(h//2, max((w - len(hms))//2, 0), hms, curses.A_BOLD)
         stdscr.addstr(
@@ -477,7 +477,7 @@ def stop_time_tui(stdscr):
         stdscr, f"Notes (optional) [{active.notes or ''}]:")
     past = popup_input(stdscr, "End time (e.g. '5m ago') [optional]:")
     try:
-        end_dt = parse_date_string(past) if past else datetime.now()
+        end_dt = parse_date_string(past) if past else now_utc()
     except Exception as e:
         popup_confirm(stdscr, f"Invalid time: {e}")
         return
@@ -514,7 +514,7 @@ def view_time_entry_tui(stdscr, sel):
     """
     try:
         logs = time_repository.get_all_time_logs(
-            since=datetime.now() - timedelta(days=365))
+            since=now_utc() - timedelta(days=365))
     except Exception as e:
         popup_show(stdscr, [f"Error fetching logs: {e}"], title="Error")
         return
@@ -561,7 +561,7 @@ def status_time_tui(stdscr):
 
     start_dt = active.start
     if isinstance(start_dt, datetime):
-        elapsed = datetime.now() - start_dt
+        elapsed = now_utc() - start_dt
         mins = round(elapsed.total_seconds() / 60, 2)
     else:
         mins = 0.0
@@ -599,7 +599,7 @@ def summary_time_tui(stdscr):
 
     period = popup_input(stdscr, "Period [day/week/month/all]:") or "week"
     period = period.strip().lower()
-    now = datetime.now()
+    now = now_utc()
     if period == "day":
         since = now - timedelta(days=1)
     elif period == "week":

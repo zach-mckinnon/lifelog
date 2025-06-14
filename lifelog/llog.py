@@ -48,6 +48,7 @@ from lifelog.utils import hooks as hooks_util
 from lifelog.utils import log_utils
 from lifelog.commands import start_day
 
+
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
     help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
@@ -639,13 +640,14 @@ def backup_command(
     Create a backup of the lifelog database.
     - Copies the SQLite DB file to the given output path or a timestamped default.
     """
+    from lifelog.utils.shared_utils import now_utc
     log_utils.setup_logging()
     try:
         db_path = cf.BASE_DIR / "lifelog.db"
         if not db_path.exists():
             console.print("[red]Database file not found![/red]")
             raise typer.Exit(1)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = now_utc()
         output_path = output or f"lifelog_backup_{timestamp}.db"
         import shutil
         shutil.copy2(db_path, output_path)
@@ -752,6 +754,7 @@ def initialize_application():
     - For non-UI commands: checks first-run and prompts if needed.
     Returns True if initialization passes; exits on critical failure.
     """
+    from lifelog.utils.shared_utils import now_utc
     try:
         console.print(
             "[bold green]🚀 Starting Lifelog initialization...[/bold green]")
@@ -782,7 +785,7 @@ def initialize_application():
         # 6. Check for first command of the day
         if check_first_command_of_day():
             greet_user()
-            save_first_command_flag(str(datetime.now().date()))
+            save_first_command_flag(str(now_utc()))
 
         return True
     except Exception as e:
@@ -852,8 +855,9 @@ def get_time_of_day() -> str:
     """
     Return time-appropriate greeting: morning, afternoon, evening, or night.
     """
+    from lifelog.utils.shared_utils import now_local
     try:
-        hour = datetime.now().hour
+        hour = now_local().hour
         if 5 <= hour < 12:
             return "morning"
         elif 12 <= hour < 17:
@@ -897,8 +901,9 @@ def check_first_command_of_day() -> bool:
     Check if this is the first command execution today.
     - Returns True if first time today or on DB error.
     """
+    from lifelog.utils.shared_utils import now_utc
     try:
-        today = datetime.now().date()
+        today = now_utc().date()
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute(

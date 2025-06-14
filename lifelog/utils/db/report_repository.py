@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_tracker_summary(since_days: int = 7) -> pd.DataFrame:
-    since = datetime.now() - timedelta(days=since_days)
+    from lifelog.utils.shared_utils import now_utc
+    since = now_utc() - timedelta(days=since_days)
     try:
         trackers = track_repository.get_all_trackers_with_entries()
     except Exception as e:
@@ -39,7 +40,8 @@ def get_tracker_summary(since_days: int = 7) -> pd.DataFrame:
 
 
 def get_time_summary(since_days: int = 7) -> pd.DataFrame:
-    since = datetime.now() - timedelta(days=since_days)
+    from lifelog.utils.shared_utils import now_utc
+    since = now_utc() - timedelta(days=since_days)
     try:
         logs = time_repository.get_all_time_logs(since)
     except Exception as e:
@@ -57,7 +59,8 @@ def get_time_summary(since_days: int = 7) -> pd.DataFrame:
 
 
 def get_daily_tracker_averages(metric_name: str, since_days: int = 7) -> pd.DataFrame:
-    since = datetime.now() - timedelta(days=since_days)
+    from lifelog.utils.shared_utils import now_utc
+    since = now_utc() - timedelta(days=since_days)
     try:
         tracker = track_repository.get_tracker_by_title(metric_name)
     except Exception as e:
