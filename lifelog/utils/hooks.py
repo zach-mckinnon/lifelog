@@ -68,7 +68,7 @@ def build_payload(module: str, action: str, entity: Any) -> Dict[str, Any]:
         "event": f"{module}_{action}",
         "module": module,
         "action": action,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.utc_now().isoformat() + "Z",
         "entity": entity_to_dict(entity),
         "context": {
             "user": os.getenv("USER", "unknown"),
