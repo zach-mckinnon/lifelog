@@ -493,3 +493,90 @@ def goal_from_row(row):
         return GoalReplacement(**base, old_behavior=row["old_behavior"], new_behavior=row["new_behavior"])
     else:
         raise ValueError(f"Unknown goal kind: {kind}")
+
+
+@dataclass
+class UserProfile(BaseModel):
+    id:             int = None
+    uid:            str = None
+    xp:             int = 0
+    level:          int = 1
+    gold:           int = 0
+    created_at:     datetime = None
+    last_level_up:  datetime = None
+
+
+@dataclass
+class Badge(BaseModel):
+    id:          int = None
+    uid:         str = None
+    name:        str = ""
+    description: str = ""
+    icon:        str = None
+
+
+@dataclass
+class ProfileBadge(BaseModel):
+    profile_id:  int = None
+    badge_id:    int = None
+    awarded_at:  datetime = None
+
+
+@dataclass
+class Skill(BaseModel):
+    id:          int = None
+    uid:         str = None
+    name:        str = ""
+    description: str = ""
+
+
+@dataclass
+class ProfileSkill(BaseModel):
+    profile_id:  int = None
+    skill_id:    int = None
+    level:       int = 1
+    xp:          int = 0
+
+
+@dataclass
+class ShopItem(BaseModel):
+    id:          int = None
+    uid:         str = None
+    name:        str = ""
+    description: str = ""
+    cost_gold:   int = 0
+
+
+@dataclass
+class InventoryItem(BaseModel):
+    profile_id:  int = None
+    item_id:     int = None
+    quantity:    int = 1
+
+
+def get_profile_fields() -> List[str]:
+    return [f.name for f in UserProfile.__dataclass_fields__.values() if f.name != "id"]
+
+
+def get_badge_fields() -> List[str]:
+    return [f.name for f in Badge.__dataclass_fields__.values() if f.name != "id"]
+
+
+def get_profile_badge_fields() -> List[str]:
+    return [f.name for f in ProfileBadge.__dataclass_fields__.values()]
+
+
+def get_skill_fields() -> List[str]:
+    return [f.name for f in Skill.__dataclass_fields__.values() if f.name != "id"]
+
+
+def get_profile_skill_fields() -> List[str]:
+    return [f.name for f in ProfileSkill.__dataclass_fields__.values()]
+
+
+def get_shop_item_fields() -> List[str]:
+    return [f.name for f in ShopItem.__dataclass_fields__.values() if f.name != "id"]
+
+
+def get_inventory_fields() -> List[str]:
+    return [f.name for f in InventoryItem.__dataclass_fields__.values()]

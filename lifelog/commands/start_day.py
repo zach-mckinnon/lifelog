@@ -23,6 +23,7 @@ from lifelog.utils.shared_utils import (
     utc_iso_to_local,
     format_datetime_for_user
 )
+from lifelog.utils.db.gamify_repository import modify_pomodoro_lengths
 
 console = Console()
 app = typer.Typer(help="Guided, gamified start-of-day focus assistant (CLI).")
@@ -289,7 +290,8 @@ def log_initial_trackers_cli() -> None:
 
 def run_pomodoro_sessions_cli(task, total_minutes: int) -> int:
     """Runs focus/break cycles, returns total distracted minutes."""
-    focus, brk = (25, 5) if total_minutes <= 120 else (45, 10)
+    base_focus, base_break = (25, 5) if total_minutes <= 120 else (45, 10)
+    focus, brk = modify_pomodoro_lengths(base_focus, base_break)
     console.print(f"[blue]Using {focus}min focus / {brk}min break.[/]")
     sessions = (total_minutes + focus - 1) // focus
     left, distracted = total_minutes, 0

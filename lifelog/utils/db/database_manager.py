@@ -267,6 +267,75 @@ def initialize_schema():
                 expires_at DATETIME,
                 device_name TEXT
             );
+            
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid            TEXT    UNIQUE,
+                xp             INTEGER NOT NULL DEFAULT 0,
+                level          INTEGER NOT NULL DEFAULT 1,
+                gold           INTEGER NOT NULL DEFAULT 0,
+                created_at     DATETIME,
+                last_level_up  DATETIME
+            );
+
+            CREATE TABLE IF NOT EXISTS badges (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid         TEXT    UNIQUE,
+                name        TEXT    NOT NULL,
+                description TEXT,
+                icon        TEXT     -- e.g. emoji or path
+            );
+
+            CREATE TABLE IF NOT EXISTS profile_badges (
+                profile_id  INTEGER,
+                badge_id    INTEGER,
+                awarded_at  DATETIME,
+                PRIMARY KEY (profile_id, badge_id),
+                FOREIGN KEY (profile_id) REFERENCES user_profiles(id) ON DELETE CASCADE,
+                FOREIGN KEY (badge_id)   REFERENCES badges(id)        ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS skills (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid         TEXT    UNIQUE,
+                name        TEXT    NOT NULL,
+                description TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS profile_skills (
+                profile_id  INTEGER,
+                skill_id    INTEGER,
+                level       INTEGER NOT NULL DEFAULT 1,
+                xp          INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (profile_id, skill_id),
+                FOREIGN KEY (profile_id) REFERENCES user_profiles(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id)   REFERENCES skills(id)        ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS shop_items (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid         TEXT    UNIQUE,
+                name        TEXT    NOT NULL,
+                description TEXT,
+                cost_gold   INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS inventory (
+                profile_id  INTEGER,
+                item_id     INTEGER,
+                quantity    INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (profile_id, item_id),
+                FOREIGN KEY (profile_id) REFERENCES user_profiles(id) ON DELETE CASCADE,
+                FOREIGN KEY (item_id)    REFERENCES shop_items(id)     ON DELETE CASCADE
+            );
+            
+            CREATE TABLE IF NOT EXISTS notifications (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id    INTEGER NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+                message       TEXT      NOT NULL,
+                created_at    TEXT      NOT NULL,            -- ISO timestamp
+                read          INTEGER   NOT NULL DEFAULT 0   -- 0 = unread, 1 = read
+                );
             """)
 
             # ───────────────────────────────────────────────────────────────────────

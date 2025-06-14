@@ -35,8 +35,9 @@ import lifelog.config.config_manager as cf
 from lifelog.first_time_run import show_welcome
 from lifelog.utils.shared_utils import log_error
 from lifelog.utils.db.database_manager import get_all_api_devices
+from lifelog.ui_views.hero_ui import hero_menu
 
-SCREENS = ["H", "TSK", "TM", "TRK", "R"]
+SCREENS = ["H", "TSK", "TM", "TRK", "R", "GM"]
 
 
 def create_main_panes(stdscr, h, w, menu_h):
@@ -124,6 +125,9 @@ def main(stdscr, show_status: bool = True):
                         active_pane, h, w, tracker_sel, color_pair=2)
                 elif active_screen == "R":
                     draw_report(active_pane, h, w)
+                elif active_screen == "GM":
+                    # drop into your Hero TUI menu
+                    hero_menu(stdscr)
             except Exception as e:
                 safe_addstr(active_pane, 1, 1, f"Tab err: {e}")
 

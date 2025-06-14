@@ -9,6 +9,7 @@ from lifelog.utils.db import task_repository, track_repository, time_repository
 from lifelog.ui_views.popups import popup_show, popup_input, popup_confirm, popup_error
 from lifelog.ui_views.tasks_ui import countdown_timer_ui
 from lifelog.utils.shared_utils import format_datetime_for_user, now_utc, utc_iso_to_local
+from lifelog.utils.db.gamify_repository import modify_pomodoro_lengths
 
 # Minimum terminal size to avoid curses errors
 MIN_LINES, MIN_COLS = 10, 40
@@ -229,7 +230,8 @@ def log_initial_trackers(stdscr):
 
 
 def run_pomodoro_tui(stdscr, total_minutes):
-    focus, brk = (25, 5) if total_minutes <= 120 else (45, 10)
+    base_focus, base_break = (25, 5) if total_minutes <= 120 else (45, 10)
+    focus, brk = modify_pomodoro_lengths(base_focus, base_break)
     sessions = (total_minutes + focus - 1) // focus
     distracted = 0
     for s in range(sessions):

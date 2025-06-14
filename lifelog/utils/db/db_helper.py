@@ -1,3 +1,8 @@
+from lifelog.config.config_manager import (
+    get_deployment_mode_and_url,
+    load_config,
+)
+from datetime import datetime, timezone
 from enum import Enum
 from contextlib import contextmanager
 import json
@@ -17,6 +22,23 @@ from lifelog.utils.shared_utils import to_utc
 LOCAL_DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
 SYNC_QUEUE_PATH = Path.home() / ".lifelog" / "sync_queue.db"
 logger = logging.getLogger(__name__)
+
+
+# lifelog/utils/db/db_helper.py
+
+
+logger = logging.getLogger(__name__)
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Database file paths
+# ───────────────────────────────────────────────────────────────────────────────
+
+LOCAL_DB_PATH = Path.home() / ".lifelog" / "lifelog.db"
+SYNC_QUEUE_PATH = Path.home() / ".lifelog" / "sync_queue.db"
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Core Connection Context Manager
+# ───────────────────────────────────────────────────────────────────────────────
 
 
 @contextmanager
@@ -45,216 +67,224 @@ def get_connection():
         conn.close()
 
 
+# ───────────────────────────────────────────────────────────────────────────────
+# Deployment Mode Helpers
+# ───────────────────────────────────────────────────────────────────────────────
+
+
 def get_mode() -> Tuple[str, str]:
-    """Returns (mode, server_url)"""
-    from lifelog.config.config_manager import get_deployment_mode_and_url
+    """
+    Returns (mode, server_url) from config:
+      • mode in ['local','server','client']
+      • server_url for sync endpoints
+    """
     return get_deployment_mode_and_url()
 
 
 def is_direct_db_mode() -> bool:
-    """Check if we should write directly to DB (local or host)"""
+    """True if we can write directly (local or server mode)."""
     mode, _ = get_mode()
-    return mode in ['local', 'server']
+    return mode in ("local", "server")
 
 
 def should_sync() -> bool:
-    """Check if we need to sync with host (client mode)"""
+    """True if we’re in client mode and should queue/push to host."""
     mode, _ = get_mode()
-    return mode == 'client'
+    return mode == "client"
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Direct‐DB Access (bypasses sync queue)
+# ───────────────────────────────────────────────────────────────────────────────
 
 
-def direct_db_execute(query: str, params: tuple = ()) -> sqlite3.Cursor:
-    """Execute SQL directly on local DB (for local/server modes)"""
+def direct_db_execute(query: str, params: Tuple[Any, ...] = ()) -> sqlite3.Cursor:
+    """
+    Execute SQL on local DB immediately (only in local/server mode).
+    """
     if not is_direct_db_mode():
         raise RuntimeError("Direct DB access not allowed in client mode")
-
     conn = sqlite3.connect(str(LOCAL_DB_PATH))
     cursor = conn.cursor()
     cursor.execute(query, params)
     conn.commit()
+    conn.close()
     return cursor
 
+# ───────────────────────────────────────────────────────────────────────────────
+# Data Normalization
+# ───────────────────────────────────────────────────────────────────────────────
 
-def normalize_for_db(d: dict) -> dict:
+
+def normalize_for_db(d: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert any Enum to .value, any datetime to UTC ISO string.
+    """
     for k, v in list(d.items()):
         if isinstance(v, Enum):
             d[k] = v.value
         elif isinstance(v, datetime):
-            # Interpret naive as local, then convert to UTC
             d[k] = to_utc(v).isoformat()
     return d
 
+# ───────────────────────────────────────────────────────────────────────────────
+# Sync Queue Helpers
+# ───────────────────────────────────────────────────────────────────────────────
 
-def queue_sync_operation(table: str, operation: str, data: Dict[str, Any]):
-    """Queue sync operation for client mode"""
+
+def get_sync_queue_connection() -> sqlite3.Connection:
+    """Low‐level connection to the sync‐queue DB (no foreign keys)."""
+    SYNC_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(str(SYNC_QUEUE_PATH))
+
+
+def queue_sync_operation(table: str, operation: str, data: Dict[str, Any]) -> None:
+    """
+    In client mode, queue an operation (INSERT/UPDATE/DELETE) for later push.
+    """
     if not should_sync():
         return
 
-    # use a context‐manager so we don’t accidentally leave it open
-    # get_sync_queue_connection() just returns sqlite3.connect(...)
     with get_sync_queue_connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sync_queue (
-              id INTEGER PRIMARY KEY,
-              table_name TEXT,
-              operation TEXT,
-              data TEXT,
-              created_at TEXT
+              id          INTEGER PRIMARY KEY,
+              table_name  TEXT,
+              operation   TEXT,
+              data        TEXT,
+              created_at  TEXT
             )
         """)
         conn.execute(
             "INSERT INTO sync_queue (table_name, operation, data, created_at) VALUES (?, ?, ?, ?)",
-            (table, operation, json.dumps(data), datetime.utcnow().isoformat())
+            (table, operation, json.dumps(data),
+             datetime.now(timezone.utc).isoformat())
         )
 
 
-def process_sync_queue():
-    """Process queued sync operations (for client mode)."""
+def process_sync_queue() -> None:
+    """
+    Attempt to push queued operations to the host one‐by‐one, deleting on success.
+    """
     if not should_sync():
         return
 
-    # get server URL & API key
-    _, server_url = get_mode()
-    api_key = load_config().get('api', {}).get('key', '')
+    mode, server_url = get_mode()
+    api_key = load_config().get("api", {}).get("key", "")
     if not api_key:
         return
 
-    # Open the sync‐queue DB directly (no extra contextmanager needed)
     conn = get_sync_queue_connection()
+    conn.row_factory = sqlite3.Row
     try:
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM sync_queue ORDER BY created_at ASC")
-        rows = cursor.fetchall()
-
-        for row in rows:
-            id_ = row['id']
-            table = row['table_name']
-            operation = row['operation']
-            data_json = row['data']
+        for row in cursor.fetchall():
             try:
                 resp = requests.post(
-                    f"{server_url}/sync/{table}",
-                    json={'operation': operation,
-                          'data': json.loads(data_json)},
-                    headers={'X-API-Key': api_key}
+                    f"{server_url}/sync/{row['table_name']}",
+                    json={"operation": row["operation"],
+                          "data": json.loads(row["data"])},
+                    headers={"X-API-Key": api_key},
+                    timeout=10
                 )
                 if resp.status_code == 200:
-                    conn.execute("DELETE FROM sync_queue WHERE id = ?", (id_,))
+                    conn.execute(
+                        "DELETE FROM sync_queue WHERE id = ?", (row["id"],))
                     conn.commit()
-                    logger.info(
-                        "process_sync_queue: synced %s id=%d", table, id_)
+                    logger.info("Synced %s id=%d",
+                                row["table_name"], row["id"])
             except Exception:
-                logger.exception(
-                    "process_sync_queue: error syncing %s id=%d", table, id_)
+                logger.exception("Error syncing %s id=%d",
+                                 row["table_name"], row["id"])
     finally:
         conn.close()
 
 
-def auto_sync():
-    logger = logging.getLogger(__name__)
-    if should_sync():
-        from lifelog.utils.db.task_repository import _pull_changed_tasks_from_host
-        from lifelog.utils.db.time_repository import _pull_changed_time_logs_from_host
-        from lifelog.utils.db.track_repository import _pull_changed_trackers_from_host, _pull_changed_goals_from_host
-        # 1) Push local queued changes, then pull updates for each table:
+def auto_sync() -> None:
+    """
+    High‐level sync: push queue, then pull fresh rows for all tracked tables.
+    """
+    if not should_sync():
+        return
+
+    from lifelog.utils.db.task_repository import _pull_changed_tasks_from_host
+    from lifelog.utils.db.time_repository import _pull_changed_time_logs_from_host
+    from lifelog.utils.db.track_repository import (_pull_changed_trackers_from_host,
+                                                   _pull_changed_goals_from_host)
+
+    for fn in (_pull_changed_tasks_from_host,
+               _pull_changed_time_logs_from_host,
+               _pull_changed_trackers_from_host,
+               _pull_changed_goals_from_host):
         try:
-            _pull_changed_tasks_from_host()
-            logger.info("auto_sync: Pulled changed tasks from host")
-        except Exception as e:
-            logger.error(
-                "auto_sync: Failed to pull changed tasks: %s", e, exc_info=True)
-        try:
-            _pull_changed_time_logs_from_host()
-            logger.info("auto_sync: Pulled changed time logs from host")
-        except Exception as e:
-            logger.error(
-                "auto_sync: Failed to pull changed time logs: %s", e, exc_info=True)
-        try:
-            _pull_changed_trackers_from_host()
-            logger.info("auto_sync: Pulled changed trackers from host")
-        except Exception as e:
-            logger.error(
-                "auto_sync: Failed to pull changed trackers: %s", e, exc_info=True)
-        try:
-            _pull_changed_goals_from_host()
-            logger.info("auto_sync: Pulled changed goals from host")
-        except Exception as e:
-            logger.error(
-                "auto_sync: Failed to pull changed goals: %s", e, exc_info=True)
+            fn()
+            logger.info("auto_sync: %s succeeded", fn.__name__)
+        except Exception:
+            logger.exception("auto_sync: %s failed", fn.__name__)
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Server Fetch Helper
+# ───────────────────────────────────────────────────────────────────────────────
 
 
-def get_local_db_connection() -> sqlite3.Connection:
-    """Get connection to local DB (works for all modes)"""
-    return sqlite3.connect(str(LOCAL_DB_PATH))
-
-
-def get_sync_queue_connection() -> sqlite3.Connection:
-    """Get connection to sync queue DB"""
-    return sqlite3.connect(str(SYNC_QUEUE_PATH))
-
-
-def fetch_from_server(endpoint: str, params: Dict = None) -> List[Dict]:
-    """Fetch data from server in client mode"""
-    from lifelog.config.config_manager import load_config
+def fetch_from_server(endpoint: str, params: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    """
+    In client mode, GET data from the host at /<endpoint>?… 
+    Returns a list of JSON objects.
+    """
     if not should_sync():
         return []
 
     _, server_url = get_mode()
-    config = load_config()
-    api_key = config.get('api', {}).get('key', '')
-
+    api_key = load_config().get("api", {}).get("key", "")
     if not api_key:
         return []
 
     try:
-        response = requests.get(
-            f"{server_url}/{endpoint}",
-            params=params,
-            headers={'X-API-Key': api_key}
-        )
-
-        if response.status_code == 200:
-            return response.json()
+        resp = requests.get(f"{server_url}/{endpoint}", params=params,
+                            headers={"X-API-Key": api_key}, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
     except Exception as e:
-        print(f"Fetch error: {e}")
-
-    return []
+        logger.warning("fetch_from_server error: %s", e)
+        return []
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Helpers for tracking the last‐sync timestamp per table
+# Last‐Sync State Helpers
 # ───────────────────────────────────────────────────────────────────────────────
 
 
 def get_last_synced(table_name: str) -> Optional[str]:
     """
-    Return the ISO‐8601 timestamp for when we last synced `table_name`.
+    Returns the ISO timestamp of last sync for `table_name`,
+    reading from a `sync_state` table.
     """
     with get_connection() as conn:
-        cur = conn.execute(
+        row = conn.execute(
             "SELECT last_synced_at FROM sync_state WHERE table_name = ?",
             (table_name,)
-        )
-        row = cur.fetchone()
-        # no manual conn.close(), commit() or rollback() needed
+        ).fetchone()
     return row["last_synced_at"] if row else None
 
 
 def set_last_synced(table_name: str, iso_ts: str) -> None:
     """
-    Upsert `sync_state(table_name, last_synced_at = iso_ts)`.
+    Upsert the last sync timestamp for `table_name` in `sync_state`.
     """
     with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
+        cur = conn.execute(
             "UPDATE sync_state SET last_synced_at = ? WHERE table_name = ?",
-            (iso_ts, table_name),
+            (iso_ts, table_name)
         )
         if cur.rowcount == 0:
-            cur.execute(
+            conn.execute(
                 "INSERT INTO sync_state (table_name, last_synced_at) VALUES (?, ?)",
-                (table_name, iso_ts),
+                (table_name, iso_ts)
             )
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Safe Execute / Query with Retries
+# ───────────────────────────────────────────────────────────────────────────────
 
 
 def safe_execute(
@@ -264,32 +294,24 @@ def safe_execute(
     backoff: float = 0.1
 ) -> sqlite3.Cursor:
     """
-    Execute a write operation with retry on OperationalError.
-    Commits on success (via get_connection), rolls back on exception.
-    Returns the cursor so you can inspect lastrowid, rowcount, etc.
+    Execute a write with retry on OperationalError (e.g. SQLITE_BUSY).
+    Commits via get_connection, rolls back on exception.
     """
     last_exc: Optional[Exception] = None
     for attempt in range(1, retries + 1):
         try:
             with get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(sql, params)
+                cur = conn.execute(sql, params)
                 return cur
         except sqlite3.OperationalError as e:
             last_exc = e
             logger.warning(
-                "safe_execute: DB locked, attempt %d/%d: %s",
-                attempt, retries, e, exc_info=False
-            )
+                "safe_execute attempt %d/%d failed: %s", attempt, retries, e)
             time.sleep(backoff * attempt)
         except sqlite3.DatabaseError as e:
-            logger.error(
-                "safe_execute: unrecoverable DB error: %s", e, exc_info=True)
+            logger.exception("safe_execute unrecoverable DB error")
             raise
-    logger.error(
-        "safe_execute: failed after %d retries, last error: %s",
-        retries, last_exc, exc_info=True
-    )
+    logger.error("safe_execute failed after %d retries", retries)
     raise last_exc  # type: ignore
 
 
@@ -300,29 +322,21 @@ def safe_query(
     backoff: float = 0.1
 ) -> List[sqlite3.Row]:
     """
-    Execute a read operation with retry on OperationalError.
-    Returns a list of sqlite3.Row (cursor.fetchall()).
+    Execute a read with retry on OperationalError.
     """
     last_exc: Optional[Exception] = None
     for attempt in range(1, retries + 1):
         try:
             with get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(sql, params)
+                cur = conn.execute(sql, params)
                 return cur.fetchall()
         except sqlite3.OperationalError as e:
             last_exc = e
-            logger.warning(
-                "safe_query: DB locked, attempt %d/%d: %s",
-                attempt, retries, e, exc_info=False
-            )
+            logger.warning("safe_query attempt %d/%d failed: %s",
+                           attempt, retries, e)
             time.sleep(backoff * attempt)
         except sqlite3.DatabaseError as e:
-            logger.error("safe_query: unrecoverable DB error: %s",
-                         e, exc_info=True)
+            logger.exception("safe_query unrecoverable DB error")
             raise
-    logger.error(
-        "safe_query: failed after %d retries, last error: %s",
-        retries, last_exc, exc_info=True
-    )
-    raise last_exc
+    logger.error("safe_query failed after %d retries", retries)
+    raise last_exc  # type: ignore

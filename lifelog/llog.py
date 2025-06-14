@@ -32,10 +32,11 @@ from typing import Annotated
 import requests
 import typer
 
+
 from lifelog.first_time_run import LOGO_SMALL, run_wizard
 from lifelog.utils.db import database_manager
 import lifelog.config.config_manager as cf
-from lifelog.commands import task_module, time_module, track_module, report, environmental_sync
+from lifelog.commands import task_module, time_module, track_module, report, environmental_sync, hero
 from lifelog.ui import main as ui_main
 from lifelog.utils import get_quotes
 
@@ -47,6 +48,8 @@ from lifelog.utils.db.db_helper import auto_sync, get_connection, should_sync
 from lifelog.utils import hooks as hooks_util
 from lifelog.utils import log_utils
 from lifelog.commands import start_day
+from lifelog.utils.gamification_seed import run_seed
+from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notifications
 
 
 # Initialize the config manager and ensure the files exist
@@ -65,6 +68,8 @@ DOCKER_DIR = Path.home() / ".lifelog" / "docker"
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
 app.add_typer(start_day.app, name="start-day",
               help="Guided, motivational start-of-day routine")
+app.add_typer(hero.app, name="hero",
+              help="🏰 Hero: profile, badges, skills & shop")
 app.add_typer(track_module.app, name="track",
               help="Track recurring self-measurements and goals.")
 app.add_typer(time_module.app, name="time",
@@ -767,7 +772,7 @@ def initialize_application():
         if not database_manager.is_initialized():
             database_manager.initialize_schema()
             console.print("[dim]• Database schema initialized[/dim]")
-
+            run_seed()
         # 3. Load or create config
         config = cf.load_config()
         console.print("[dim]• Configuration loaded[/dim]")
@@ -1022,6 +1027,11 @@ def main_callback(ctx: typer.Context):
             logger.warning(
                 f"Auto-sync failed in main_callback: {e}", exc_info=True)
             console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
+    profile = _ensure_profile()
+    unread = get_unread_notifications(profile.id)
+    if unread:
+        console.print("[bold yellow]You have new notifications![/bold yellow]")
+        console.print("Run `llog hero notify` to view them.")
 
 
 lifelog_app = app

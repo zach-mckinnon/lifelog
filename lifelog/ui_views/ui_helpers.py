@@ -4,6 +4,7 @@ import traceback
 import curses
 
 from lifelog.ui_views.popups import popup_input, popup_show
+from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notifications
 
 # -------------------------------------------------------------------
 # Helper: draw the top menu tabs
@@ -26,10 +27,15 @@ def draw_status(stdscr, h, w, current_tab):
         hint = "a:Add  l:Log  g:Goal  v:View  x:Del  ?:Help  Q:Quit"
     elif current_tab == 4:  # Reports
         hint = "1-4:Run Report C:Insights B:Burndown  ?:Help  Q:Quit"
+    elif current_tab == 5:  # GAME
+        hint = "Enter:Hero Menu  Q:Quit  ?:Help"
     else:
         hint = "←/→: Switch  ↑/↓: Move Q:Quit  ?:Help"
     stdscr.addstr(status_y, 1, hint[: w - 2])
     stdscr.attroff(curses.color_pair(3))
+    profile = _ensure_profile()
+    if get_unread_notifications(profile.id):
+        stdscr.addstr(status_y, w-2, "🔔")
 
 
 def draw_menu(stdscr, tabs, current, w, color_pair=0):
