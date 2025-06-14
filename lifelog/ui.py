@@ -36,6 +36,7 @@ from lifelog.first_time_run import show_welcome
 from lifelog.utils.shared_utils import log_error
 from lifelog.utils.db.database_manager import get_all_api_devices
 from lifelog.ui_views.hero_ui import hero_menu
+from lifelog.utils.hooks import set_current_stdscr
 
 SCREENS = ["H", "TSK", "TM", "TRK", "R", "GM"]
 
@@ -57,6 +58,7 @@ def show_tui_welcome(stdscr):
 def main(stdscr, show_status: bool = True):
     # --- Color & Cursor Setup ---
     try:
+        set_current_stdscr(stdscr)
         config = cf.load_config()
         if not config.get("meta", {}).get("tui_welcome_shown", False):
             show_tui_welcome(stdscr)

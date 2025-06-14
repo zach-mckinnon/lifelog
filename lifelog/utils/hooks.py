@@ -1,3 +1,4 @@
+import threading
 from lifelog.utils.db.gamify_repository import add_xp, apply_xp_bonus
 import os
 import subprocess
@@ -9,8 +10,10 @@ from datetime import datetime
 
 from lifelog.utils.db.db_helper import safe_query
 from lifelog.utils.db.gamify_repository import _ensure_profile, add_notification, add_skill_xp, award_badge, get_skill_level
+from utils.notifications import notify_cli, notify_tui
 
 logger = logging.getLogger(__name__)
+_tls = threading.local()
 
 _DEFAULT_DIR = Path.home() / ".lifelog" / "hooks"
 HOOKS_DIR = Path(os.getenv("LIFELOG_HOOKS_DIR", _DEFAULT_DIR))
@@ -94,6 +97,19 @@ def entity_to_dict(entity) -> Dict[str, Any]:
     if isinstance(entity, dict):
         return entity
     return {"raw": str(entity)}
+
+
+def set_current_stdscr(stdscr):
+    _tls.stdscr = stdscr
+
+
+def _notify(lines, title="🔔 Notification"):
+    stdscr = getattr(_tls, "stdscr", None)
+    if stdscr:
+        notify_tui(stdscr, lines, title)
+    else:
+        for line in lines:
+            notify_cli(line)
 
 
 def gamify(module: str, event: str, payload):

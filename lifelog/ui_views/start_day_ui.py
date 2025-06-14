@@ -10,6 +10,7 @@ from lifelog.ui_views.popups import popup_show, popup_input, popup_confirm, popu
 from lifelog.ui_views.tasks_ui import countdown_timer_ui
 from lifelog.utils.shared_utils import format_datetime_for_user, now_utc, utc_iso_to_local
 from lifelog.utils.db.gamify_repository import modify_pomodoro_lengths
+from lifelog.utils.hooks import run_hooks
 
 # Minimum terminal size to avoid curses errors
 MIN_LINES, MIN_COLS = 10, 40
@@ -225,6 +226,11 @@ def log_initial_trackers(stdscr):
                         timestamp=now_utc().isoformat(),
                         value=val
                     )
+                    run_hooks("tracker", "logged", {
+                        "tracker_id": tr.id,
+                        "timestamp": now_utc().isoformat(),
+                        "value": val
+                    })
                 except Exception:
                     popup_error(stdscr, f"Failed logging {tr.title}")
 
@@ -326,5 +332,10 @@ def log_between_tasks(stdscr):
                         timestamp=now_utc().isoformat(),
                         value=val
                     )
+                    run_hooks("tracker", "logged", {
+                        "tracker_id": tr.id,
+                        "timestamp": now_utc().isoformat(),
+                        "value": val
+                    })
                 except Exception:
                     popup_error(stdscr, f"Failed logging {tr.title}")
