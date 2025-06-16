@@ -1,5 +1,3 @@
-# lifelog/utils/hooks.py
-
 import threading
 import subprocess
 import json
@@ -36,8 +34,9 @@ def ensure_hooks_dir() -> Path:
 def run_hooks(module: str, action: str, entity: Any) -> None:
     """
     1) Always run our internal gamify logic.
-    2) Then, if there are external hook scripts in ~/.lifelog/hooks/post-<module>-<action>*,
-       invoke each of them with the JSON payload.
+    2) Then, if there are external hook scripts matching
+       ~/.lifelog/hooks/post-<module>-<action>*,
+       invoke each of them with the JSON payload returned by build_payload().
     """
     # ——— 1) Internal gamification ——————————————————————————————————————
     try:
@@ -57,18 +56,8 @@ def run_hooks(module: str, action: str, entity: Any) -> None:
     if not hooks:
         return
 
-    # Build a JSON payload for external scripts
-    payload = {
-        "event":   f"{module}_{action}",
-        "module":  module,
-        "action":  action,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "entity":  entity_to_dict(entity),
-        "context": {
-            "user": os.getenv("USER", "unknown"),
-            "app_version": "1.0.0",
-        },
-    }
+    # Build JSON payload for external scripts
+    payload = build_payload(module, action, entity)
     payload_json = json.dumps(payload)
 
     for hook in hooks:
@@ -82,15 +71,30 @@ def run_hooks(module: str, action: str, entity: Any) -> None:
             )
             _, stderr = proc.communicate(input=payload_json, timeout=30)
             if proc.returncode != 0:
-                logger.error("Hook %s errored: %s", hook.name,
-                             stderr.strip() or "(no message)")
+                logger.error(
+                    "Hook %s errored: %s",
+                    hook.name,
+                    stderr.strip() or "(no message)",
+                )
         except Exception:
             logger.exception("Error executing hook %s", hook.name)
 
 
 def build_payload(module: str, action: str, entity: Any) -> Dict[str, Any]:
-    # (You can even remove this now that external hooks use an inline payload)
-    ...
+    """
+    Construct the standard JSON payload passed to external hook scripts.
+    """
+    return {
+        "event":     f"{module}_{action}",
+        "module":    module,
+        "action":    action,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "entity":    entity_to_dict(entity),
+        "context": {
+            "user":        os.getenv("USER", "unknown"),
+            "app_version": "1.0.0",
+        },
+    }
 
 
 def entity_to_dict(entity) -> Dict[str, Any]:
