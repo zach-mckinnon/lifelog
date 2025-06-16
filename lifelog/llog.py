@@ -802,8 +802,13 @@ def ensure_app_initialized():
     """
     try:
         cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
+        # detect if we're running `llog setup`
+        is_setup_cmd = any(arg in sys.argv for arg in (
+            "setup", "--help", "-h", "help", "config-edit"))
         if not database_manager.is_initialized():
-            initialize_application()
+            # only auto-initialize for non-setup commands
+            if not is_setup_cmd:
+                initialize_application()
 
         config = cf.load_config()
         if "meta" not in config:
