@@ -373,19 +373,21 @@ def add_record(table, data, fields):
 
 
 def update_record(table, record_id, updates):
+    """
+    Update a single row in `table` by its numeric primary key `id`.
+    `updates` is a dict mapping column names to new values.
+    """
+    # 1) Build the SET clause and values list
+    fields = [f"{col} = ?" for col in updates.keys()]
+    values = list(updates.values())
+    values.append(record_id)
+
+    sql = f"UPDATE {table} SET {', '.join(fields)} WHERE id = ?"
+
+    # 2) Execute inside the connection context (auto-commit & close)
     with get_connection() as conn:
         cursor = conn.cursor()
-
-    fields = []
-    values = []
-    for key, value in updates.items():
-        fields.append(f"{key} = ?")
-        values.append(value)
-    values.append(record_id)
-    cursor.execute(
-        f"UPDATE {table} SET {', '.join(fields)} WHERE id = ?", values)
-    conn.commit()
-    conn.close()
+        cursor.execute(sql, values)
 
 
 def get_all_api_devices():
