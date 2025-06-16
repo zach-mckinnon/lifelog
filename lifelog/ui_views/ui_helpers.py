@@ -1,5 +1,6 @@
 # lifelog/ui_helpers.py
 from datetime import datetime
+import logging
 import traceback
 import curses
 
@@ -10,6 +11,28 @@ from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notif
 # Helper: draw the top menu tabs
 # -------------------------------------------------------------------
 # ─── Single, contextual status‐bar ───────────────────────────────────
+
+import threading
+
+
+logger = logging.getLogger(__name__)
+_tls = threading.local()
+
+
+def set_current_stdscr(stdscr):
+    """
+    Store the current curses stdscr in thread-local storage
+    so other modules (e.g. notifications or popups) can access it.
+    """
+    _tls.current_stdscr = stdscr
+
+
+def get_current_stdscr():
+    """
+    Retrieve the current curses stdscr from thread-local storage,
+    or None if not set.
+    """
+    return getattr(_tls, "current_stdscr", None)
 
 
 def draw_status(stdscr, h, w, current_tab):

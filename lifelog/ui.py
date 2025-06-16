@@ -23,6 +23,7 @@ from lifelog.ui_views.ui_helpers import (
     draw_menu,
     draw_status,
     safe_addstr,
+    set_current_stdscr,
 )
 from lifelog.ui_views.popups import popup_confirm, popup_error, show_help_popup
 from lifelog.ui_views.start_day_ui import start_day_tui
@@ -35,7 +36,6 @@ from lifelog.first_time_run import show_welcome
 from lifelog.utils.shared_utils import log_error
 from lifelog.utils.db import get_all_api_devices
 from lifelog.ui_views.hero_ui import hero_menu
-from lifelog.utils.hooks import set_current_stdscr
 
 SCREENS = ["H", "TSK", "TM", "TRK", "R", "GM"]
 
