@@ -1,3 +1,5 @@
+# lifelog/utils/hooks.py
+
 import threading
 import subprocess
 import json
@@ -32,44 +34,31 @@ def ensure_hooks_dir() -> Path:
 
 
 def run_hooks(module: str, action: str, entity: Any) -> None:
+    """
+    1) Always run our internal gamify logic.
+    2) Then, if there are external hook scripts in ~/.lifelog/hooks/post-<module>-<action>*,
+       invoke each of them with the JSON payload.
+    """
+    # ——— 1) Internal gamification ——————————————————————————————————————
+    try:
+        gamify(module, action, entity)
+    except Exception:
+        logger.exception("Error in internal gamify()")
+
+    # ——— 2) External hook scripts —————————————————————————————————————
     if not HOOKS_DIR.exists():
         return
 
-    hook_prefix = f"post-{module}-{action}"
-    hooks = sorted([
-        f for f in HOOKS_DIR.iterdir()
-        if f.name.startswith(hook_prefix) and os.access(f, os.X_OK)
-    ])
+    prefix = f"post-{module}-{action}"
+    hooks = sorted(
+        p for p in HOOKS_DIR.iterdir()
+        if p.name.startswith(prefix) and os.access(p, os.X_OK)
+    )
     if not hooks:
         return
 
-    payload = build_payload(module, action, entity)
-    json_payload = json.dumps(payload)
-
-    for hook in hooks:
-        try:
-            proc = subprocess.Popen(
-                [str(hook)],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            _, stderr = proc.communicate(input=json_payload, timeout=30)
-            if proc.returncode != 0:
-                logger.error(
-                    "Hook %s errored: %s", hook.name, stderr.strip() or "(no message)"
-                )
-            try:
-                gamify(module, action, payload)
-            except Exception:
-                logger.exception("Error in gamify()")
-        except Exception as e:
-            logger.exception("Error executing hook %s: %s", hook.name, e)
-
-
-def build_payload(module: str, action: str, entity: Any) -> Dict[str, Any]:
-    return {
+    # Build a JSON payload for external scripts
+    payload = {
         "event":   f"{module}_{action}",
         "module":  module,
         "action":  action,
@@ -80,6 +69,28 @@ def build_payload(module: str, action: str, entity: Any) -> Dict[str, Any]:
             "app_version": "1.0.0",
         },
     }
+    payload_json = json.dumps(payload)
+
+    for hook in hooks:
+        try:
+            proc = subprocess.Popen(
+                [str(hook)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            _, stderr = proc.communicate(input=payload_json, timeout=30)
+            if proc.returncode != 0:
+                logger.error("Hook %s errored: %s", hook.name,
+                             stderr.strip() or "(no message)")
+        except Exception:
+            logger.exception("Error executing hook %s", hook.name)
+
+
+def build_payload(module: str, action: str, entity: Any) -> Dict[str, Any]:
+    # (You can even remove this now that external hooks use an inline payload)
+    ...
 
 
 def entity_to_dict(entity) -> Dict[str, Any]:
@@ -92,23 +103,14 @@ def entity_to_dict(entity) -> Dict[str, Any]:
     return {"raw": str(entity)}
 
 
-def set_current_stdscr(stdscr):
-    _tls.stdscr = stdscr
-
-
-def _notify(lines, title="🔔 Notification"):
-    stdscr = getattr(_tls, "stdscr", None)
-    if stdscr:
-        notify_tui(stdscr, lines, title)
-    else:
-        for line in lines:
-            notify_cli(line)
-
-
-def gamify(module: str, event: str, payload):
-    # 1) Determine base XP & context
+def gamify(module: str, event: str, entity: Any):
+    """
+    Internal XP/badge logic. Now takes the dataclass directly
+    so we can do entity.finished, entity.due, etc.
+    """
+    # 1) Determine XP context
     if module == "task" and event == "completed":
-        on_time = payload.finished <= payload.due
+        on_time = entity.finished <= entity.due
         base_xp = 50 if on_time else 20
         context = "task_on_time" if on_time else "task_late"
     elif module == "task" and event == "pomodoro_done":
@@ -118,55 +120,44 @@ def gamify(module: str, event: str, payload):
         base_xp = 5
         context = "tracker"
     else:
-        return  # no XP
+        return
 
-    # 2) Apply all bonuses
-    adjusted_xp = apply_xp_bonus(base_xp, context)
-
-    # 3) Award profile XP & notify
-    profile = add_xp(adjusted_xp)
+    # 2) Apply bonuses & award to profile
+    adjusted = apply_xp_bonus(base_xp, context)
+    profile = add_xp(adjusted)
     add_notification(
-        profile.id,
-        f"You earned {adjusted_xp} XP for {context.replace('_',' ')}!"
-    )
+        profile.id, f"You earned {adjusted} XP for {context.replace('_',' ')}!")
 
-    # 4) Award skill XP & notify on skill-level-up
+    # 3) Skill XP
     skill_map = {
         "task_on_time": "task_mastery",
         "task_late":    "task_mastery",
         "pomodoro":     "focus_mastery",
         "tracker":      "tracker_mastery",
     }
-    skill_uid = skill_map.get(context)
-    if skill_uid:
-        old_lvl = get_skill_level(skill_uid)
-        new_skill = add_skill_xp(skill_uid, adjusted_xp // 2)
-        if new_skill.level > old_lvl:
+    sid = skill_map.get(context)
+    if sid:
+        old = get_skill_level(sid)
+        skill = add_skill_xp(sid, adjusted // 2)
+        if skill.level > old:
             add_notification(
-                profile.id,
-                f"Your '{new_skill.name}' skill just leveled up to {new_skill.level}!"
-            )
+                profile.id, f"Your '{skill.name}' skill leveled up to {skill.level}!")
 
-    # 5) First-time badges
+    # 4) First-time badges
     user = _ensure_profile()
 
-    def _has_badge(uid: str) -> bool:
+    def _has(uid: str) -> bool:
         return bool(safe_query(
             "SELECT 1 FROM profile_badges pb JOIN badges b ON pb.badge_id=b.id "
-            "WHERE pb.profile_id=? AND b.uid=?", (user.id, uid)
+            "WHERE pb.profile_id=? AND b.uid=?",
+            (user.id, uid),
         ))
-
-    if context == "task_on_time" and not _has_badge("first_task_on_time"):
+    if context == "task_on_time" and not _has("first_task_on_time"):
         award_badge("first_task_on_time")
-        add_notification(
-            profile.id, "🏅 You’ve earned the “First On-Time Task” badge!")
-
-    if context == "pomodoro" and not _has_badge("first_pomodoro"):
+        add_notification(profile.id, "🏅 First On-Time Task badge earned!")
+    if context == "pomodoro" and not _has("first_pomodoro"):
         award_badge("first_pomodoro")
-        add_notification(
-            profile.id, "🏅 You’ve earned the “First Pomodoro” badge!")
-
-    if context == "tracker" and not _has_badge("first_tracker_log"):
+        add_notification(profile.id, "🏅 First Pomodoro badge earned!")
+    if context == "tracker" and not _has("first_tracker_log"):
         award_badge("first_tracker_log")
-        add_notification(
-            profile.id, "🏅 You’ve earned the “First Tracker Log” badge!")
+        add_notification(profile.id, "🏅 First Tracker Log badge earned!")
