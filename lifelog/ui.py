@@ -18,8 +18,7 @@ import curses
 import os
 import traceback
 
-from lifelog.utils.db import environment_repository
-from lifelog.utils.db import task_repository, time_repository, track_repository
+from lifelog.utils.db import task_repository, time_repository, track_repository, environment_repository
 from lifelog.ui_views.ui_helpers import (
     draw_menu,
     draw_status,
