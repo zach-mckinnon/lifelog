@@ -748,7 +748,7 @@ def initialize_application():
     """
     Full application initialization sequence.
     - Ensures base directory exists.
-    - Initializes DB schema if needed.
+    - Initializes DB schema if needed (no seeding here).
     - Loads config and ensures hooks directory.
     - For non-UI commands: checks first-run and prompts if needed.
     Returns True if initialization passes; exits on critical failure.
@@ -762,17 +762,17 @@ def initialize_application():
         cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
         console.print(f"[dim]• Created base directory: {cf.BASE_DIR}[/dim]")
 
-        # 2. Initialize database schema
+        # 2. Initialize database schema (but do NOT seed here)
         if not database_manager.is_initialized():
             database_manager.initialize_schema()
             console.print("[dim]• Database schema initialized[/dim]")
-            run_seed()
+
         # 3. Load or create config
         config = cf.load_config()
         console.print("[dim]• Configuration loaded[/dim]")
         hooks_util.ensure_hooks_dir()
 
-        # 5. Run first-time wizard if needed
+        # 4. If setup hasn’t been completed, prompt the user to run ‘llog setup’
         if not config.get("meta", {}).get("first_run_complete", False):
             console.print(Panel(
                 "[bold yellow]Initial Setup Required[/bold yellow]\n"
@@ -781,12 +781,13 @@ def initialize_application():
             ))
             sys.exit(1)
 
-        # 6. Check for first command of the day
+        # 5. Show daily greeting if this is the first command of the day
         if check_first_command_of_day():
             greet_user()
             save_first_command_flag(str(now_utc()))
 
         return True
+
     except Exception as e:
         console.print(f"[red]⚠️ Critical initialization error: {e}[/red]")
         sys.exit(1)
