@@ -14,7 +14,7 @@ from lifelog.utils.db.gamify_repository import (
     add_xp,
     mark_notifications_read,
 )
-from lifelog.utils.db.db_helper import safe_query
+from lifelog.utils.db import safe_query
 
 console = Console()
 app = typer.Typer(name="hero", help="🏰 Hero profile, badges, skills & shop")

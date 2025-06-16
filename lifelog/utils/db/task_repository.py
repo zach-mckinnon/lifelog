@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional
 import uuid
 from lifelog.config.config_manager import is_host_server
 from lifelog.utils.db.models import Task, TaskStatus, get_task_fields, task_from_row
-from lifelog.utils.db.db_helper import get_connection, normalize_for_db
-from lifelog.utils.db.database_manager import add_record, update_record
+from lifelog.utils.db import get_connection, normalize_for_db
+from lifelog.utils.db import add_record, update_record
 from datetime import datetime
 import sqlite3
 
@@ -14,7 +14,7 @@ from lifelog.utils.db import (
     should_sync,
     queue_sync_operation,
 )
-from lifelog.utils.db.db_helper import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced, safe_execute, safe_query
+from lifelog.utils.db import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced, safe_execute, safe_query
 from lifelog.utils.shared_utils import calculate_priority
 logger = logging.getLogger(__name__)
 

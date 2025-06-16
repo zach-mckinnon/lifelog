@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Tuple
 from rich.console import Console
-from lifelog.utils.db.db_helper import normalize_for_db, safe_query, safe_execute
-from lifelog.utils.db.database_manager import add_record, update_record
+from lifelog.utils.db import normalize_for_db, safe_query, safe_execute
+from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import (
     UserProfile, Badge, ProfileBadge,
     Skill, ProfileSkill, ShopItem, InventoryItem,

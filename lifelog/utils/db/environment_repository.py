@@ -1,6 +1,6 @@
 # lifelog.utils/db/environment_repository.py
 from typing import Optional
-from lifelog.utils.db.db_helper import get_connection
+from lifelog.utils.db import get_connection
 import json
 
 from lifelog.utils.db.models import EnvironmentData

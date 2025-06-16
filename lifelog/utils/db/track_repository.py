@@ -3,13 +3,13 @@ from datetime import datetime
 import logging
 import uuid
 
-from lifelog.utils.db.database_manager import add_record, update_record
+from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import (
     Tracker, TrackerEntry, Goal,
     tracker_from_row, entry_from_row, goal_from_row,
     get_tracker_fields, get_goal_fields
 )
-from lifelog.utils.db.db_helper import (
+from lifelog.utils.db import (
     safe_query, safe_execute,
     fetch_from_server, get_last_synced, set_last_synced,
     should_sync, is_direct_db_mode,

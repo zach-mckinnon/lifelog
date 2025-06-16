@@ -18,7 +18,7 @@ from datetime import datetime
 import json
 import sqlite3
 from lifelog.utils.db import database_manager
-from lifelog.utils.db.db_helper import get_connection
+from lifelog.utils.db import get_connection
 
 
 def load_feedback_sayings():

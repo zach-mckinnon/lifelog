@@ -6,7 +6,7 @@ from lifelog.api.track_api import trackers_bp
 from lifelog.api.sync_api import sync_bp
 from lifelog.api.errors import register_error_handlers
 from lifelog.config.config_manager import get_deployment_mode
-from lifelog.utils.db.database_manager import initialize_schema
+from lifelog.utils.db import initialize_schema
 
 app = Flask(__name__)
 initialize_schema()

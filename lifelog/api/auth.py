@@ -3,7 +3,7 @@ import string
 import time
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
-from lifelog.utils.db.db_helper import get_connection
+from lifelog.utils.db import get_connection
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -13,7 +13,7 @@ PAIRING_EXPIRY_MINUTES = 5
 def require_device_token(f):
     from functools import wraps
     from flask import request, jsonify
-    from lifelog.utils.db.db_helper import get_connection
+    from lifelog.utils.db import get_connection
 
     @wraps(f)
     def decorated_function(*args, **kwargs):

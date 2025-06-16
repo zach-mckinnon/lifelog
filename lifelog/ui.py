@@ -33,7 +33,7 @@ from lifelog.ui_views.trackers_ui import add_tracker_tui, delete_goal_tui, delet
 import lifelog.config.config_manager as cf
 from lifelog.first_time_run import show_welcome
 from lifelog.utils.shared_utils import log_error
-from lifelog.utils.db.database_manager import get_all_api_devices
+from lifelog.utils.db import get_all_api_devices
 from lifelog.ui_views.hero_ui import hero_menu
 from lifelog.utils.hooks import set_current_stdscr
 

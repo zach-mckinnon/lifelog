@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from lifelog.utils.db.db_helper import (
+from lifelog.utils.db import (
     safe_execute,
     safe_query,
     fetch_from_server,
@@ -15,7 +15,7 @@ from lifelog.utils.db.db_helper import (
     queue_sync_operation,
     process_sync_queue,
 )
-from lifelog.utils.db.database_manager import add_record, update_record
+from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
 
 logger = logging.getLogger(__name__)

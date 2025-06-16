@@ -44,7 +44,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from lifelog.utils.db.db_helper import auto_sync, get_connection, should_sync
+from lifelog.utils.db import auto_sync, get_connection, should_sync
 from lifelog.utils import hooks as hooks_util
 from lifelog.utils import log_utils
 from lifelog.commands import start_day
@@ -627,7 +627,7 @@ def sync_command():
     """
     log_utils.setup_logging()
     try:
-        from lifelog.utils.db.db_helper import process_sync_queue
+        from lifelog.utils.db import process_sync_queue
         process_sync_queue()
         console.print("[green]Sync completed![/green]")
     except Exception as e:

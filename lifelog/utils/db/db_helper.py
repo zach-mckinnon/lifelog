@@ -50,7 +50,7 @@ def get_connection():
       • ROLLBACK on exception,
       • and ALWAYS CLOSE.
     """
-    from lifelog.utils.db.database_manager import _resolve_db_path
+    from lifelog.utils.db import _resolve_db_path
     db_path = _resolve_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)

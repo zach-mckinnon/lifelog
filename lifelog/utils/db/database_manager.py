@@ -4,7 +4,7 @@ from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
-from lifelog.utils.db.db_helper import get_connection
+from lifelog.utils.db import get_connection
 
 
 # _ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
@@ -39,7 +39,7 @@ def is_initialized() -> bool:
 
     try:
         # Open a connection
-        from lifelog.utils.db.db_helper import get_connection
+        from lifelog.utils.db import get_connection
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT name FROM sqlite_master WHERE type='table'")

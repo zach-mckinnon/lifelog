@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
 
-from lifelog.utils.db.db_helper import safe_query
+from lifelog.utils.db import safe_query
 from lifelog.utils.db.gamify_repository import _ensure_profile, add_notification, add_skill_xp, award_badge, get_skill_level
 from utils.notifications import notify_cli, notify_tui
 

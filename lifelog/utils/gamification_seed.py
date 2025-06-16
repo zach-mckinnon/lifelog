@@ -2,8 +2,8 @@
 
 import uuid
 from datetime import datetime, timezone
-from lifelog.utils.db.db_helper import safe_query
-from lifelog.utils.db.database_manager import add_record, update_record
+from lifelog.utils.db import safe_query
+from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import (
     Badge, Skill,
     get_badge_fields, get_skill_fields
