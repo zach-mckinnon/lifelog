@@ -522,16 +522,12 @@ def start_api(
 ):
     """
     Start the REST API server.
-    - Checks if already running.
-    - If running in Docker deployment, warns user.
-    - Starts via gunicorn in prod or flask run in dev.
-    - Waits briefly for startup, then prints URL or error.
+    - In server mode → always uses Gunicorn.
+    - In local/client mode → uses Flask run, with FLASK_APP set.
     """
     log_utils.setup_logging()
 
-    from lifelog.app import app as flask_app  # renamed to avoid name conflict
-
-    # Ensure initialization
+    # 1️⃣ Ensure the on-disk data is ready
     try:
         initialize_application()
     except Exception as e:
@@ -540,7 +536,7 @@ def start_api(
         console.print(f"[red]Initialization error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Check if already running
+    # 2️⃣ Check if already running
     try:
         if is_server_up(host, port):
             console.print(
@@ -549,69 +545,65 @@ def start_api(
     except Exception as e:
         logger.warning(f"Error checking server status: {e}", exc_info=True)
 
-    # Docker hints
-    try:
-        if is_running_in_docker():
-            console.print("[cyan]Detected Docker environment.[/cyan]")
-        elif docker_deployment_exists():
-            console.print("[yellow]Docker deployment files detected.[/yellow]")
-            console.print(
-                "It's recommended to start your server using Docker:")
-            console.print(
-                f"  Use llog docker or:\n  cd {cf.BASE_DIR / 'docker'} && docker compose up -d --build")
-            if not typer.confirm("Continue starting server directly anyway?", default=False):
-                return
-    except Exception as e:
-        logger.warning(
-            f"Error detecting Docker environment: {e}", exc_info=True)
+    # 3️⃣ Decide whether to use Gunicorn
+    #    If user passed --prod OR config says we’re in "server" mode → prod
+    config = cf.load_config()
+    mode = config.get("deployment", {}).get("mode", "local")
+    use_gunicorn = prod or (mode == "server")
 
-    # Build command
-    try:
-        if prod or os.getenv("FLASK_ENV") == "production":
-            cmd = [
-                "gunicorn",
-                "-b", f"{host}:{port}",
-                "-w", "4",
-                "--timeout", "120",
-                "lifelog.app:app"
-            ]
+    # 4️⃣ Build the command
+    if use_gunicorn:
+        console.print(
+            "[cyan]Starting production server with Gunicorn...[/cyan]")
+        cmd = [
+            "gunicorn",
+            "-b", f"{host}:{port}",
+            "-w", "4",
+            "--timeout", "120",
+            "lifelog.app:app"
+        ]
+    else:
+        # Flask-run fallback: we must set FLASK_APP so that flask CLI can find it.
+        env = os.environ.copy()
+        env["FLASK_APP"] = "lifelog.app:app"
+        if debug:
+            env["FLASK_ENV"] = "development"
+            console.print(
+                "[cyan]Starting Flask development server in debug mode...[/cyan]")
         else:
-            cmd = [sys.executable, "-m", "flask", "run",
-                   "--host", host, "--port", str(port)]
-            if debug:
-                os.environ["FLASK_ENV"] = "development"
-    except Exception as e:
-        logger.error(f"Error building start command: {e}", exc_info=True)
-        console.print(f"[red]Error building start command: {e}[/red]")
-        raise typer.Exit(1)
+            console.print("[cyan]Starting Flask development server...[/cyan]")
+        cmd = [sys.executable, "-m", "flask", "run",
+               "--host", host, "--port", str(port)]
+        # We'll pass `env` into Popen below.
 
-    # Start in background
+    # 5️⃣ Launch it in the background
     try:
-        proc = subprocess.Popen(cmd)
+        if use_gunicorn:
+            proc = subprocess.Popen(cmd)
+        else:
+            proc = subprocess.Popen(cmd, env=env)
     except FileNotFoundError as e:
         logger.error(f"Start command not found: {e}", exc_info=True)
-        console.print(f"[red]Error: {e}[/red]")
+        console.print(f"[red]Error launching server: {e}[/red]")
         raise typer.Exit(1)
     except Exception as e:
         logger.error(f"Failed to start server process: {e}", exc_info=True)
         console.print(f"[red]Error starting server: {e}[/red]")
         raise typer.Exit(1)
 
-    # Wait for server to start
+    # 6️⃣ Wait for it to come up
     started = False
-    for _ in range(10):  # up to ~5 seconds
+    for _ in range(10):
         if is_server_up(host, port):
             started = True
             break
         time.sleep(0.5)
+
     if not started:
-        logger.error("Server failed to start within timeout")
         console.print("[red]Server failed to start within timeout.[/red]")
         return
 
     console.print(f"[green]🚀 Server started at http://{host}:{port}[/green]")
-    console.print(
-        "To stop the server, use your OS process manager or Docker (if running in Docker).")
 
 
 @app.command("sync")
