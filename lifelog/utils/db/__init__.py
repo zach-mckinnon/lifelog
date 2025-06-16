@@ -30,7 +30,8 @@ from lifelog.utils.db.database_manager import (
     initialize_schema,
     add_record,
     update_record,
-    get_all_api_devices
+    get_all_api_devices,
+    _resolve_db_path
 )
 
 # ─── Data models ────────────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ __all__ = [
     "add_record",
     "update_record",
     "get_all_api_devices",
+    "_resolve_db_path",
     # schema
     "DBConnection",
     "is_initialized",
