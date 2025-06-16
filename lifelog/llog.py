@@ -1002,15 +1002,15 @@ def main_callback(ctx: typer.Context):
     """
     Main callback invoked before any command.
     - Ensures app initialization and logging setup.
-    - Performs auto-sync if needed.
+    - Skips profile/notification checks for setup/config-edit.
+    - Performs auto-sync if needed for other commands.
     """
-    # Set up logging early
+    # 1️⃣ Early logging and initialization
     log_utils.setup_logging()
-
     try:
         ensure_app_initialized()
     except typer.Exit:
-        # Let Typer handle exit
+        # Let Typer handle exits (e.g. `llog setup`)
         raise
     except Exception as e:
         logger.error(
@@ -1018,7 +1018,11 @@ def main_callback(ctx: typer.Context):
         console.print(f"[red]Initialization error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Auto-sync for commands that need fresh data
+    # 2️⃣ If we're just running `setup` or editing config, skip user-profile hooks
+    if ctx.invoked_subcommand in ("setup", "config-edit"):
+        return
+
+    # 3️⃣ Auto-sync for normal commands
     if should_sync():
         try:
             auto_sync()
@@ -1026,11 +1030,20 @@ def main_callback(ctx: typer.Context):
             logger.warning(
                 f"Auto-sync failed in main_callback: {e}", exc_info=True)
             console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
-    profile = _ensure_profile()
-    unread = get_unread_notifications(profile.id)
-    if unread:
-        console.print("[bold yellow]You have new notifications![/bold yellow]")
-        console.print("Run `llog hero notify` to view them.")
+
+    # 4️⃣ Fetch user profile & show notifications
+    try:
+        profile = _ensure_profile()
+        unread = get_unread_notifications(profile.id)
+        if unread:
+            console.print(
+                "[bold yellow]You have new notifications![/bold yellow]")
+            console.print("Run `llog hero notify` to view them.")
+    except Exception as e:
+        # If something is really wrong with the gamification tables, log it but don't block
+        logger.error(
+            f"Failed to load user profile/notifications: {e}", exc_info=True)
+    return
 
 
 lifelog_app = app
