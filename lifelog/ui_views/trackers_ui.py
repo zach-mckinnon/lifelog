@@ -16,6 +16,7 @@ from lifelog.utils.shared_utils import add_category_to_config, filter_entries_fo
 from lifelog.ui_views.popups import popup_confirm, popup_input, popup_select_option, popup_show
 from lifelog.ui_views.ui_helpers import log_exception, safe_addstr, tag_picker_tui
 from lifelog.ui_views.forms import GoalDetailForm, TrackerEntryForm, TrackerForm, run_form, run_goal_form
+from lifelog.utils.hooks import run_hooks
 
 
 def draw_trackers(pane, h, w, selected_idx, color_pair=None):
@@ -156,7 +157,8 @@ def log_entry_tui(stdscr):
         timestamp=timestamp,
         value=value,
     )
-    track_repository.add_tracker_entry(entry)
+    entry = track_repository.add_tracker_entry(entry)
+    run_hooks("tracker", "logged", entry)
     npyscreen.notify_confirm(f"Entry logged for '{tracker.title}'.")
 
 
@@ -309,7 +311,8 @@ def log_tracker_entry_tui(stdscr, sel):
         timestamp=timestamp,
         value=value,
     )
-    track_repository.add_tracker_entry(entry)
+    _ent = track_repository.add_tracker_entry(entry)
+    run_hooks("tracker", "logged", _ent)
     popup_show(stdscr, [f"Entry logged for '{tracker.title}'."])
 
 

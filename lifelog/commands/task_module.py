@@ -11,6 +11,7 @@ import re
 from shlex import shlex
 import subprocess
 from sys import platform
+import time
 import typer
 import json
 from datetime import datetime, timedelta
@@ -634,6 +635,124 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
         f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_feedback_saying("task_completed"))
     run_hooks("task", "completed", task)
+
+
+@app.command("focus")
+def focus_cli(
+    id: int = typer.Argument(..., help="The ID of the task to focus on"),
+    pomodoro: bool = typer.Option(
+        True, "--pomodoro/--no-pomodoro",
+        help="Enable back-to-back Pomodoro cycles"
+    ),
+    focus_len: int = typer.Option(
+        25, "--focus", "-f", min=1, help="Minutes per focus block"),
+    break_len: int = typer.Option(
+        5, "--break", "-b", min=1, help="Minutes per break block"),
+):
+    """
+    Distraction-free CLI “focus mode” for a single task.
+    Starts a time entry, guides you through Pomodoro (if enabled),
+    lets you pause or mark done, and then stops the time entry.
+    """
+    task = task_repository.get_task_by_id(id)
+    if not task:
+        console.print(f"[red]❌ Task ID {id} not found.[/red]")
+        raise typer.Exit(1)
+
+    # 1) kick off the timer if not already running
+    active = time_repository.get_active_time_entry()
+    if not (active and getattr(active, "task_id", None) == id):
+        now = now_utc()
+        entry_data = {
+            "title":   task.title or "",
+            "task_id": id,
+            "start":   now.isoformat(),
+            "category": task.category,
+            "project":  task.project,
+            "notes":    f"Focus mode start",
+        }
+        time_repository.start_time_entry(entry_data)
+        run_hooks("task", "started", task)
+        console.print(f"[green]▶️ Focus mode started for task {id}.[/green]")
+
+    console.print(f"[bold blue]Entering focus mode for:[/] {task.title}")
+    console.print(
+        "[dim]Commands: [p]ause & exit, [d]one & exit, [P]toggle Pomodoro on/off[/dim]"
+    )
+
+    # 2) loop until pause (p) or done (d)
+    total_distracted = 0
+    in_break = False
+    block_start = time.time()
+
+    # keep track of elapsed seconds in current block
+    def block_elapsed():
+        return int(time.time() - block_start)
+
+    # redraw status
+    def show_status():
+        te = block_elapsed()
+        mm, ss = divmod(te, 60)
+        status = "Break" if in_break else "Focus"
+        console.print(
+            f"\r[{status}] {mm:02}:{ss:02} — total distracted: {total_distracted}m", end="")
+
+    # optional pomodoro cycles
+    while True:
+        show_status()
+        # non-blocking check for keypress
+        if console.input("[grey]?[/grey]", prompt_suffix="", show_default=False, style=None, end="") in ("p", "d", "P"):
+            key = console.input("")  # capture it
+        else:
+            key = None
+
+        if key == "p":
+            console.print("\n[yellow]⏸️ Pausing focus mode.[/yellow]")
+            break
+        if key == "d":
+            console.print("\n[green]✔️ Marking task done.[/green]")
+            # stop time entry
+            time_repository.stop_active_time_entry(
+                end_time=now_utc().isoformat())
+            task_repository.update_task(id, {"status": "done"})
+            run_hooks("task", "completed", task)
+            return
+        if key == "P":
+            pomodoro = not pomodoro
+            console.print(
+                f"\n[cyan]Pomodoro {'ON' if pomodoro else 'OFF'}[/cyan]")
+            block_start = time.time()
+            in_break = False
+            continue
+
+        # pomodoro logic
+        if pomodoro:
+            limit = break_len*60 if in_break else focus_len*60
+            if block_elapsed() >= limit:
+                # block complete
+                if in_break:
+                    console.print(
+                        "\n[green]✨ Break over — back to focus.[/green]")
+                else:
+                    console.print(
+                        "\n[magenta]⏰ Focus block complete![/magenta]")
+                    # ask distraction
+                    extra = typer.prompt("Distracted minutes?", default="0")
+                    try:
+                        lost = int(extra)
+                    except ValueError:
+                        lost = 0
+                    total_distracted += lost
+                    run_hooks("task", "pomodoro_done", task)
+                # flip mode
+                in_break = not in_break
+                block_start = time.time()
+        time.sleep(1)
+
+    # 3) exit focus mode: stop timing
+    time_repository.stop_active_time_entry(end_time=now_utc().isoformat())
+    run_hooks("task", "stopped", task)
+    console.print("[yellow]🔒 Focus mode exited.[/yellow]")
 
 
 @app.command()

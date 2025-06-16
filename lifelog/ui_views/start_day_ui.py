@@ -1,145 +1,276 @@
 import os
-import time
 import curses
-import npyscreen
 from datetime import datetime, timedelta, timezone
+
 from lifelog.commands.environmental_sync import fetch_today_forecast
 from lifelog.utils.get_quotes import get_motivational_quote, get_feedback_saying
-from lifelog.utils.db import task_repository, track_repository, time_repository
+from lifelog.utils.db import task_repository, track_repository, environment_repository
 from lifelog.ui_views.popups import popup_show, popup_input, popup_confirm, popup_error
 from lifelog.ui_views.tasks_ui import countdown_timer_ui
-from lifelog.utils.shared_utils import format_datetime_for_user, now_utc, utc_iso_to_local
+from lifelog.utils.shared_utils import now_utc, utc_iso_to_local, format_datetime_for_user
 from lifelog.utils.db.gamify_repository import modify_pomodoro_lengths
 from lifelog.utils.hooks import run_hooks
 
-# Minimum terminal size to avoid curses errors
 MIN_LINES, MIN_COLS = 10, 40
 OVERLOAD_THRESHOLD = int(os.getenv("LIFELOG_OVERLOAD_THRESHOLD", "480"))
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Utility wrappers that respect screen size
+# ──────────────────────────────────────────────────────────────────────────────
 
-def tui_continue(stdscr, msg: str = "Press any key to continue…") -> None:
-    stdscr.addstr(curses.LINES - 1, 1, msg[:curses.COLS-2], curses.A_DIM)
+
+def _get_dims(stdscr):
+    """Return usable (height, width) inside a small border."""
+    h, w = stdscr.getmaxyx()
+    return max(1, h - 4), max(1, w - 4)
+
+
+def safe_show(stdscr, lines, title=""):
+    """
+    Trim each line to the current width, and limit number of lines
+    to the current height, then call popup_show.
+    """
+    max_h, max_w = _get_dims(stdscr)
+    safe = [ln[:max_w] for ln in lines][:max_h]
+    popup_show(stdscr, safe, title=title)
+
+
+def safe_input(stdscr, prompt, default=""):
+    """
+    Trim prompt to width before calling popup_input.
+    """
+    _, max_w = _get_dims(stdscr)
+    p = prompt[:max_w]
+    return popup_input(stdscr, p, default=p[:max_w] if default else "")
+
+
+def safe_confirm(stdscr, prompt, default=False):
+    """
+    Trim prompt to width before calling popup_confirm.
+    """
+    _, max_w = _get_dims(stdscr)
+    p = prompt[:max_w]
+    return popup_confirm(stdscr, p, default=default)
+
+
+def tui_continue(stdscr, msg="Press any key to continue…"):
+    """Show a one-line prompt at the bottom and wait."""
+    h, w = stdscr.getmaxyx()
+    stdscr.addstr(h - 1, 1, msg[:w-2], curses.A_DIM)
     stdscr.refresh()
     stdscr.getch()
 
 
-def tui_confirm(stdscr, prompt: str, default: bool = False) -> bool:
+def tui_input_int(stdscr, prompt, default):
+    """Prompt for an int, safely truncated."""
+    s = safe_input(
+        stdscr, f"{prompt} [default {default}]", default=str(default))
     try:
-        return popup_confirm(stdscr, prompt, default=default)
-    except Exception:
-        popup_error(stdscr, "Confirmation failed.")
-        return default
-
-
-def tui_input_int(stdscr, prompt: str, default: int) -> int:
-    try:
-        s = popup_input(
-            stdscr, f"{prompt} [default {default}]", default=str(default))
-        return int(s) if s and s.isdigit() else default
+        return int(s)
     except Exception:
         popup_error(stdscr, "Invalid number — using default.")
         return default
 
-
-def get_weather_service():
-    return fetch_today_forecast
+# ──────────────────────────────────────────────────────────────────────────────
+# Main TUI Flow
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def start_day_tui(stdscr):
-    # Ensure minimum size
+    # enforce minimum size
     lines, cols = stdscr.getmaxyx()
     if lines < MIN_LINES or cols < MIN_COLS:
         popup_error(
             stdscr, f"Terminal too small: need ≥{MIN_COLS}×{MIN_LINES}")
         return
 
-    # 1. Motivation
-    quote = get_motivational_quote()
-    popup_show(stdscr, [quote], title="🌞 Start Your Day!")
+    # 1) Motivation
+    safe_show(stdscr, [get_motivational_quote()], title="🌞 Motivation")
 
-    # 1a. Weather
-    show_today_weather_tui(stdscr)
+    # 1a) Weather
+    _show_weather_tui(stdscr)
 
-    # 2. Task selection
-    tasks = select_tasks_for_today(stdscr)
+    # 2) Task selection
+    tasks = _select_tasks_tui(stdscr)
     if not tasks:
         return
 
-    # 3. Time plan
-    plan = ask_time_for_tasks(stdscr, tasks)
-
-    # 4. Overload warning
+    # 3) Time allocation
+    plan = _ask_time_tui(stdscr, tasks)
     total = sum(item["minutes"] for item in plan)
+
+    # 4) Overload warning
     if total > OVERLOAD_THRESHOLD:
-        popup_show(
-            stdscr, [f"⚠️ {total} min planned (> {OVERLOAD_THRESHOLD})"], title="Overload")
-
-    # 5. Initial tracker logs
-    log_initial_trackers(stdscr)
-
-    # 6. Pomodoro loop
-    for idx, item in enumerate(plan, start=1):
-        task = item["task"]
-        mins = item["minutes"]
-
-        # Announce start of focus block
-        popup_show(
+        safe_show(
             stdscr,
-            [f"Task {idx}/{len(plan)}: {task.title}", f"{mins} min focus"],
+            [f"⚠️ {total} min planned (>{OVERLOAD_THRESHOLD})"],
+            title="Overload Warning"
+        )
+        tui_continue(stdscr)
+
+    # 5) Initial trackers
+    safe_show(stdscr, ["Log any trackers now"], title="Initial Trackers")
+    _log_initial_trackers_tui(stdscr)
+
+    # Prepare reminders
+    session_start = datetime.now(timezone.utc)
+    reminders = {"water": False, "lunch": False}
+
+    # 6) Loop through each task
+    for idx, item in enumerate(plan, start=1):
+        task, minutes = item["task"], item["minutes"]
+
+        # Announce the task
+        safe_show(
+            stdscr,
+            [f"Task {idx}/{len(plan)}: {task.title}",
+             f"{minutes} min total focus"],
             title="Start Task"
         )
-        tty_continue = tui_continue  # alias
 
-        # Run the focus and makeup sessions
-        distracted = run_pomodoro_tui(stdscr, mins)
-        run_makeup_tui(stdscr, distracted)
-
-        # After focus ends, show a fun transition quote
-        transition_quote = get_feedback_saying("transition_break")
-        popup_show(
+        # Checklist step
+        safe_show(
             stdscr,
-            [transition_quote],
-            title="💬 Take Five!"
+            ["📝 Take 5 minutes to make a quick checklist of what you'll do."],
+            title="Checklist Time"
         )
-        tui_continue(stdscr)  # wait for user to absorb it
+        tui_continue(stdscr)
 
-        # Notes & between-task trackers
-        record_task_notes_tui(stdscr, task, mins)
-        log_between_tasks(stdscr)
+        # Ready prompt
+        safe_show(
+            stdscr,
+            [f"Ready to begin {minutes} min of focus on '{task.title}'?"],
+            title="Ready to Focus"
+        )
+        tui_continue(stdscr)
 
-        # If there’s another task coming up, show its title
+        # Pomodoro sessions
+        distracted = run_pomodoro_tui(stdscr, task, minutes)
+
+        # Makeup sessions
+        if distracted > 0:
+            run_makeup_tui(stdscr, task, distracted)
+
+        # Mark complete
+        run_hooks("task", "completed", task)
+        safe_show(stdscr, [f"✔️ Completed '{task.title}'"], title="Task Done")
+
+        # After-task trackers & mood
+        safe_show(stdscr, ["Log trackers & how you felt"], title="Post-Task")
+        _log_initial_trackers_tui(stdscr)
+        mood = safe_input(stdscr, "How did you feel?", default="")
+        if mood:
+            entry = track_repository.add_tracker_entry(
+                tracker_id=None,
+                timestamp=now_utc(),
+                value=mood
+            )
+            run_hooks("tracker", "logged", entry)
+
+        # Hydration & lunch reminders
+        elapsed = datetime.now(timezone.utc) - session_start
+        if elapsed >= timedelta(hours=2) and not reminders["water"]:
+            if safe_confirm(stdscr, "🚰 Two hours in—grab water?", default=False):
+                reminders["water"] = True
+        if elapsed >= timedelta(hours=4) and not reminders["lunch"]:
+            if safe_confirm(stdscr, "🍱 Four hours in—time for lunch?", default=False):
+                reminders["lunch"] = True
+
+        # Next task
         if idx < len(plan):
-            popup_show(
+            safe_show(
                 stdscr,
                 [f"Next up: {plan[idx]['task'].title}"],
-                title="🔜 On Deck"
+                title="Up Next"
             )
             tui_continue(stdscr)
 
-    # 7. End-of-day
-    feedback = get_feedback_saying("end_of_day")
-    popup_show(stdscr, [feedback], title="🎉 Day Complete!")
+    # 7) End-of-day report
+    safe_show(stdscr, [get_feedback_saying("end_of_day")],
+              title="🎉 Day Complete!")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Focus & Makeup Helpers
+# ──────────────────────────────────────────────────────────────────────────────
 
 
-def show_today_weather_tui(stdscr):
-    """
-    Fetch today’s forecast, convert each timestamp to local time,
-    format as MM/DD/YY HH:MM, and display.
-    """
+def run_pomodoro_tui(stdscr, task, total_minutes: int) -> int:
+    focus_base, break_base = (25, 5) if total_minutes <= 120 else (45, 10)
+    focus, brk = modify_pomodoro_lengths(focus_base, break_base)
+    sessions = (total_minutes + focus - 1) // focus
+    distracted = 0
+
+    for s in range(sessions):
+        safe_show(
+            stdscr,
+            [f"Pomodoro {s+1}/{sessions}", f"{focus} min focus"],
+            title="Focus Time"
+        )
+        completed = countdown_timer_ui(stdscr, focus * 60, title="Focus")
+        run_hooks("task", "pomodoro_done", task)
+
+        if completed:
+            extra = tui_input_int(stdscr, "Distracted minutes?", 0)
+        else:
+            actual = tui_input_int(stdscr, f"Actual focus (≤{focus})?", focus)
+            extra = focus - actual
+        distracted += extra
+
+        if s < sessions - 1:
+            safe_show(stdscr, [f"{brk} min break"], title="Break Time")
+            countdown_timer_ui(stdscr, brk * 60, title="Break")
+            safe_show(stdscr, ["Break's over!"], title="💪 Ready?")
+            tui_continue(stdscr)
+
+    return distracted
+
+
+def run_makeup_tui(stdscr, task, total_distracted: int, focus_len: int = 25):
+    if total_distracted <= 0:
+        return
+    sessions = (total_distracted + focus_len - 1) // focus_len
+    rem = total_distracted
+
+    for m in range(sessions):
+        safe_show(
+            stdscr,
+            [f"Makeup {m+1}/{sessions}", f"{min(rem, focus_len)} min focus"],
+            title="Makeup"
+        )
+        completed = countdown_timer_ui(
+            stdscr, min(rem, focus_len) * 60, title="Makeup")
+        run_hooks("task", "pomodoro_done", task)
+
+        if not completed:
+            actual = tui_input_int(
+                stdscr, f"Actual focus (≤{focus_len})?", focus_len)
+            rem -= actual
+        else:
+            rem -= focus_len
+
+        if rem > 0:
+            safe_show(stdscr, ["Short break"], title="Break")
+            tui_continue(stdscr)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Weather, Task, and Tracker Subroutines
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _show_weather_tui(stdscr):
     try:
-        env = __import__("lifelog.utils.db.environment_repository", fromlist=[""])\
-            .get_latest_environment_data("weather")
+        env = environment_repository.get_latest_environment_data("weather")
     except Exception:
         env = None
 
     if not env:
-        popup_show(
+        safe_show(
             stdscr, ["No weather data — run sync first"], title="Weather")
         return
 
     lat, lon = env.get("latitude"), env.get("longitude")
     if lat is None or lon is None:
-        popup_error(stdscr, "Incomplete location data")
+        popup_error(stdscr, "Incomplete weather location data")
         return
 
     try:
@@ -148,56 +279,37 @@ def show_today_weather_tui(stdscr):
         popup_error(stdscr, f"Weather fetch error: {e}")
         return
 
-    if not forecast:
-        popup_show(stdscr, ["No forecast available today."], title="Weather")
-        return
-
-    lines = ["Today's forecast (4 h intervals):"]
-    for entry in forecast:
-        # Parse the full UTC ISO string, convert to local tz, then format
-        local_dt = utc_iso_to_local(entry["time"])
-        time_str = format_datetime_for_user(local_dt)
-        temp = f"{entry['temperature']:.1f}°C" if isinstance(
-            entry["temperature"], float) else f"{entry['temperature']}°C"
-        pop = f"{entry['precip_prob']}%" if entry['precip_prob'] is not None else "-"
+    lines = [f"Forecast for {format_datetime_for_user(now_utc()).split()[0]}:"]
+    for ent in forecast:
+        local = utc_iso_to_local(ent["time"])
         lines.append(
-            f"{time_str} — {temp}, Precip {pop}, {entry['description']}")
+            f"{format_datetime_for_user(local)} — {ent['temperature']}°C, "
+            f"Precip {ent['precip_prob']}%, {ent['description']}"
+        )
+    safe_show(stdscr, lines, title="🌤️ Forecast")
 
-    popup_show(stdscr, lines, title="🌤️ Forecast")
 
-
-def select_tasks_for_today(stdscr):
-    try:
-        all_tasks = task_repository.query_tasks(
-            show_completed=False, sort="priority")
-    except Exception:
-        popup_error(stdscr, "Failed loading tasks")
-        return None
-    if not all_tasks:
-        popup_show(stdscr, ["No tasks found."], title="Start Day")
-        return None
-
-    prompt = ["Select tasks (comma-separated):"]
-    for i, t in enumerate(all_tasks, 1):
+def _select_tasks_tui(stdscr):
+    tasks = task_repository.get_all_tasks()
+    if not tasks:
+        safe_show(stdscr, ["No tasks to select."], title="Tasks")
+        return []
+    prompt = ["Select tasks (e.g. 1,3):"]
+    for i, t in enumerate(tasks, 1):
         prompt.append(f"{i}. {t.title}")
-    sel = popup_input(stdscr, "\n".join(prompt))
+    sel = safe_input(stdscr, "\n".join(prompt))
     if not sel:
-        return None
-
+        return []
     chosen = []
     for part in sel.split(","):
-        if not part.strip().isdigit():
-            popup_error(stdscr, f"Invalid choice: {part}")
-            return None
-        idx = int(part) - 1
-        if idx < 0 or idx >= len(all_tasks):
-            popup_error(stdscr, f"Out of range: {part}")
-            return None
-        chosen.append(all_tasks[idx])
+        if part.strip().isdigit():
+            idx = int(part.strip()) - 1
+            if 0 <= idx < len(tasks):
+                chosen.append(tasks[idx])
     return chosen
 
 
-def ask_time_for_tasks(stdscr, tasks):
+def _ask_time_tui(stdscr, tasks):
     plan = []
     for t in tasks:
         mins = tui_input_int(stdscr, f"Minutes for {t.title}?", 25)
@@ -205,137 +317,15 @@ def ask_time_for_tasks(stdscr, tasks):
     return plan
 
 
-def log_initial_trackers(stdscr):
-    """
-    For each tracker in the repo, ask the user if they want to log it now.
-    If yes, prompt for a value and record the entry with a UTC timestamp.
-    """
-    try:
-        trackers = track_repository.get_all_trackers()
-    except Exception:
-        popup_error(stdscr, "Failed loading trackers")
-        return
-
+def _log_initial_trackers_tui(stdscr):
+    trackers = track_repository.get_all_trackers()
     for tr in trackers:
         if popup_confirm(stdscr, f"Log '{tr.title}' now?", default=False):
-            val = popup_input(stdscr, f"Value for {tr.title}:", default="")
+            val = safe_input(stdscr, f"Value for {tr.title}:", default="")
             if val:
-                try:
-                    track_repository.add_tracker_entry(
-                        tracker_id=tr.id,
-                        timestamp=now_utc().isoformat(),
-                        value=val
-                    )
-                    run_hooks("tracker", "logged", {
-                        "tracker_id": tr.id,
-                        "timestamp": now_utc().isoformat(),
-                        "value": val
-                    })
-                except Exception:
-                    popup_error(stdscr, f"Failed logging {tr.title}")
-
-
-def run_pomodoro_tui(stdscr, total_minutes):
-    base_focus, base_break = (25, 5) if total_minutes <= 120 else (45, 10)
-    focus, brk = modify_pomodoro_lengths(base_focus, base_break)
-    sessions = (total_minutes + focus - 1) // focus
-    distracted = 0
-    for s in range(sessions):
-        popup_show(
-            stdscr, [f"Pomodoro {s+1}/{sessions}", f"{focus} min focus"], "Focus")
-        start = time.time()
-        completed = countdown_timer_ui(stdscr, focus*60, title="Focus")
-        elapsed = int((time.time() - start)/60)
-        elapsed = min(elapsed, focus)
-        if completed:
-            extra = tui_input_int(stdscr, "Distracted minutes?", 0)
-        else:
-            prompt = f"Actual focus minutes (≤{focus})?"
-            actual = tui_input_int(stdscr, prompt, elapsed)
-            extra = focus - actual
-        distracted += extra
-        if s < sessions - 1:
-            # Show an automatic break timer instead of a static popup
-            countdown_timer_ui(stdscr, brk * 60, title="Break Time")
-            # Optionally give a “break’s over” message
-            popup_show(
-                stdscr, [f"Break’s over—back to work!"], title="💪 Ready?")
-    return distracted
-
-
-def run_makeup_tui(stdscr, total_distracted, focus_len=25, break_len=None):
-    if total_distracted <= 0:
-        return
-    sessions = (total_distracted + focus_len - 1) // focus_len
-    rem = total_distracted
-    for i in range(sessions):
-        session_time = min(focus_len, rem)
-        popup_show(stdscr, [f"Makeup {i+1}/{sessions}",
-                   f"{session_time} min focus"], "Makeup")
-        completed = countdown_timer_ui(stdscr, session_time*60, title="Makeup")
-        if not completed:
-            actual = tui_input_int(
-                stdscr, f"Actual focus (≤{session_time})?", 0)
-            rem -= actual
-        else:
-            rem -= session_time
-        if break_len and rem > 0:
-            popup_show(stdscr, [f"{break_len} min break"], "Break")
-
-
-def record_task_notes_tui(stdscr, task, minutes):
-    """
-    Prompt the user for free-form notes on a just-completed focus period,
-    then start+stop a time entry in UTC based on those notes and the focus length.
-    """
-    notes = popup_input(stdscr, "Notes? (blank to skip):", default="")
-    if not notes:
-        return
-
-    try:
-        # Capture the start time in UTC
-        start_dt_utc = now_utc()
-        time_repository.start_time_entry(
-            title=task.title,
-            task_id=task.id,
-            start_time=start_dt_utc.isoformat(),
-            project=getattr(task, "project", None),
-            notes=notes
-        )
-
-        # Compute the end time in UTC
-        end_dt_utc = start_dt_utc + timedelta(minutes=minutes)
-        time_repository.stop_active_time_entry(
-            end_time=end_dt_utc.isoformat()
-        )
-    except Exception:
-        popup_error(stdscr, "Failed logging notes")
-
-
-def log_between_tasks(stdscr):
-    """
-    After one focus session ends and before the next begins, offer to log
-    any tracker values now, using UTC timestamps for storage.
-    """
-    try:
-        trackers = track_repository.get_all_trackers()
-    except Exception:
-        return
-
-    for tr in trackers:
-        if popup_confirm(stdscr, f"Log '{tr.title}' now?", default=False):
-            val = popup_input(stdscr, f"Value for {tr.title}:", default="")
-            if val:
-                try:
-                    track_repository.add_tracker_entry(
-                        tracker_id=tr.id,
-                        timestamp=now_utc().isoformat(),
-                        value=val
-                    )
-                    run_hooks("tracker", "logged", {
-                        "tracker_id": tr.id,
-                        "timestamp": now_utc().isoformat(),
-                        "value": val
-                    })
-                except Exception:
-                    popup_error(stdscr, f"Failed logging {tr.title}")
+                entry = track_repository.add_tracker_entry(
+                    tracker_id=tr.id,
+                    timestamp=now_utc(),
+                    value=val
+                )
+                run_hooks("tracker", "logged", entry)
