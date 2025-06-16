@@ -809,7 +809,7 @@ def ensure_app_initialized():
     try:
         cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
         if not database_manager.is_initialized():
-            database_manager.initialize_schema()
+            initialize_application()
 
         config = cf.load_config()
         if "meta" not in config:

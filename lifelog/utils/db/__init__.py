@@ -5,7 +5,7 @@ Database connection, schema initialization, and repository APIs.
 """
 
 # ─── Core connection & sync helpers ─────────────────────────────────────────────
-from .db_helper import (
+from lifelog.utils.db.db_helper import (
     get_connection,
     get_mode,
     is_direct_db_mode,
@@ -24,17 +24,19 @@ from .db_helper import (
 )
 
 # ─── Schema management ───────────────────────────────────────────────────────────
-from .database_manager import (
+from lifelog.utils.db.database_manager import (
     DBConnection,
     is_initialized,
     initialize_schema,
+    add_record,
+    update_record
 )
 
 # ─── Data models ────────────────────────────────────────────────────────────────
-from . import models
+from lifelog.utils.db import models
 
 # ─── Repository sub-modules ─────────────────────────────────────────────────────
-from . import (
+from lifelog.utils.db import (
     environment_repository,
     gamify_repository,
     report_repository,
@@ -61,6 +63,8 @@ __all__ = [
     "set_last_synced",
     "safe_execute",
     "safe_query",
+    "add_record",
+    "update_record",
     # schema
     "DBConnection",
     "is_initialized",
