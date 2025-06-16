@@ -129,22 +129,21 @@ def ui(
 @app.command("setup")
 def setup_command():
     """Run initial setup wizard"""
+    # 1️⃣ Set up logging and ensure base dir
     log_utils.setup_logging()
-    try:
-        ensure_app_initialized()
-    except Exception as e:
-        logger.error(
-            f"Initialization failed before launching UI: {e}", exc_info=True)
-        console.print(f"[red]Initialization error: {e}[/red]")
-        raise typer.Exit(1)
-    try:
-        cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logger.error(
-            f"Failed to create base directory {cf.BASE_DIR}: {e}", exc_info=True)
-        console.print(f"[red]Failed to create base directory: {e}[/red]")
-        raise typer.Exit(1)
+    cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
 
+    # 2️⃣ Initialize DB schema + seed badges/skills if this is the first time
+    from lifelog.utils.db.database_manager import is_initialized, initialize_schema
+    from lifelog.utils.gamification_seed import run_seed
+
+    if not is_initialized():
+        initialize_schema()
+        console.print("[dim]• Database schema initialized[/dim]")
+        run_seed()
+        console.print("[dim]• Initial data seeded[/dim]")
+
+    # 3️⃣ Load (or create) the config file
     try:
         config = cf.load_config()
     except Exception as e:
@@ -152,32 +151,27 @@ def setup_command():
         console.print(f"[red]Error loading config: {e}[/red]")
         raise typer.Exit(1)
 
-    try:
-        first_done = config.get("meta", {}).get("first_run_complete", False)
-        if not first_done:
+    # 4️⃣ Run the wizard if not already done
+    first_done = config.get("meta", {}).get("first_run_complete", False)
+    if not first_done:
+        config = run_wizard(config)
+        saved = cf.save_config(config)
+        if not saved:
+            logger.error("Failed to save config after wizard")
+            console.print(
+                "[red]⚠️ Configuration save failed after setup.[/red]")
+        console.print("[green]✓ Setup completed successfully![/green]")
+    else:
+        if typer.confirm("Setup already completed. Run again?", default=False):
             config = run_wizard(config)
             saved = cf.save_config(config)
             if not saved:
-                logger.error("Failed to save config after wizard")
+                logger.error("Failed to save config after re-running wizard")
                 console.print(
                     "[red]⚠️ Configuration save failed after setup.[/red]")
-            console.print("[green]✓ Setup completed successfully![/green]")
+            console.print("[green]✓ Setup re-configured![/green]")
         else:
-            if typer.confirm("Setup already completed. Run again?", default=False):
-                config = run_wizard(config)
-                saved = cf.save_config(config)
-                if not saved:
-                    logger.error(
-                        "Failed to save config after re-running wizard")
-                    console.print(
-                        "[red]⚠️ Configuration save failed after setup.[/red]")
-                console.print("[green]✓ Setup re-configured![/green]")
-            else:
-                console.print("[yellow]Setup aborted[/yellow]")
-    except Exception as e:
-        logger.error(f"Setup wizard failed: {e}", exc_info=True)
-        console.print(f"[red]⚠️ Setup failed: {e}[/red]")
-        raise typer.Exit(1)
+            console.print("[yellow]Setup aborted[/yellow]")
 
 
 @app.command("config-edit")
