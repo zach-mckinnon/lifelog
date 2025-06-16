@@ -25,12 +25,7 @@ from lifelog.utils.hooks import run_hooks
 console = Console()
 app = typer.Typer(help="Guided, gamified start-of-day focus assistant (CLI).")
 
-logger = logging.getLogger("start_day_cli")
-logger.setLevel(logging.DEBUG)
-handler = logging.FileHandler(Path.home() / ".lifelog" / "start_day.log")
-handler.setFormatter(logging.Formatter(
-    "%(asctime)s %(levelname)s %(message)s"))
-logger.addHandler(handler)
+logger = logging.getLogger(__name__)
 
 
 def prompt_continue(label: str = "Press Enter to continue...") -> None:
