@@ -335,7 +335,7 @@ def add_notification(profile_id: int, message: str) -> None:
     """Enqueue a new notification for the user."""
     safe_execute(
         "INSERT INTO notifications (profile_id, message, created_at) VALUES (?, ?, ?)",
-        (profile_id, message, datetime.utcnow().isoformat())
+        (profile_id, message, datetime.now().isoformat())
     )
 
 

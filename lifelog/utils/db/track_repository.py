@@ -60,7 +60,7 @@ def _pull_changed_trackers_from_host() -> None:
             logger.error(
                 "Trackers pull: upsert_local_tracker failed: %s", e, exc_info=True)
     try:
-        set_last_synced("trackers", datetime.utcnow().isoformat())
+        set_last_synced("trackers", datetime.now().isoformat())
     except Exception as e:
         logger.error("Trackers pull: set_last_synced failed: %s",
                      e, exc_info=True)
@@ -102,7 +102,7 @@ def _pull_changed_goals_from_host() -> None:
                 "Goals pull: upsert_local_goal failed: %s", e, exc_info=True)
 
     try:
-        set_last_synced("goals", datetime.utcnow().isoformat())
+        set_last_synced("goals", datetime.now().isoformat())
     except Exception as e:
         logger.error("Goals pull: set_last_synced failed: %s",
                      e, exc_info=True)
@@ -140,7 +140,7 @@ def upsert_local_tracker(data: Dict[str, Any]) -> None:
                     "upsert_local_tracker: update failed: %s", e, exc_info=True)
     else:
         # Insert: ensure created, updated_at, deleted present
-        now = datetime.utcnow()
+        now = datetime.now()
         record = {}
         for k in fields:
             if k in data:
@@ -235,7 +235,7 @@ def add_tracker(tracker_data: Any) -> Tracker:
     # Normalize input
     data = tracker_data.to_dict() if hasattr(
         tracker_data, "to_dict") else dict(tracker_data)
-    now = datetime.utcnow()
+    now = datetime.now()
     # Set created
     if data.get("created") is None:
         data["created"] = now.isoformat()
@@ -262,7 +262,7 @@ def add_tracker(tracker_data: Any) -> Tracker:
 
 
 def update_tracker(tracker_id: int, updates: Dict[str, Any]) -> Optional[Tracker]:
-    now = datetime.utcnow()
+    now = datetime.now()
     # Handle any enum fields here (if Tracker.type is enum, convert to .value)
     if 'type' in updates:
         # Example: if there is a TrackerType enum, convert similarly to TaskStatus
@@ -295,7 +295,7 @@ def delete_tracker(tracker_id: int) -> bool:
         return False
     uid_val = rows[0]["uid"]
     # Soft-delete locally: set deleted and updated_at
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now().isoformat()
     safe_execute(
         "UPDATE trackers SET deleted = 1, updated_at = ? WHERE id = ?", (now_iso, tracker_id))
     if not is_direct_db_mode() and should_sync():

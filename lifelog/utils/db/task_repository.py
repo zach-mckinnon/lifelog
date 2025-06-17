@@ -48,7 +48,7 @@ def _pull_changed_tasks_from_host() -> None:
         upsert_local_task(remote)
 
     # bump last‐sync
-    set_last_synced("tasks", datetime.utcnow().isoformat())
+    set_last_synced("tasks", datetime.now().isoformat())
 
 
 def get_task_by_id(task_id):
@@ -93,7 +93,7 @@ def add_task(task_data: Any) -> Task:
         data.setdefault(f, None)
 
     # Defaults and type normalization
-    now = datetime.utcnow()
+    now = datetime.now()
     if data.get("created") is None:
         data["created"] = now
     # Handle status Enum: if None, default; if string, convert to Enum then back to value; if Enum, get value
@@ -174,7 +174,7 @@ def update_task(task_id: int, updates: Dict[str, Any]) -> None:
         except Exception:
             updates.pop('due', None)
     # Set updated_at
-    updates['updated_at'] = datetime.utcnow()
+    updates['updated_at'] = datetime.now()
     db_updates = normalize_for_db(updates)
 
     if is_direct_db_mode():
@@ -204,7 +204,7 @@ def delete_task(task_id):
         rows = safe_query("SELECT uid FROM tasks WHERE id = ?", (task_id,))
         uid_val = rows[0]["uid"] if rows and rows[0]["uid"] else None
         # Soft-delete locally: set deleted=1 and updated_at
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = datetime.now().isoformat()
         safe_execute(
             "UPDATE tasks SET deleted = 1, updated_at = ? WHERE id = ?", (now_iso, task_id))
         payload = {"uid": uid_val, "deleted": True,
@@ -330,7 +330,7 @@ def update_task_by_uid(uid: str, updates: Dict[str, Any]) -> None:
         except Exception:
             updates.pop('status', None)
     # Set updated_at
-    updates['updated_at'] = datetime.utcnow()
+    updates['updated_at'] = datetime.now()
     db_updates = normalize_for_db(updates)
     cols = ", ".join(f"{k}=?" for k in db_updates)
     params = tuple(db_updates.values()) + (uid,)
@@ -341,6 +341,6 @@ def delete_task_by_uid(uid: str) -> None:
     """Host-only: soft-delete by UID."""
     if not is_host_server():
         return
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now().isoformat()
     safe_execute(
         "UPDATE tasks SET deleted = 1, updated_at = ? WHERE uid = ?", (now_iso, uid))

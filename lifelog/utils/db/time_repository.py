@@ -66,7 +66,7 @@ def _pull_changed_time_logs_from_host() -> None:
                          remote.get("uid"), e, exc_info=True)
     # 5) update last_synced
     try:
-        set_last_synced("time_history", datetime.utcnow().isoformat())
+        set_last_synced("time_history", datetime.now().isoformat())
     except Exception as e:
         logger.error(
             "Failed to set last_synced for time_history: %s", e, exc_info=True)
@@ -108,7 +108,7 @@ def upsert_local_time_log(data: Dict[str, Any]) -> None:
     else:
         # Insert new record
         try:
-            now_iso = datetime.utcnow().isoformat()
+            now_iso = datetime.now().isoformat()
             record: Dict[str, Any] = {}
             for k in fields:
                 if k in data:
@@ -288,7 +288,7 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     # Assign UID
     data.setdefault("uid", str(uuid.uuid4()))
     # Set updated_at and deleted
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now().isoformat()
     data['updated_at'] = now_iso
     data['deleted'] = 0
     # Insert locally
@@ -336,7 +336,7 @@ def update_time_entry(entry_id: int, **updates) -> Optional[TimeLog]:
         except Exception:
             pass
     # Set updated_at
-    updates['updated_at'] = datetime.utcnow().isoformat()
+    updates['updated_at'] = datetime.now().isoformat()
     # Local update
     update_record("time_history", entry_id, updates)
     # Fetch updated
@@ -392,7 +392,7 @@ def delete_time_entry(entry_id: int) -> None:
     rows = safe_query("SELECT uid FROM time_history WHERE id = ?", (entry_id,))
     uid_val = rows[0]["uid"] if rows else None
     # Soft-delete locally: set deleted=1 and updated_at
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now().isoformat()
     safe_execute(
         "UPDATE time_history SET deleted = 1, updated_at = ? WHERE id = ?", (now_iso, entry_id))
     # Sync if needed
@@ -413,7 +413,7 @@ def update_time_log_by_uid(uid_val: str, updates: Dict[str, Any]) -> None:
     if not updates:
         return
     # Set updated_at
-    updates['updated_at'] = datetime.utcnow().isoformat()
+    updates['updated_at'] = datetime.now().isoformat()
     # Normalize datetime fields if present
     if 'start' in updates and isinstance(updates['start'], datetime):
         updates['start'] = updates['start'].isoformat()
@@ -426,7 +426,7 @@ def update_time_log_by_uid(uid_val: str, updates: Dict[str, Any]) -> None:
 
 def delete_time_log_by_uid(uid_val: str) -> None:
     # Soft-delete on host: set deleted and updated_at
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now().isoformat()
     safe_execute(
         "UPDATE time_history SET deleted = 1, updated_at = ? WHERE uid = ?", (now_iso, uid_val))
 
