@@ -30,6 +30,14 @@ from rich.panel import Panel
 from rich.text import Text
 import calendar
 
+if sys.platform == "win32":
+    # Windows: use msvcrt for single-key reads
+    try:
+        import msvcrt
+    except ImportError:
+        msvcrt = None
+    tty = None
+    termios = None
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
@@ -641,25 +649,42 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 
 def read_char_nonblocking(timeout: float = 1.0):
     """
-    Read a single character from stdin without blocking for more than `timeout` seconds.
-    Returns the character as a string, or None if no input is available within timeout.
-    Works on Unix-like systems.
+    Cross-platform single-character non-blocking read:
+    - On Windows (sys.platform == "win32"), uses msvcrt.kbhit() and msvcrt.getwch().
+    - On Unix-like, uses select + termios/tty.
+    Returns the character as a string, or None if no key was pressed within `timeout`.
     """
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        # Set terminal to raw mode so we can read single chars
-        tty.setcbreak(fd)
-        # Use select to wait up to `timeout` seconds
-        rlist, _, _ = select.select([sys.stdin], [], [], timeout)
-        if rlist:
-            ch = sys.stdin.read(1)
-            return ch
-        else:
-            return None
-    finally:
-        # Restore terminal settings
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    if msvcrt:
+        # Windows path
+        start_time = time.time()
+        while True:
+            if msvcrt.kbhit():
+                # getwch() returns a Unicode string of length 1 (or special key sequence)
+                ch = msvcrt.getwch()
+                return ch
+            if (time.time() - start_time) >= timeout:
+                return None
+            # small sleep to avoid busy-wait spinning too fast
+            time.sleep(0.01)
+    elif termios and tty:
+        # Unix-like path
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            # set cbreak/raw mode so we can read single chars without Enter
+            tty.setcbreak(fd)
+            rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+            if rlist:
+                ch = sys.stdin.read(1)
+                return ch
+            else:
+                return None
+        finally:
+            # restore terminal settings
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    else:
+        # No non-blocking single-char support: always return None
+        return None
 
 
 @app.command("focus")
