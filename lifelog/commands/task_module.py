@@ -52,7 +52,7 @@ except ImportError:
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, format_due_for_display, get_available_categories, get_available_projects, get_available_tags, now_local, now_utc, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, utc_iso_to_local, validate_task_inputs
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, format_due_for_display, get_available_categories, get_available_projects, get_available_tags, now_local, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, utc_iso_to_local, validate_task_inputs
 import lifelog.config.config_manager as cf
 from lifelog.config.schedule_manager import IS_POSIX, apply_scheduled_jobs, build_linux_notifier, build_windows_notifier, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
@@ -279,7 +279,7 @@ def agenda():
     """
     📅 View your calendar and top priority tasks side-by-side.
     """
-    now = now_utc()
+    now = now_local()
 
     # --- Get all non-completed tasks sorted by priority descending ---
     tasks = task_repository.query_tasks(
@@ -361,7 +361,7 @@ def start(id: int):
     """
     Start or resume a task. Only one task can be tracked at a time.
     """
-    now = now_utc()
+    now = now_local()
     task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
@@ -530,7 +530,7 @@ def stop(
     """
     Pause the currently active task and stop timing, without marking it done.
     """
-    now = now_utc()
+    now = now_local()
     # parse_args returns lists; if args is None, treat as empty
     try:
         tags, notes = parse_args(args or [])
@@ -597,7 +597,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     """
     Mark a task as completed.
     """
-    now = now_utc()
+    now = now_local()
     try:
         tags, notes = parse_args(args or [])
     except ValueError as e:
@@ -698,26 +698,31 @@ def focus_cli(
         help="Enable back-to-back Pomodoro cycles"
     ),
     focus_len: int = typer.Option(
-        30, "--focus", "-f", min=1, help="Minutes per focus block"),
+        30, "--focus", "-f", min=1, help="Minutes per focus block"
+    ),
     break_len: int = typer.Option(
-        5, "--break", "-b", min=1, help="Minutes per break block"),
+        5, "--break", "-b", min=1, help="Minutes per break block"
+    ),
+    refresh_interval: int = typer.Option(
+        5, "--refresh-interval", "-r", min=1,
+        help="Seconds between big-timer refreshes (e.g., 5 means the ASCII timer updates every 5s)"
+    ),
 ):
     """
     Distraction-free CLI “focus mode” for a single task.
-    Shows a big timer and a progress bar in-place. Supports Pomodoro cycles,
-    pause/exit, mark done, toggle Pomodoro, and log distracted time without
-    stopping the timer.
+    Shows a big timer (ASCII via pyfiglet if available) and a progress bar in-place.
+    Supports Pomodoro cycles, pause/exit, mark done, toggle Pomodoro, and log distracted time without stopping the timer.
+    Uses monotonic clock to avoid drift, refreshes big timer only every `refresh_interval` seconds to reduce flicker.
     """
-    # 1) Look up the task
     task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[red]❌ Task ID {id} not found.[/red]")
         raise typer.Exit(1)
 
-    # 2) Start time entry if not already active for this task
+    # Start a time entry if not already active for this task
     active = time_repository.get_active_time_entry()
     if not (active and getattr(active, "task_id", None) == id):
-        now = now_utc()
+        now = now_local()
         entry_data = {
             "title":   task.title or "",
             "task_id": id,
@@ -735,23 +740,26 @@ def focus_cli(
             console.print(f"[red]Failed to start time entry: {e}[/red]")
             raise typer.Exit(1)
 
-    # 3) Print header & commands once
+    # Clear screen once, print header/commands
     console.clear()
     console.print(f"[bold blue]Entering focus mode for:[/] {task.title}")
-    console.print("[dim]Commands: [bold]p[/bold]=pause & exit, [bold]d[/bold]=done & exit, "
-                  "[bold]t[/bold]=toggle Pomodoro on/off, [bold]l[/bold]=log distracted time[/dim]")
+    commands_text = (
+        "[dim]Commands: [bold]p[/bold]=pause & exit, "
+        "[bold]d[/bold]=done & exit, "
+        "[bold]t[/bold]=toggle Pomodoro on/off, "
+        "[bold]l[/bold]=log distracted time[/dim]"
+    )
+    console.print(commands_text)
 
     total_distracted = 0  # in minutes
     in_break = False
 
     # Prepare Figlet if available
     figler = None
-    if Figlet:
-        try:
-            # you can choose other fonts, e.g. "slant"
-            figler = Figlet(font="big")
-        except Exception:
-            figler = None
+    try:
+        figler = Figlet(font="big")
+    except Exception:
+        figler = None
 
     def render_big_timer(remaining_secs: int) -> str:
         """
@@ -767,13 +775,15 @@ def focus_cli(
         else:
             return text
 
-    # Main loop: repeat for each block (focus or break)
     try:
+        # Outer loop: each Pomodoro block or continuous focus block
         while True:
-            duration_secs = break_len * 60 if in_break else focus_len * 60
-            start_block = time.time()
+            # Determine block duration in seconds
+            duration_secs = (break_len * 60) if in_break else (focus_len * 60)
+            # Use monotonic clock to avoid system time changes
+            start_block = time.monotonic()
 
-            # Build a Rich Progress for this block
+            # Prepare a Rich Progress for this block
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(bar_width=None),
@@ -783,72 +793,97 @@ def focus_cli(
                 transient=True,
             )
             task_desc = "Break" if in_break else "Focus"
-            task_id_prog = progress.add_task(task_desc, total=duration_secs)
+            prog_task = progress.add_task(task_desc, total=duration_secs)
 
-            # === UPDATED: Build a Layout with header, timer, progress, and footer ===
+            # Build Live Layout: header / timer / progress / footer
             layout = Layout()
-            # Split into four regions: header, timer-panel, progress-bar, footer
             layout.split(
-                Layout(name="header", size=3),   # fixed height for header
-                Layout(name="upper", ratio=3),    # timer region
-                Layout(name="lower", size=3),     # progress bar region
-                Layout(name="footer", size=3),    # fixed height for commands
+                Layout(name="header", size=3),
+                Layout(name="upper", ratio=3),
+                Layout(name="lower", size=3),
+                Layout(name="footer", size=3),
             )
-
-            # Populate header and footer once before entering Live:
+            # Header: show mode and task title
             header_panel = Panel(
-                Align.left(f"[bold blue]Focus mode:[/] {task.title}"),
+                Align.left(
+                    f"[bold blue]Mode:[/] {task_desc}    [bold]Task:[/] {task.title}"),
                 style="bold blue"
             )
-            commands_text = "[dim]Commands: [bold]p[/bold]=pause & exit, [bold]d[/bold]=done & exit, " \
-                            "[bold]t[/bold]=toggle Pomodoro on/off, [bold]l[/bold]=log distracted time[/dim]"
+            layout["header"].update(header_panel)
+            # Footer: commands static
             footer_panel = Panel(
                 Align.center(commands_text),
                 style="dim"
             )
-            layout["header"].update(header_panel)
             layout["footer"].update(footer_panel)
-            # Note: during Live, we will only update layout["upper"] and layout["lower"].
+            # We'll update "upper" (big timer) and "lower" (progress) in Live
 
-            # Enter Live context
-            with Live(layout, refresh_per_second=4, console=console, screen=False):
-                # Loop until block ends or key interrupts
+            # Track last remaining seconds when we last rendered big timer
+            last_render_time = 0  # monotonic-based elapsed when last big render
+            last_remaining = None
+
+            # Enter Live context: refresh_per_second=1 for key responsiveness
+            with Live(layout, refresh_per_second=1, console=console, screen=False):
+                # Inner loop: until block ends or user interrupt
                 while True:
-                    elapsed = time.time() - start_block
+                    elapsed = time.monotonic() - start_block
+                    # Clamp elapsed
                     if elapsed < 0:
-                        elapsed = 0
+                        elapsed = 0.0
                     if elapsed > duration_secs:
                         elapsed = duration_secs
                     remaining = int(duration_secs - elapsed)
 
-                    # 1) Render big timer or plain
-                    big_text = render_big_timer(remaining)
-                    timer_panel = Panel(
-                        Align.center(big_text, vertical="middle"),
-                        title=task_desc,
-                        border_style="green" if not in_break else "magenta",
-                        padding=(1, 2),
-                    )
-                    layout["upper"].update(timer_panel)
+                    # Decide if we should re-render the big ASCII timer:
+                    # - On first iteration
+                    # - Or if remaining changed by at least refresh_interval since last_render_time
+                    # - Or if remaining < refresh_interval (i.e., near end)
+                    if last_remaining is None:
+                        do_render = True
+                    else:
+                        # If we crossed a multiple of refresh_interval since last render:
+                        # Compare integer elapsed: if floor(elapsed) - last_render_time >= refresh_interval
+                        if (elapsed - last_render_time) >= refresh_interval:
+                            do_render = True
+                        elif remaining < refresh_interval and last_remaining != remaining:
+                            # In final few seconds, render every second so user sees countdown
+                            do_render = True
+                        else:
+                            do_render = False
 
-                    # 2) Update progress bar
-                    progress.update(task_id_prog, completed=elapsed)
+                    if do_render:
+                        # Render big timer
+                        big_text = render_big_timer(remaining)
+                        timer_panel = Panel(
+                            Align.center(big_text, vertical="middle"),
+                            title=task_desc,
+                            border_style="green" if not in_break else "magenta",
+                            padding=(1, 2),
+                        )
+                        layout["upper"].update(timer_panel)
+                        # Update trackers
+                        last_render_time = elapsed
+                        last_remaining = remaining
+
+                    # Update progress bar every loop for smooth percentage
+                    progress.update(prog_task, completed=elapsed)
                     layout["lower"].update(progress)
 
-                    # 3) Check keypress
-                    key = read_char_nonblocking(timeout=0.25)
+                    # Check for keypress: timeout ~1s for responsiveness
+                    key = read_char_nonblocking(timeout=1.0)
                     if key:
                         key = key.lower()
                         if key == "p":
                             console.print(
                                 "\n[yellow]⏸️ Pausing focus mode.[/yellow]")
-                            return
+                            return  # exit entire focus mode
                         elif key == "d":
                             console.print(
                                 "\n[green]✔️ Marking task done.[/green]")
+                            # Stop time entry
                             try:
                                 time_repository.stop_active_time_entry(
-                                    end_time=now_utc().isoformat())
+                                    end_time=now_local().isoformat())
                             except Exception as e:
                                 console.print(
                                     f"[red]Error stopping time entry: {e}[/red]")
@@ -864,57 +899,57 @@ def focus_cli(
                             pomodoro = not pomodoro
                             console.print(
                                 f"\n[cyan]Pomodoro {'ON' if pomodoro else 'OFF'}[/cyan]")
-                            # Exit block loop; next outer iteration handles new in_break or exit
+                            # Exit this block early; outer loop will handle in_break or exit
                             break
                         elif key == "l" and not in_break:
-                            # Exit Live to prompt
+                            # Exit Live to prompt cleanly
                             Live.stop(layout)
                             extra = console.input("Distracted minutes? ")
                             try:
-                                lost = int(extra)
-                            except ValueError:
+                                lost = int(extra.strip())
+                            except Exception:
                                 lost = 0
                             total_distracted += lost
                             console.print(
                                 f"[magenta]Added {lost}m distracted. Total now: {total_distracted}m[/magenta]")
-                            # Re-draw header & footer since Live cleared below region
+                            # Re-draw header & footer panels since Live cleared dynamic parts
                             header_panel = Panel(
                                 Align.left(
-                                    f"[bold blue]Focus mode:[/] {task.title}"),
+                                    f"[bold blue]Mode:[/] {task_desc}    [bold]Task:[/] {task.title}"),
                                 style="bold blue"
                             )
                             layout["header"].update(header_panel)
-                            footer_panel = Panel(
-                                Align.center(commands_text),
-                                style="dim"
-                            )
                             layout["footer"].update(footer_panel)
-                            # Adjust start_block so elapsed remains unchanged
-                            start_block = time.time() - elapsed
+                            # Adjust start_block so elapsed remains same after prompt
+                            start_block = time.monotonic() - elapsed
+                            # Reset last_render so next iteration re-renders big timer immediately
+                            last_render_time = 0
+                            last_remaining = None
                             continue
 
-                    # 4) End-of-block check
+                    # Check end-of-block
                     if elapsed >= duration_secs:
                         break
-                    # Loop continues; Live updates display
+                    # Else loop continues; Live will refresh at ~1 Hz
 
-            # === After exiting Live for this block ===
+            # After exiting Live for this block:
             if in_break:
                 console.print("[green]✨ Break over — back to focus.[/green]")
             else:
                 console.print("[cyan]⏰ Focus block complete![/cyan]")
+                # Prompt distracted minutes after focus block ends
                 extra = console.input("Distracted minutes? ")
                 try:
-                    lost = int(extra)
-                except ValueError:
+                    lost = int(extra.strip())
+                except Exception:
                     lost = 0
                 total_distracted += lost
                 run_hooks("task", "pomodoro_done", task)
 
-            # Flip or exit based on pomodoro
+            # Decide next:
             if pomodoro:
                 in_break = not in_break
-                # outer while repeats for next block
+                # Continue outer while: next block
             else:
                 console.print(
                     "[yellow]Continuous focus block complete; exiting focus mode.[/yellow]")
@@ -923,10 +958,12 @@ def focus_cli(
     except KeyboardInterrupt:
         console.print(
             "\n[yellow]Interrupted by user. Exiting focus mode.[/yellow]")
+
     finally:
+        # Stop time entry when exiting focus mode (unless already stopped via 'done')
         try:
             time_repository.stop_active_time_entry(
-                end_time=now_utc().isoformat())
+                end_time=now_local().isoformat())
             run_hooks("task", "stopped", task)
             console.print("[yellow]🔒 Focus mode exited.[/yellow]")
         except Exception as e:
@@ -953,7 +990,7 @@ def burndown():
             console.print("[yellow]Using empty task list[/yellow]")
             tasks = []
 
-        now = now_utc()
+        now = now_local()
         start_date = now - timedelta(days=2)
         end_date = now + timedelta(days=3)
 
@@ -1158,7 +1195,7 @@ def auto_recur():
     Check all recurring tasks and create new instances if due.
     """
     tasks = task_repository.get_all_tasks()
-    now = now_utc()
+    now = now_local()
     today_weekday = now.weekday()
     new_tasks_count = 0
 

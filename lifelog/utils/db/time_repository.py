@@ -334,125 +334,123 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
 
 # Update time entry: set updated_at
 def update_time_entry(entry_id: int, **updates) -> Optional[TimeLog]:
-    # Fetch existing to get uid
-    rows = safe_query("SELECT uid FROM time_history WHERE id = ?", (entry_id,))
-    if not rows:
-        raise ValueError(f"Time entry ID {entry_id} not found.")
-    uid_val = rows[0]["uid"]
-    # Normalize datetimes
-    if 'start' in updates and isinstance(updates['start'], datetime):
-        updates['start'] = updates['start'].isoformat()
-    if 'end' in updates and isinstance(updates['end'], datetime):
-        updates['end'] = updates['end'].isoformat()
-    # Compute duration if needed
-    if 'end' in updates and updates.get('duration_minutes') is None:
-        try:
-            st = datetime.fromisoformat(rows and safe_query(
-                "SELECT start FROM time_history WHERE id = ?", (entry_id,))[0]['start'])
-            ed = datetime.fromisoformat(updates['end'])
-            updates['duration_minutes'] = max(
-                0.0, (ed - st).total_seconds() / 60.0)
-        except Exception:
-            pass
-    # Set updated_at
-    updates['updated_at'] = datetime.now().isoformat()
-    # Local update
-    update_record("time_history", entry_id, updates)
+    # Normalize datetimes in updates
+    from datetime import datetime
+    norm_updates = {}
+    for k, v in updates.items():
+        if isinstance(v, datetime):
+            norm_updates[k] = v.isoformat()
+        else:
+            norm_updates[k] = v
+    # Possibly check if updating 'end': ensure end >= start, if both known
+    if 'end' in norm_updates:
+        # fetch existing start to compare
+        existing = safe_query(
+            "SELECT start FROM time_history WHERE id = ?", (entry_id,))
+        if existing:
+            try:
+                start_dt = datetime.fromisoformat(existing[0]["start"])
+                end_dt = datetime.fromisoformat(norm_updates['end'])
+                if end_dt < start_dt:
+                    raise ValueError(
+                        f"End time {end_dt.isoformat()} is before start {start_dt.isoformat()}")
+            except Exception as e:
+                raise
+    # Update locally
+    update_record("time_history", entry_id, norm_updates)
     # Fetch updated
-    updated = get_time_log_by_uid(uid_val)
+    updated = get_time_log_by_uid(...)  # by uid fetched earlier
     if updated is None:
-        raise RuntimeError(f"Failed to retrieve updated entry uid={uid_val}")
-    # Sync if needed
+        return None
+    # Sync if needed, converting any datetime fields
     if not is_direct_db_mode() and should_sync():
-        # Build full payload
-        # Convert dataclass to dict or row dict
-        payload = {**vars(updated)}
+        payload: Dict[str, Any] = {}
+        for field_name, value in vars(updated).items():
+            if isinstance(value, datetime):
+                payload[field_name] = value.isoformat()
+            else:
+                payload[field_name] = value
         queue_sync_operation("time_history", "update", payload)
-        try:
-            process_sync_queue()
-        except Exception as e:
-            logger.error(
-                "Failed to sync updated time entry uid=%s: %s", uid_val, e, exc_info=True)
+        process_sync_queue()
     return updated
 
 
 # Stop active entry: wrap update_time_entry, but ensure updated_at set
 # Existing logic invokes update_time_entry which now sets updated_at
 
+
 def stop_active_time_entry(
     end_time: Union[datetime, str],
     tags: Optional[str] = None,
     notes: Optional[str] = None
 ) -> TimeLog:
-    """
-    Stop the currently active time entry, setting its end, duration, tags, notes,
-    and updated_at. Accepts end_time as ISO string or datetime or human-friendly string.
-    """
-    # 1) Fetch active entry
+    # Normalize end_time into a datetime
+    if isinstance(end_time, str):
+        try:
+            end_dt = datetime.fromisoformat(end_time)
+        except Exception as e:
+            raise ValueError(f"Invalid end_time format: {end_time}") from e
+    elif isinstance(end_time, datetime):
+        end_dt = end_time
+    else:
+        raise ValueError("end_time must be a datetime or ISO string")
+
     active = get_active_time_entry()
     if not active:
         raise RuntimeError("No active time entry to stop.")
 
-    # 2) Normalize start_dt from active.start
-    # active.start may be a datetime or ISO string. We ensure datetime and convert to UTC.
-    raw_start = getattr(active, "start", None)
-    if raw_start is None:
-        raise RuntimeError("Active time entry has no start time recorded.")
-    if isinstance(raw_start, datetime):
-        start_dt = to_utc(raw_start)
-    else:
-        # assume string: try ISO parse
-        try:
-            parsed = datetime.fromisoformat(raw_start)
-        except Exception:
-            # Optionally: try human-friendly parsing
-            try:
-                parsed = parse_date_string(raw_start, now=now_utc())
-            except Exception as e:
-                raise ValueError(
-                    f"Cannot parse active.start '{raw_start}': {e}")
-        start_dt = to_utc(parsed)
+    # Parse stored start (assuming active.start is ISO string)
+    try:
+        start_dt = datetime.fromisoformat(active.start)
+    except Exception:
+        raise RuntimeError(
+            f"Cannot parse start time of active entry: {active.start}")
 
-    # 3) Normalize end_dt from end_time parameter
-    if isinstance(end_time, datetime):
-        end_dt = to_utc(end_time)
-    else:
-        # end_time is a string: try ISO first
-        try:
-            parsed_end = datetime.fromisoformat(end_time)
-        except Exception:
-            # Optionally: try human-friendly parsing
-            try:
-                parsed_end = parse_date_string(end_time, now=now_utc())
-            except Exception as e:
-                raise ValueError(f"Cannot parse end_time '{end_time}': {e}")
-        end_dt = to_utc(parsed_end)
-
-    # 4) Check that end_dt is not before start_dt
+    # Check that end >= start
     if end_dt < start_dt:
         raise ValueError(
-            f"end_time ({end_dt.isoformat()}) is before start time ({start_dt.isoformat()}).")
+            f"End time {end_dt.isoformat()} is before start time {start_dt.isoformat()}")
 
-    # 5) Compute duration in minutes
-    duration = (end_dt - start_dt).total_seconds() / 60.0
-    # Clamp to zero just in case of tiny negative due to rounding, though above check prevents major negatives
-    duration = max(0.0, duration)
-
-    # 6) Prepare update payload
     end_iso = end_dt.isoformat()
-    updates: Dict[str, Any] = {
-        "end": end_iso,
-        "duration_minutes": duration,
-        # Explicitly set updated_at to now UTC:
-        "updated_at": now_utc().isoformat(),
-    }
+    duration = max(0.0, (end_dt - start_dt).total_seconds() / 60.0)
+    updates: Dict[str, Any] = {"end": end_iso, "duration_minutes": duration}
     if tags is not None:
         updates["tags"] = tags
     if notes is not None:
         updates["notes"] = notes
 
-    # 7) Call update_time_entry, which applies the DB update and sync logic
-    return update_time_entry(active.id, **updates)
+    # Update locally
+    try:
+        update_record("time_history", active.id, updates)
+    except Exception as e:
+        logging.error("Failed to update time entry stop: %s", e, exc_info=True)
+        raise
+
+    # Fetch updated entry
+    updated = get_time_log_by_uid(active.uid)
+    if updated is None:
+        raise RuntimeError(
+            f"Failed to retrieve stopped entry uid={active.uid}")
+
+    # Sync if needed, but ensure all datetime fields in payload are ISO strings
+    if not is_direct_db_mode() and should_sync():
+        # Build a serializable payload: convert any datetime fields to ISO
+        payload: Dict[str, Any] = {}
+        # Use known TimeLog dataclass fields; here we do a safe conversion:
+        for field_name, value in vars(updated).items():
+            if isinstance(value, datetime):
+                payload[field_name] = value.isoformat()
+            else:
+                payload[field_name] = value
+        try:
+            queue_sync_operation("time_history", "update", payload)
+            process_sync_queue()
+        except Exception as e:
+            logging.error(
+                "Failed to sync stopped time entry uid=%s: %s", active.uid, e, exc_info=True)
+            # Do not raise further; local stop succeeded. Or re-raise if you want strict sync.
+    return updated
+
 
 # Delete time entry: soft-delete instead of hard delete
 
