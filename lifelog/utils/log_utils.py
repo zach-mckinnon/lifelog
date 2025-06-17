@@ -1,10 +1,13 @@
+# lifelog/utils/log_utils.py
+
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+from typing import Union
 
 
-def setup_logging(level: int | str = logging.INFO):
+def setup_logging(level: Union[int, str] = logging.INFO):
     """
     Configure root logger with:
      - RotatingFileHandler writing to ~/.lifelog/logs/lifelog.log
@@ -19,7 +22,6 @@ def setup_logging(level: int | str = logging.INFO):
     except Exception as e:
         # If directory creation fails, log to console only
         print(f"WARNING: Could not create log directory {log_dir}: {e}")
-        # Proceed without file handler
         _configure_console_logging(level)
         return
 
@@ -32,15 +34,13 @@ def setup_logging(level: int | str = logging.INFO):
     except Exception:
         root_logger.setLevel(logging.INFO)
 
-    # Check existing handlers to avoid duplicates
-    existing_handlers = root_logger.handlers
+    existing_handlers = list(root_logger.handlers)
 
     # 1) RotatingFileHandler: only add if not already present for our log file
     file_log_path = log_dir / "lifelog.log"
     add_file = True
     for h in existing_handlers:
         if isinstance(h, RotatingFileHandler):
-            # Attempt to detect same file: baseFilename attribute
             base = getattr(h, 'baseFilename', None)
             if base and os.path.abspath(base) == str(file_log_path):
                 add_file = False
@@ -59,15 +59,12 @@ def setup_logging(level: int | str = logging.INFO):
             file_handler.setLevel(level)
             root_logger.addHandler(file_handler)
         except Exception as e:
-            # If file handler setup fails, log a warning to console
             print(f"WARNING: Could not set up file logging: {e}")
 
     # 2) Console handler: only add if not already present
     add_console = True
     for h in existing_handlers:
         if isinstance(h, logging.StreamHandler):
-            # If already a StreamHandler with similar formatter?
-            # We assume if any StreamHandler exists, skip adding another.
             add_console = False
             break
     if add_console:
@@ -79,11 +76,10 @@ def setup_logging(level: int | str = logging.INFO):
             console_handler.setLevel(level)
             root_logger.addHandler(console_handler)
         except Exception as e:
-            # If console handler fails, print warning
             print(f"WARNING: Could not set up console logging: {e}")
 
 
-def _configure_console_logging(level):
+def _configure_console_logging(level: Union[int, str] = logging.INFO):
     """
     Fallback: configure only console logging if file handler cannot be created.
     """
@@ -95,11 +91,10 @@ def _configure_console_logging(level):
     except Exception:
         root_logger.setLevel(logging.INFO)
 
-    # Check if console handler exists
     for h in root_logger.handlers:
         if isinstance(h, logging.StreamHandler):
             return
-    # Add console handler
+
     console_handler = logging.StreamHandler()
     console_formatter = logging.Formatter('%(levelname)s - %(message)s')
     console_handler.setFormatter(console_formatter)
