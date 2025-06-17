@@ -230,7 +230,7 @@ def to_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def format_due_for_display(iso_str: str) -> str:
+def format_due_for_display(iso_or_dt) -> str:
     """
     Given an ISO‐format UTC datetime string, convert to the user's local tz
     and render as:
@@ -238,6 +238,10 @@ def format_due_for_display(iso_str: str) -> str:
       - "YYYY-MM-DD HH:MM" otherwise
     """
     try:
+        if isinstance(iso_or_dt, datetime):
+            iso_str = iso_or_dt.isoformat()
+        else:
+            iso_str = iso_or_dt
         # parse and ensure UTC‐aware
         dt = datetime.fromisoformat(iso_str)
         if dt.tzinfo is None:

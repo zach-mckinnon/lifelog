@@ -182,7 +182,6 @@ def add(
     console.print(get_feedback_saying("task_added"))
 
 
-# TODO: Improve the filtering and sorting options to properly work for priority by default.
 @app.command()
 def list(
     title: Optional[str] = typer.Argument(
@@ -238,7 +237,10 @@ def list(
         due_raw = task.due
         due_str = "-"
         if due_raw:
-            due_str = format_due_for_display(due_raw)
+            # If it's already a datetime, convert to ISO; else assume it's a string
+            iso = due_raw.isoformat() if isinstance(due_raw, datetime) else due_raw
+            due_str = format_due_for_display(iso)
+
         prio = str(task.priority)
         color = priority_color(prio)
         prio_text = Text(prio)
@@ -298,7 +300,8 @@ def agenda():
         prio_text = Text(str(prio_raw), style=priority_color(prio_raw))
         due_str = "-"
         if task.due:
-            due_str = format_due_for_display(task.due)
+            iso = task.due.isoformat() if isinstance(task.due, datetime) else task.due
+            due_str = format_due_for_display(iso)
         title = task.title or "-"
 
         table.add_row(id_str, prio_text, due_str, title)
