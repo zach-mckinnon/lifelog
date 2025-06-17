@@ -125,95 +125,92 @@ def apply_scheduled_jobs() -> None:
         logger.warning(f"Scheduled jobs not supported on this OS: {system}")
 
 
-def _apply_user_cron_jobs(final_content: str) -> bool:
+def _apply_user_cron_jobs(lines: str) -> bool:
     """
-    Install our jobs into the current user's crontab,
-    but first strip out any old Lifelog entries and the 'root' field.
+    Install the given cron lines into the *current user's* crontab,
+    stripping out any old Lifelog entries first.
     """
     try:
-        # 1) Read existing crontab
-        proc = subprocess.run(["crontab", "-l"],
-                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                              text=True)
-        existing = proc.stdout if proc.returncode == 0 else ""
-        lines = existing.splitlines()
+        # 1) read existing crontab (may be empty)
+        p = subprocess.run(
+            ["crontab", "-l"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True
+        )
+        old = p.stdout.splitlines() if p.returncode == 0 else []
 
-        # 2) Remove old Lifelog entries
+        # 2) drop any previous Lifelog lines
         filtered = [
-            line for line in lines
-            if "llog task auto_recur" not in line
-               and "llog env sync-all" not in line
-               and not line.strip().startswith("# Lifelog")
+            ln for ln in old
+            if "llog task auto_recur" not in ln
+               and "llog env sync-all" not in ln
+               and not ln.strip().startswith("# Lifelog")
         ]
 
-        # 3) Convert each system‐cron line "… root cmd" → user‐cron "… cmd"
-        cron_lines = []
-        for entry in final_content.splitlines():
-            parts = entry.split()
-            # If we see "root" in the 6th position, drop it
+        # 3) convert any "… root cmd" entries into user‐cron format
+        user_lines = []
+        for ln in lines.splitlines():
+            parts = ln.split()
             if len(parts) >= 6 and parts[5] == "root":
-                userless = parts[:5] + parts[6:]
-                cron_lines.append(" ".join(userless))
-            else:
-                cron_lines.append(entry)
+                parts = parts[:5] + parts[6:]
+            user_lines.append(" ".join(parts))
 
-        # 4) Prepend a header for clarity
+        # 4) assemble new crontab
         header = "# Lifelog scheduled jobs"
-        new_cron = "\n".join(filtered + [header] + cron_lines) + "\n"
+        newtab = "\n".join(filtered + [header] + user_lines) + "\n"
 
-        # 5) Write back to the user crontab
-        subprocess.run(["crontab", "-"], input=new_cron, text=True, check=True)
+        # 5) install
+        subprocess.run(["crontab", "-"], input=newtab, text=True, check=True)
         logger.info("Installed Lifelog jobs into user crontab")
         return True
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"crontab update failed: {e}", exc_info=True)
-        return False
     except Exception as e:
-        logger.error(f"Failed to update user crontab: {e}", exc_info=True)
+        logger.error(f"Failed to write user crontab: {e}", exc_info=True)
         return False
 
 
 def apply_cron_jobs() -> bool:
     """
-    Install/update /etc/cron.d/lifelog_recur_auto, or user crontab fallback.
+    Try to write /etc/cron.d/lifelog_recur_auto; if that fails,
+    silently fall back into the current user's crontab.
+    Returns True if **either** method succeeds.
     """
     if not IS_POSIX:
-        logger.info("Cron jobs skipped: non-POSIX OS")
+        logger.info("Skipping cron setup on non-POSIX OS")
         return False
 
     jobs = build_cron_jobs()
     if not jobs:
-        logger.info("No cron jobs to apply.")
+        logger.info("No cron entries to apply")
         return True
 
-    # Build our file content
-    lines = [f"{sched} root {cmd}" for (_, sched, cmd) in jobs]
-    final_content = "\n".join(lines) + "\n"
+    # build the raw text
+    lines = [f"{sched} root {cmd}" for (_n, sched, cmd) in jobs]
+    content = "\n".join(lines) + "\n"
 
-    # Try system-wide /etc/cron.d first
+    # 1️⃣ Try system‐wide /etc/cron.d
     try:
         CRON_D_DIR.mkdir(parents=True, exist_ok=True)
-        if CRON_FILE is None:
-            logger.error("No CRON_FILE defined.")
-            return False
         with CRON_FILE.open("w", encoding="utf-8") as f:
-            f.write(final_content)
-        CRON_FILE.chmod(0o644)
-        logger.info(f"System cron file updated: {CRON_FILE}")
+            f.write(content)
+        try:
+            CRON_FILE.chmod(0o644)
+        except Exception:
+            pass
+        logger.info(f"Wrote system cron file: {CRON_FILE}")
         return True
 
-    except PermissionError as e:
-        logger.error(
-            f"Permission denied writing {CRON_FILE}: {e}", exc_info=True)
-        # Fallback to user crontab
-        return _apply_user_cron_jobs(final_content)
+    except PermissionError:
+        # no sudo: drop silently into user crontab
+        logger.warning(
+            f"No permission to write {CRON_FILE}; using user crontab")
 
     except Exception as e:
-        logger.error(
-            f"Unexpected error writing cron file {CRON_FILE}: {e}", exc_info=True)
-        # Also fallback
-        return _apply_user_cron_jobs(final_content)
+        logger.warning(
+            f"Error writing {CRON_FILE}: {e}; falling back", exc_info=True)
+
+    # 2️⃣ Fallback
+    return _apply_user_cron_jobs(content)
 
 # ────────────────────────────────────────────────────────────────────────────────────────
 #  Windows helper (still WIP but now never called on POSIX)
