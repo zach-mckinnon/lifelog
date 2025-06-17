@@ -61,7 +61,7 @@ def add(
     """
     Add a new task.
     """
-    now = now_utc()
+    now = now_local()
     tags, notes = [], []
     if args:
         try:
@@ -403,7 +403,7 @@ def modify(
     """
     Modify an existing task's fields. Only provide fields you want to update.
     """
-    now = now_utc()
+    now = now_local()
     task = task_repository.get_task_by_id(id)
     if not task:
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
