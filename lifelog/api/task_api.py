@@ -116,7 +116,7 @@ def _filter_and_validate_task_data(data: dict, partial: bool = False) -> tuple[d
             return None, 'Field "title" is required'
         # If created missing, set now
         if 'created' not in cleaned:
-            cleaned['created'] = datetime.utc_now()
+            cleaned['created'] = datetime.now()
 
     # Attempt to build Task to catch errors
     try:
