@@ -125,11 +125,37 @@ def apply_scheduled_jobs() -> None:
         logger.warning(f"Scheduled jobs not supported on this OS: {system}")
 
 
+def _apply_user_cron_jobs(final_content: str) -> bool:
+    """
+    Fallback for non-root users: merge our jobs into the current user's crontab.
+    """
+    try:
+        # 1) Grab existing crontab (empty string if none)
+        proc = subprocess.run(
+            ["crontab", "-l"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True
+        )
+        existing = proc.stdout if proc.returncode == 0 else ""
+        # 2) Append our lines
+        new_cron = existing.rstrip("\n") + "\n" + final_content + "\n"
+        # 3) Install into user crontab
+        subprocess.run(
+            ["crontab", "-"],
+            input=new_cron,
+            text=True,
+            check=True
+        )
+        logger.info("Installed reminder into user crontab")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update user crontab: {e}", exc_info=True)
+        return False
+
+
 def apply_cron_jobs() -> bool:
     """
-    Install or update /etc/cron.d/lifelog_recur_auto with jobs from config.
-    - Only on POSIX. If not POSIX, logs and returns False.
-    - Returns True on success (file written), False otherwise.
+    Install/update /etc/cron.d/lifelog_recur_auto, or user crontab fallback.
     """
     if not IS_POSIX:
         logger.info("Cron jobs skipped: non-POSIX OS")
@@ -137,59 +163,36 @@ def apply_cron_jobs() -> bool:
 
     jobs = build_cron_jobs()
     if not jobs:
-        logger.info("No cron jobs to apply (empty or invalid [cron] section).")
-        # Optionally: remove existing file? For now, skip writing.
+        logger.info("No cron jobs to apply.")
         return True
 
-    # Build lines: "<schedule> root <command>"
-    lines = []
-    for name, schedule, command in jobs:
-        # Note: we trust schedule is valid cron expression.
-        lines.append(f"{schedule} root {command}")
+    # Build our file content
+    lines = [f"{sched} root {cmd}" for (_, sched, cmd) in jobs]
     final_content = "\n".join(lines) + "\n"
 
+    # Try system-wide /etc/cron.d first
     try:
-        # Ensure cron.d directory exists
-        try:
-            CRON_D_DIR.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            logger.error(
-                f"Failed to ensure {CRON_D_DIR} exists: {e}", exc_info=True)
-            # Continue: attempt to write file anyway
-
+        CRON_D_DIR.mkdir(parents=True, exist_ok=True)
         if CRON_FILE is None:
-            logger.error(
-                "CRON_FILE is None despite IS_POSIX=True. Cannot write cron file.")
+            logger.error("No CRON_FILE defined.")
             return False
-
-        # Write the cron file
-        try:
-            with CRON_FILE.open("w", encoding="utf-8") as f:
-                f.write(final_content)
-        except PermissionError as e:
-            logger.error(
-                f"Permission denied writing {CRON_FILE}: {e}", exc_info=True)
-            return False
-        except Exception as e:
-            logger.error(
-                f"Unexpected error writing cron file {CRON_FILE}: {e}", exc_info=True)
-            return False
-
-        # Set permissions to rw-r--r-- (644) if possible
-        try:
-            os.chmod(CRON_FILE, 0o644)
-        except Exception as e:
-            logger.warning(f"Failed to chmod {CRON_FILE}: {e}", exc_info=True)
-
-        logger.info(f"/etc/cron.d file updated: {CRON_FILE}")
+        with CRON_FILE.open("w", encoding="utf-8") as f:
+            f.write(final_content)
+        CRON_FILE.chmod(0o644)
+        logger.info(f"System cron file updated: {CRON_FILE}")
         return True
 
-    except Exception as e:
-        # Catch any unforeseen errors
+    except PermissionError as e:
         logger.error(
-            f"Unexpected exception in apply_cron_jobs: {e}", exc_info=True)
-        return False
+            f"Permission denied writing {CRON_FILE}: {e}", exc_info=True)
+        # Fallback to user crontab
+        return _apply_user_cron_jobs(final_content)
 
+    except Exception as e:
+        logger.error(
+            f"Unexpected error writing cron file {CRON_FILE}: {e}", exc_info=True)
+        # Also fallback
+        return _apply_user_cron_jobs(final_content)
 
 # ────────────────────────────────────────────────────────────────────────────────────────
 #  Windows helper (still WIP but now never called on POSIX)

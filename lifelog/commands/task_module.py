@@ -1185,10 +1185,14 @@ def create_due_alert(task: Task, offset_str: str):
             cfg["cron"] = cron_sec
             if not save_config(cfg):
                 raise RuntimeError("Failed to save cron reminder")
-            apply_scheduled_jobs()
-            console.print(
-                f"[green]✅ Reminder scheduled via cron at {alert_local.strftime('%Y-%m-%d %H:%M')}[/green]"
-            )
+            ok = apply_scheduled_jobs()
+            if ok:
+                console.print(
+                    f"[green]✅ Reminder scheduled at {alert_local.strftime('%Y-%m-%d %H:%M')}[/green]")
+            else:
+                console.print(
+                    f"[yellow]⚠️ Could not schedule via cron – you may need to `crontab -l` or run with sudo[/yellow]"
+                )
 
     elif system == "Windows":
         # Windows Scheduled Task
