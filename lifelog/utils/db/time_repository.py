@@ -203,8 +203,25 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
     # assign uid
     data.setdefault("uid", str(uuid.uuid4()))
 
-    # insert locally
+    # Prepare all fields before insert:
     fields = _get_all_time_field_names()
+    # Ensure every field exists in data, setting None if missing.
+    # This avoids KeyError in add_record when data lacks columns like 'end' or 'duration_minutes'.
+    for f in fields:
+        data.setdefault(f, None)
+
+    # Optional: set updated_at/deleted defaults here if schema expects them on insert.
+    # If you want to record creation time:
+    now_iso = datetime.now().isoformat()
+    if 'updated_at' in fields:
+        # If updated_at should default to creation time
+        data['updated_at'] = data.get('updated_at') or now_iso
+    if 'deleted' in fields:
+        # Soft-delete flag default 0
+        data['deleted'] = data.get('deleted') if data.get(
+            'deleted') is not None else 0
+
+    # insert locally
     add_record("time_history", data, fields)
 
     # fetch new row
@@ -293,6 +310,8 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     data['deleted'] = 0
     # Insert locally
     fields = _get_all_time_field_names()
+    for f in fields:
+        data.setdefault(f, None)
     add_record("time_history", data, fields)
     # Fetch new
     rows = safe_query(
