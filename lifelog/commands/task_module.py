@@ -22,12 +22,16 @@ import plotext as plt
 import sys
 import time
 import select
-
+from pyfiglet import Figlet
 from rich.console import Console
 from rich.prompt import Confirm
+from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
+from rich.align import Align
+from rich.layout import Layout
 from rich.text import Text
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 import calendar
 
 
@@ -700,8 +704,9 @@ def focus_cli(
 ):
     """
     Distraction-free CLI “focus mode” for a single task.
-    Starts a time entry, guides you through Pomodoro (if enabled),
-    lets you pause or mark done, and then stops the time entry.
+    Shows a big timer and a progress bar in-place. Supports Pomodoro cycles,
+    pause/exit, mark done, toggle Pomodoro, and log distracted time without
+    stopping the timer.
     """
     # 1) Look up the task
     task = task_repository.get_task_by_id(id)
@@ -720,7 +725,6 @@ def focus_cli(
             "category": task.category,
             "project":  task.project,
             "notes":    "Focus mode start",
-            # 'uid' will be auto-generated inside start_time_entry if missing
         }
         try:
             time_repository.start_time_entry(entry_data)
@@ -731,107 +735,183 @@ def focus_cli(
             console.print(f"[red]Failed to start time entry: {e}[/red]")
             raise typer.Exit(1)
 
+    # 3) Print header & commands once
+    console.clear()
     console.print(f"[bold blue]Entering focus mode for:[/] {task.title}")
-    console.print(
-        "[dim]Commands: [[p]]ause & exit, [[d]]one & exit, [[t]]oggle Pomodoro on/off, [[l]]og distracted time[/dim]")
+    console.print("[dim]Commands: [bold]p[/bold]=pause & exit, [bold]d[/bold]=done & exit, "
+                  "[bold]t[/bold]=toggle Pomodoro on/off, [bold]l[/bold]=log distracted time[/dim]")
 
     total_distracted = 0  # in minutes
     in_break = False
-    block_start = time.time()
-    # Flag to indicate whether we are in a focus block or break block.
-    # If pomodoro is False, we ignore in_break and simply run a continuous focus block.
 
-    # Helper to compute elapsed seconds since block_start
-    def block_elapsed():
-        return int(time.time() - block_start)
+    # Prepare Figlet if available
+    figler = None
+    if Figlet:
+        try:
+            # you can choose other fonts, e.g. "slant"
+            figler = Figlet(font="big")
+        except Exception:
+            figler = None
 
-    # Helper to display status line
-    def show_status():
-        te = block_elapsed()
-        mm, ss = divmod(te, 60)
-        status = "Break" if in_break else "Focus"
-        # \r to return to start of line; end="" to avoid newline
-        console.print(
-            f"\r[{status}] {mm:02}:{ss:02} — total distracted: {total_distracted}m", end="")
+    def render_big_timer(remaining_secs: int) -> str:
+        """
+        Return ASCII art for remaining_secs if pyfiglet available, else simple MM:SS.
+        """
+        mm, ss = divmod(remaining_secs, 60)
+        text = f"{mm:02}:{ss:02}"
+        if figler:
+            try:
+                return figler.renderText(text)
+            except Exception:
+                return text
+        else:
+            return text
 
-    # Main loop: repeats roughly every second (via read_char_nonblocking timeout)
+    # Main loop: repeat for each block (focus or break)
     try:
         while True:
-            show_status()
-            # Read single char, wait up to 1 second
-            key = read_char_nonblocking(timeout=1.0)
-            if key:
-                # Normalize key to lowercase
-                key = key.lower()
-            # Handle keys:
-            if key == "p":
-                console.print("\n[yellow]⏸️ Pausing focus mode.[/yellow]")
-                break  # exit loop and stop time entry
-            elif key == "d":
-                console.print("\n[green]✔️ Marking task done.[/green]")
-                # Stop time entry
-                try:
-                    time_repository.stop_active_time_entry(
-                        end_time=now_utc().isoformat())
-                except Exception as e:
-                    console.print(f"[red]Error stopping time entry: {e}[/red]")
-                # Mark task done
-                try:
-                    task_repository.update_task(id, {"status": "done"})
-                    run_hooks("task", "completed", task)
-                except Exception as e:
-                    console.print(
-                        f"[red]Error updating task status: {e}[/red]")
-                return  # exit command entirely
-            elif key == "t":
-                pomodoro = not pomodoro
-                mode = "ON" if pomodoro else "OFF"
-                console.print(f"\n[cyan]Pomodoro {mode}[/cyan]")
-                # Reset block timing whenever toggled
-                block_start = time.time()
-                in_break = False
-                continue
-            elif key == "l":
-                # Allow user to log extra distracted minutes at any time without ending the block
-                console.print(
-                    "\n[magenta]Log distracted time (minutes):[/magenta] ", end="")
-                # Blocking prompt for minutes (user types number then Enter)
-                extra = typer.prompt("", default="0")
+            # Determine the block duration in seconds
+            duration_secs = break_len * 60 if in_break else focus_len * 60
+            start_block = time.time()
+
+            # Create a Rich Progress for this block
+            progress = Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=None),
+                TextColumn("{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
+                console=console,
+                transient=True,  # remove after completion
+            )
+            task_desc = "Break" if in_break else "Focus"
+            task_id_prog = progress.add_task(task_desc, total=duration_secs)
+
+            # Build a Layout: upper region for big timer, lower for progress bar
+            layout = Layout()
+            layout.split(
+                Layout(name="upper", ratio=3),
+                Layout(name="lower", size=3)
+            )
+
+            # Enter Live context to update in-place
+            with Live(layout, refresh_per_second=4, console=console, screen=False):
+                # Loop until block ends or a key event interrupts
+                while True:
+                    elapsed = time.time() - start_block
+                    # Clamp elapsed between 0 and duration_secs
+                    if elapsed < 0:
+                        elapsed = 0
+                    if elapsed > duration_secs:
+                        elapsed = duration_secs
+                    remaining = int(duration_secs - elapsed)
+
+                    # 1) Render big timer panel
+                    big_text = render_big_timer(remaining)
+                    # Center the big_text in the panel
+                    panel = Panel(
+                        Align.center(big_text, vertical="middle"),
+                        title=task_desc,
+                        border_style="green" if not in_break else "magenta",
+                        padding=(1, 2),
+                    )
+                    layout["upper"].update(panel)
+
+                    # 2) Update progress bar
+                    progress.update(task_id_prog, completed=elapsed)
+                    layout["lower"].update(progress)
+
+                    # 3) Check for keypress (non-blocking)
+                    key = read_char_nonblocking(timeout=0.25)
+                    if key:
+                        key = key.lower()
+                        # Pause/exit
+                        if key == "p":
+                            console.print(
+                                "\n[yellow]⏸️ Pausing focus mode.[/yellow]")
+                            return  # exit entire focus mode
+                        # Done: stop time entry and mark done
+                        elif key == "d":
+                            console.print(
+                                "\n[green]✔️ Marking task done.[/green]")
+                            try:
+                                time_repository.stop_active_time_entry(
+                                    end_time=now_utc().isoformat())
+                            except Exception as e:
+                                console.print(
+                                    f"[red]Error stopping time entry: {e}[/red]")
+                            try:
+                                task_repository.update_task(
+                                    id, {"status": "done"})
+                                run_hooks("task", "completed", task)
+                            except Exception as e:
+                                console.print(
+                                    f"[red]Error updating task status: {e}[/red]")
+                            return
+                        # Toggle Pomodoro on/off: exit this block, flip in_break if turning off breaks?
+                        elif key == "t":
+                            pomodoro = not pomodoro
+                            console.print(
+                                f"\n[cyan]Pomodoro {'ON' if pomodoro else 'OFF'}[/cyan]")
+                            # If Pomodoro turned off, treat as continuous focus; we exit current block
+                            return_or_continue = "toggle"
+                            # Exiting block loop by breaking out; outer while will handle new state
+                            break
+                        # Log distracted time
+                        elif key == "l" and not in_break:
+                            # Exit Live to prompt cleanly
+                            Live.stop(layout)  # stop Live rendering
+                            extra = console.input("Distracted minutes? ")
+                            try:
+                                lost = int(extra)
+                            except ValueError:
+                                lost = 0
+                            total_distracted += lost
+                            console.print(
+                                f"[magenta]Added {lost}m distracted. Total now: {total_distracted}m[/magenta]")
+                            # Re-print header & commands (Live cleared them)
+                            console.print(
+                                f"[bold blue]Entering focus mode for:[/] {task.title}")
+                            console.print("[dim]Commands: [bold]p[/bold]=pause & exit, [bold]d[/bold]=done & exit, "
+                                          "[bold]t[/bold]=toggle Pomodoro on/off, [bold]l[/bold]=log distracted time[/dim]")
+                            # Adjust start_block so elapsed remains unchanged after prompt
+                            # elapsed_before = elapsed; new start_block such that new_elapsed == elapsed_before
+                            start_block = time.time() - elapsed
+                            # Continue inner loop
+                            continue
+                    # 4) Check if block time is up
+                    if elapsed >= duration_secs:
+                        break
+                    # Else continue; Live updates each iteration
+                # End of block loop
+            # After Live context ends for this block:
+
+            # Block complete handling
+            if in_break:
+                console.print("[green]✨ Break over — back to focus.[/green]")
+            else:
+                console.print("[cyan]⏰ Focus block complete![/cyan]")
+                # Prompt distracted minutes now (only after focus blocks)
+                extra = console.input("Distracted minutes? ")
                 try:
                     lost = int(extra)
                 except ValueError:
                     lost = 0
                 total_distracted += lost
-                console.print(
-                    f"[magenta]Added {lost}m distracted. Total now: {total_distracted}m[/magenta]")
-                # Continue without resetting block timer
-                continue
+                run_hooks("task", "pomodoro_done", task)
 
-            # Pomodoro behavior: only if enabled
+            # Flip mode if pomodoro enabled; otherwise if pomodoro disabled, we loop continuous focus
             if pomodoro:
-                # Determine current block limit in seconds
-                limit = break_len * 60 if in_break else focus_len * 60
-                if block_elapsed() >= limit:
-                    # Block complete
-                    if in_break:
-                        console.print(
-                            "\n[green]✨ Break over — back to focus.[/green]")
-                    else:
-                        console.print("\n[cyan]⏰ Focus block complete![/cyan]")
-                        # Prompt for distracted minutes now
-                        extra = typer.prompt(
-                            "Distracted minutes?", default="0")
-                        try:
-                            lost = int(extra)
-                        except ValueError:
-                            lost = 0
-                        total_distracted += lost
-                        run_hooks("task", "pomodoro_done", task)
-                    # Flip mode and reset timer
-                    in_break = not in_break
-                    block_start = time.time()
-            # If Pomodoro disabled, we do nothing special here (continuous focus).
-            # Loop repeats after ~1 second.
+                in_break = not in_break
+                # Continue outer while for next block
+                # Loop restarts: new block_start etc.
+            else:
+                # Pomodoro disabled: run continuous focus only once, then exit
+                # After first block completes, we continue timing if desired, or simply exit?
+                # Here: we treat continuous focus as one long block, so after first we exit:
+                console.print(
+                    "[yellow]Continuous focus block complete; exiting focus mode.[/yellow]")
+                break
+
     except KeyboardInterrupt:
         console.print(
             "\n[yellow]Interrupted by user. Exiting focus mode.[/yellow]")

@@ -9,6 +9,7 @@ dependencies = [
     # Universal
     "typer",
     "rich",
+    "pyfiglet",
     "termplotlib",
     "numpy",
     "requests",
