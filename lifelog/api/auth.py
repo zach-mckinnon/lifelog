@@ -47,7 +47,7 @@ def start_pairing():
     # Remove expired codes before inserting new
     with get_connection() as conn:
         conn.execute("DELETE FROM api_pairing_codes WHERE expires_at < ?",
-                     (datetime.utc_now().isoformat(),))
+                     (datetime.now().isoformat(),))
         # Loop until a unique code is found (rare collision)
         while True:
             cur = conn.execute(
@@ -70,7 +70,7 @@ def complete_pairing():
     with get_connection() as conn:
         # Clean up expired codes
         conn.execute("DELETE FROM api_pairing_codes WHERE expires_at < ?",
-                     (datetime.utc_now().isoformat(),))
+                     (datetime.now().isoformat(),))
         # Optionally: reject duplicate device names
         cur = conn.execute(
             "SELECT 1 FROM api_devices WHERE device_name = ?", (device_name,))
@@ -82,7 +82,7 @@ def complete_pairing():
         if not row:
             return jsonify({'error': 'Invalid code'}), 400
         expires_at = datetime.fromisoformat(row[0])
-        if expires_at < datetime.utc_now():
+        if expires_at < datetime.now():
             conn.execute(
                 "DELETE FROM api_pairing_codes WHERE code = ?", (code,))
             conn.commit()
