@@ -26,18 +26,16 @@ import os
 import time
 from pathlib import Path
 import sqlite3
-import subprocess
 import sys
 from typing import Annotated
 import requests
 import typer
 
-
 from lifelog.config.schedule_manager import apply_scheduled_jobs
 from lifelog.first_time_run import LOGO_SMALL, run_wizard
 from lifelog.utils.db import database_manager
 import lifelog.config.config_manager as cf
-from lifelog.commands import task_module, time_module, track_module, report, environmental_sync, hero
+from lifelog.commands import api_module, task_module, time_module, track_module, report, environmental_sync, hero
 from lifelog.ui import main as ui_main
 from lifelog.utils import get_quotes
 
@@ -63,7 +61,7 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 # Core Initialization System
 # -------------------------------------------------------------------
-DOCKER_DIR = Path.home() / ".lifelog" / "docker"
+
 
 # Ensure the app is initialized
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
@@ -81,6 +79,8 @@ app.add_typer(report.app, name="report",
               help="View detailed reports and insights.")
 app.add_typer(environmental_sync.app, name="environment sync",
               help="Sync data about your local weather.")
+app.add_typer(api_module.app, name="api",
+              help="API server control & device pairing")
 
 
 @app.command("ui")
@@ -360,253 +360,6 @@ def config_edit():
             console.print("[yellow]Invalid selection.[/yellow]")
 
 
-@app.command("get-server-url")
-def get_server_url():
-    """
-    Print the correct API server URL for pairing client devices.
-    - Checks Docker Compose setup first, then falls back to config or localhost.
-    """
-    log_utils.setup_logging()
-
-    try:
-        import socket
-        import yaml
-    except ImportError as e:
-        logger.warning(
-            f"Optional modules for get-server-url missing: {e}", exc_info=True)
-        console.print(
-            "[yellow]Warning: missing optional modules for Docker detection.[/yellow]")
-
-    try:
-        config = cf.load_config()
-    except Exception as e:
-        logger.error(
-            f"Failed to load config in get-server-url: {e}", exc_info=True)
-        console.print(f"[red]Error loading config: {e}[/red]")
-        raise typer.Exit(1)
-
-    docker_dir = cf.BASE_DIR / "docker"
-    compose_file = docker_dir / "docker-compose.yml"
-    docker_used = False
-
-    # 1. Check for Docker Compose and a running container
-    if compose_file.exists():
-        try:
-            result = subprocess.run(
-                ["docker", "compose", "-f",
-                    str(compose_file), "ps", "-q", "lifelog-api"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False
-            )
-            if result.stdout.strip():
-                docker_used = True
-        except Exception as e:
-            logger.warning(
-                f"Error checking Docker Compose status: {e}", exc_info=True)
-
-    if docker_used:
-        host_port = "5000"
-        host_ip = "127.0.0.1"
-        try:
-            import yaml  # ensure yaml is available
-            with open(compose_file, "r") as f:
-                compose = yaml.safe_load(f)
-            ports = compose.get("services", {}).get(
-                "lifelog-api", {}).get("ports", [])
-            if ports:
-                # assume format "host:container"
-                mapping = ports[0]
-                if isinstance(mapping, str) and ":" in mapping:
-                    host_port = mapping.split(":")[0]
-        except Exception as e:
-            logger.warning(
-                f"Failed to parse docker-compose.yml: {e}", exc_info=True)
-            # fallback host_port remains "5000"
-
-        # Determine LAN IP
-        try:
-            hostname = socket.gethostname()
-            host_ip = socket.gethostbyname(hostname)
-            if host_ip.startswith("127."):
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                try:
-                    s.connect(("8.8.8.8", 80))
-                    host_ip = s.getsockname()[0]
-                except Exception:
-                    host_ip = "127.0.0.1"
-                finally:
-                    s.close()
-        except Exception as e:
-            logger.warning(f"Failed to detect LAN IP: {e}", exc_info=True)
-            host_ip = "127.0.0.1"
-
-        url = f"http://{host_ip}:{host_port}"
-        console.print("[bold green]API server running in Docker.[/bold green]")
-        console.print(f"[cyan]URL for client devices: {url}[/cyan]")
-        return
-
-    # 3. Fallback: Use config value or localhost
-    server_url = config.get("deployment", {}).get(
-        "server_url") or "http://localhost:5000"
-    console.print("[bold green]API server running locally.[/bold green]")
-    console.print(f"[cyan]URL for client devices: {server_url}[/cyan]")
-
-
-@app.command("docker")
-def docker_cmd(
-    action: Annotated[str, typer.Argument(
-        help="Action: up, down, restart, logs, status")] = "up"
-):
-    """
-    Manage Lifelog Docker deployment. Actions: up, down, restart, logs, status.
-    - Verifies docker-compose is available and Docker daemon is running.
-    """
-    log_utils.setup_logging()
-
-    compose_file = DOCKER_DIR / "docker-compose.yml"
-    docker_cmd = cf.find_docker_compose_cmd()
-    if not docker_cmd:
-        console.print(
-            "[red]Neither 'docker compose' nor 'docker-compose' is available on your PATH.[/red]\n"
-            "Please install Docker and Docker Compose first."
-        )
-        raise typer.Exit(1)
-    if not compose_file.exists():
-        console.print(
-            f"[red]No docker-compose.yml found at {compose_file}.[/red]")
-        console.print(
-            "[yellow]You must run setup and create Docker files first.[/yellow]")
-        raise typer.Exit(1)
-    if not cf.is_docker_running():
-        console.print(
-            "[red]Docker engine is not running.[/red]\n"
-            "Please start Docker Desktop (or your Docker daemon) before using this command."
-        )
-        raise typer.Exit(1)
-
-    # Build docker command
-    docker_args = docker_cmd + ["--project-directory", str(DOCKER_DIR)]
-    if action == "up":
-        docker_args += ["up", "-d", "--build"]
-    elif action == "down":
-        docker_args += ["down"]
-    elif action == "restart":
-        docker_args += ["restart"]
-    elif action == "logs":
-        docker_args += ["logs", "-f"]
-    elif action == "status":
-        docker_args += ["ps", "-a", "--filter", "name=lifelog-api"]
-    else:
-        console.print(
-            "[red]Unknown action. Use up, down, restart, logs, status.[/red]")
-        raise typer.Exit(1)
-
-    console.print(f"[blue]Running: {' '.join(docker_args)}[/blue]")
-    try:
-        subprocess.run(docker_args, cwd=str(DOCKER_DIR), check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Docker command failed: {e}", exc_info=True)
-        console.print(f"[red]Docker command failed: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        logger.error(
-            f"Unexpected error running Docker command: {e}", exc_info=True)
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@app.command("api-start")
-def start_api(
-    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
-    port: int = typer.Option(5000, help="Port to listen on"),
-    debug: bool = typer.Option(False, help="Enable debug mode"),
-    prod: bool = typer.Option(False, "--prod", help="Use production server")
-):
-    """
-    Start the REST API server.
-    - In server mode → always uses Gunicorn.
-    - In local/client mode → uses Flask run, with FLASK_APP set.
-    """
-    log_utils.setup_logging()
-
-    # 1️⃣ Ensure the on-disk data is ready
-    try:
-        initialize_application()
-    except Exception as e:
-        logger.error(
-            f"Initialization failed before starting API: {e}", exc_info=True)
-        console.print(f"[red]Initialization error: {e}[/red]")
-        raise typer.Exit(1)
-
-    # 2️⃣ Check if already running
-    try:
-        if is_server_up(host, port):
-            console.print(
-                f"[yellow]Server already running at http://{host}:{port}[/yellow]")
-            return
-    except Exception as e:
-        logger.warning(f"Error checking server status: {e}", exc_info=True)
-
-    # 3️⃣ Decide whether to use Gunicorn
-    #    If user passed --prod OR config says we’re in "server" mode → prod
-    config = cf.load_config()
-    mode = config.get("deployment", {}).get("mode", "local")
-    use_gunicorn = prod or (mode == "server")
-
-    # 4️⃣ Build the command
-    if use_gunicorn:
-        console.print(
-            "[cyan]Starting production server with Gunicorn...[/cyan]")
-        cmd = [
-            "gunicorn",
-            "-b", f"{host}:{port}",
-            "-w", "4",
-            "--timeout", "120",
-            "lifelog.app:app"
-        ]
-    else:
-        # Flask-run fallback: we must set FLASK_APP so that flask CLI can find it.
-        env = os.environ.copy()
-        env["FLASK_APP"] = "lifelog.app:app"
-        if debug:
-            env["FLASK_ENV"] = "development"
-            console.print(
-                "[cyan]Starting Flask development server in debug mode...[/cyan]")
-        else:
-            console.print("[cyan]Starting Flask development server...[/cyan]")
-        cmd = [sys.executable, "-m", "flask", "run",
-               "--host", host, "--port", str(port)]
-        # We'll pass `env` into Popen below.
-
-    # 5️⃣ Launch it in the background
-    try:
-        if use_gunicorn:
-            proc = subprocess.Popen(cmd)
-        else:
-            proc = subprocess.Popen(cmd, env=env)
-    except FileNotFoundError as e:
-        logger.error(f"Start command not found: {e}", exc_info=True)
-        console.print(f"[red]Error launching server: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        logger.error(f"Failed to start server process: {e}", exc_info=True)
-        console.print(f"[red]Error starting server: {e}[/red]")
-        raise typer.Exit(1)
-
-    # 6️⃣ Wait for it to come up
-    started = False
-    for _ in range(10):
-        if is_server_up(host, port):
-            started = True
-            break
-        time.sleep(0.5)
-
-    if not started:
-        console.print("[red]Server failed to start within timeout.[/red]")
-        return
-
-    console.print(f"[green]🚀 Server started at http://{host}:{port}[/green]")
-
-
 @app.command("sync")
 def sync_command():
     """
@@ -647,93 +400,6 @@ def backup_command(
     except Exception as e:
         logger.error(f"Backup command failed: {e}", exc_info=True)
         console.print(f"[red]Backup failed: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@app.command("api-pair-new")
-def api_pair_new():
-    """
-    Pair this device with the server.
-    - On server mode: generates and shows pairing code.
-    - On client mode: prompts for code and posts to server.
-    """
-    log_utils.setup_logging()
-    try:
-        config = cf.load_config()
-    except Exception as e:
-        logger.error(
-            f"Failed to load config in api-pair-new: {e}", exc_info=True)
-        console.print(f"[red]Error loading config: {e}[/red]")
-        raise typer.Exit(1)
-
-    mode = config.get("deployment", {}).get("mode")
-    try:
-        if mode == "server":
-            device_name = typer.prompt("Name this device (e.g. 'Office PC')")
-            try:
-                r = requests.post("http://localhost:5000/api/pair/start",
-                                  json={"device_name": device_name}, timeout=5)
-                r.raise_for_status()
-                data = r.json()
-            except Exception as e:
-                logger.error(
-                    f"Error contacting API for pairing: {e}", exc_info=True)
-                console.print(f"[red]Error contacting API: {e}[/red]")
-                return
-
-            code = data.get("pairing_code")
-            expires_in = data.get("expires_in")
-            if not code or not expires_in:
-                console.print(
-                    "[red]No pairing code returned. Check server logs.[/red]")
-                console.print(f"[dim]Raw server response: {data}[/dim]")
-                return
-            console.print(f"[green]Pairing code:[/green] {code}")
-            console.print(f"[yellow]Expires in {expires_in} seconds[/yellow]")
-            console.print(
-                "Enter this code on the client device to complete pairing.")
-
-        elif mode == "client":
-            server_url = config.get("deployment", {}).get("server_url")
-            if not server_url:
-                console.print("[red]Server URL not configured.[/red]")
-                return
-            device_name = typer.prompt("Name this device (e.g. 'Laptop')")
-            code = typer.prompt("Enter the pairing code shown on the server")
-            try:
-                r = requests.post(f"{server_url}/api/pair/complete",
-                                  json={"pairing_code": code, "device_name": device_name}, timeout=5)
-                r.raise_for_status()
-                resp = r.json()
-            except Exception as e:
-                logger.error(
-                    f"Error during pairing request: {e}", exc_info=True)
-                console.print(f"[red]Error during pairing: {e}[/red]")
-                console.print(
-                    f"[dim]Server response: {getattr(e, 'response', '')}[/dim]")
-                return
-
-            if "device_token" in resp:
-                token = resp["device_token"]
-                config["api"] = {"device_token": token}
-                saved = cf.save_config(config)
-                if not saved:
-                    console.print(
-                        "[red]⚠️ Failed to save pairing token to config.[/red]")
-                    logger.error("Failed to save pairing token to config")
-                else:
-                    console.print(
-                        "[green]✓ Device paired successfully![/green]")
-            else:
-                console.print(f"[red]Pairing failed: {resp}[/red]")
-                logger.warning(
-                    f"Pairing response did not include device_token: {resp}")
-        else:
-            console.print(
-                "[yellow]This command is only for server or client mode devices.[/yellow]")
-    except Exception as e:
-        logger.error(f"Unexpected error in api-pair-new: {e}", exc_info=True)
-        console.print(f"[red]Error in pairing command: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -940,51 +606,6 @@ def save_first_command_flag(date_str: str):
         logger.error(
             f"Unexpected error saving first command flag: {e}", exc_info=True)
         console.print(f"[red]Error saving command flag: {e}[/red]")
-
-
-def is_server_up(host: str, port: int) -> bool:
-    """
-    Check if API server is up by GET /api/status.
-    Returns True if status_code==200, False otherwise.
-    """
-    try:
-        resp = requests.get(f"http://{host}:{port}/api/status", timeout=1)
-        return resp.status_code == 200
-    except Exception as e:
-        logger.info(f"is_server_up check failed: {e}", exc_info=True)
-        return False
-
-
-def is_running_in_docker() -> bool:
-    """
-    Return True if running inside a Docker container.
-    """
-    try:
-        if Path("/.dockerenv").exists():
-            return True
-        cgroup = Path("/proc/1/cgroup")
-        if cgroup.exists():
-            content = cgroup.read_text(errors="ignore")
-            if "docker" in content:
-                return True
-    except Exception as e:
-        logger.warning(
-            f"Error detecting Docker environment: {e}", exc_info=True)
-    return False
-
-
-def docker_deployment_exists() -> bool:
-    """
-    Return True if Docker deployment files are present under BASE_DIR/docker.
-    """
-    try:
-        docker_dir = cf.BASE_DIR / "docker"
-        if (docker_dir / "Dockerfile").exists() and (docker_dir / "docker-compose.yml").exists():
-            return True
-    except Exception as e:
-        logger.warning(
-            f"Error checking docker deployment existence: {e}", exc_info=True)
-    return False
 
 
 def main_callback(ctx: typer.Context):
