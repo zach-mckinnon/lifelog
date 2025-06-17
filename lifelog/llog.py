@@ -33,6 +33,7 @@ import requests
 import typer
 
 
+from lifelog.config.schedule_manager import apply_scheduled_jobs
 from lifelog.first_time_run import LOGO_SMALL, run_wizard
 from lifelog.utils.db import database_manager
 import lifelog.config.config_manager as cf
@@ -788,7 +789,12 @@ def ensure_app_initialized():
             # only auto-initialize for non-setup commands
             if not is_setup_cmd:
                 initialize_application()
+        try:
+            apply_scheduled_jobs()
 
+        except Exception as e:
+            logger.warning(
+                f"Failed to re-apply scheduled jobs on startup: {e}", exc_info=True)
         config = cf.load_config()
         if "meta" not in config:
             config["meta"] = {}
@@ -921,6 +927,11 @@ def save_first_command_flag(date_str: str):
     try:
         with get_connection() as conn:
             cur = conn.cursor()
+            cur.execute(
+                "INSERT OR REPLACE INTO first_command_flags (id, last_executed) "
+                "VALUES (1, ?)",
+                (date_str,)
+            )
             conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Failed to save first command flag: {e}", exc_info=True)

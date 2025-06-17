@@ -127,7 +127,8 @@ def apply_scheduled_jobs() -> None:
 
 def _apply_user_cron_jobs(final_content: str) -> bool:
     """
-    Fallback for non-root users: merge our jobs into the current user's crontab.
+    Merge our jobs into the current user's crontab, but first remove
+    any existing Lifelog entries to prevent duplicates.
     """
     try:
         # 1) Grab existing crontab (empty string if none)
@@ -137,17 +138,31 @@ def _apply_user_cron_jobs(final_content: str) -> bool:
             text=True
         )
         existing = proc.stdout if proc.returncode == 0 else ""
-        # 2) Append our lines
-        new_cron = existing.rstrip("\n") + "\n" + final_content + "\n"
-        # 3) Install into user crontab
+        lines = existing.splitlines()
+
+        # 2) Filter out any old Lifelog entries (by command substring).
+        filtered = [
+            line for line in lines
+            if "llog task auto_recur" not in line
+            and "llog env sync-all" not in line
+            and not line.strip().startswith("# Lifelog")
+        ]
+
+        # 3) Prepend a comment header so you can spot them in `crontab -l`
+        header = "# Lifelog scheduled jobs"
+        new_lines = filtered + [header] + final_content.splitlines()
+
+        # 4) Install into user crontab
+        new_cron = "\n".join(new_lines) + "\n"
         subprocess.run(
             ["crontab", "-"],
             input=new_cron,
             text=True,
             check=True
         )
-        logger.info("Installed reminder into user crontab")
+        logger.info("Installed Lifelog jobs into user crontab")
         return True
+
     except Exception as e:
         logger.error(f"Failed to update user crontab: {e}", exc_info=True)
         return False

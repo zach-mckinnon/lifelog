@@ -44,7 +44,7 @@ w = "water"
 sl = "sleep"
 
 [cron.recur_auto]
-schedule = "0 0 * * *"
+schedule = "0 3 * * *"
 command = "llog task auto_recur"
 
 [cron.env_sync]
