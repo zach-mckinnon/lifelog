@@ -401,7 +401,7 @@ def setup_api(config):
     console.print(
         "Manage Docker: [cyan]llog docker [up|down|build|logs][/cyan]")
     console.print(
-        "[bold cyan]To pair new devices, use:[/bold cyan] [yellow]llog api-pair-new[/yellow]")
+        "[bold cyan]To pair new devices, use:[/bold cyan] [yellow]llog api pair[/yellow]")
 
 
 def generate_docker_files(base_path: Optional[Path] = None) -> None:
@@ -578,7 +578,7 @@ def setup_deployment(config):
         console.print(Panel(
             "[bold green]Your API server is ready![/bold green]\n\n"
             "To pair a new device:\n"
-            "  [cyan]llog api-pair-new[/cyan] on this server\n"
+            "  [cyan]llog api pair[/cyan] on this server\n"
             "Then follow the prompts on the client device.",
             style="green"
         ))
@@ -599,7 +599,7 @@ def setup_deployment(config):
         # Begin pairing process
         console.print(Panel(
             "[bold cyan]Pair this device with your host server.[/bold cyan]\n"
-            "1. On your host/server, run: [cyan]llog api-pair-new[/cyan]\n"
+            "1. On your host/server, run: [cyan]llog api pair[/cyan]\n"
             "2. Enter the pairing code shown below.",
             style="cyan"
         ))

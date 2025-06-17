@@ -77,7 +77,7 @@ def start_api(
     console.print(f"[green]🚀 Server launch command issued.[/green]")
 
 
-@app.command("pair-new")
+@app.command("pair")
 def api_pair_new():
     """
     Pair this device with a running Lifelog server.
