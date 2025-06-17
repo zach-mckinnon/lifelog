@@ -63,14 +63,13 @@ def get_task_by_id(task_id):
         _pull_changed_tasks_from_host()
 
         # 2) Look up the task’s UID locally, so we can fetch the latest from host
-        conn_tmp = get_connection()
-        conn_tmp.row_factory = sqlite3.Row
-        cursor_tmp = conn_tmp.cursor()
-        cursor_tmp.execute("SELECT uid FROM tasks WHERE id = ?", (task_id,))
-        row_tmp = cursor_tmp.fetchone()
-        conn_tmp.close()
-
-        # 3) If we found a UID, fetch exactly that one task from host
+        with get_connection() as conn_tmp:
+            # row_factory is set in get_connection, so rows come as sqlite3.Row
+            cursor_tmp = conn_tmp.cursor()
+            cursor_tmp.execute(
+                "SELECT uid FROM tasks WHERE id = ?", (task_id,))
+            row_tmp = cursor_tmp.fetchone()
+        # 3) If we found a UID, fetch that specific task from host
         if row_tmp and row_tmp["uid"]:
             uid_val = row_tmp["uid"]
             remote_list = fetch_from_server("tasks", params={"uid": uid_val})
