@@ -78,7 +78,7 @@ class Task(BaseModel):
     notes: Optional[str] = None
     uid: str = None
     updated_at: Optional[datetime] = None
-    deleted: Optional[int]
+    deleted: int = 0
 
 
 def get_task_fields():
@@ -134,7 +134,7 @@ class TimeLog(BaseModel):
     distracted_minutes: Optional[float] = 0
     uid: str = None
     updated_at: Optional[datetime] = None
-    deleted: Optional[int]
+    deleted: int = 0
 
 
 def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
@@ -181,7 +181,7 @@ class Tracker(BaseModel):
     goals: Optional[List['Goal']] = None
     uid: str = None
     updated_at: Optional[datetime] = None
-    deleted: Optional[int]
+    deleted: int = 0
 
 
 def tracker_from_row(row: Dict[str, Any]) -> Tracker:
