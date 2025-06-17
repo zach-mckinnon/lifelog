@@ -77,6 +77,8 @@ class Task(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     uid: str = None
+    updated_at: Optional[datetime] = None
+    deleted: Optional[int]
 
 
 def get_task_fields():
@@ -85,11 +87,6 @@ def get_task_fields():
 
 
 def task_from_row(row: Dict[str, Any]) -> Task:
-    """
-    Convert a dict/Row from sqlite3 to a Task object, handling:
-     - ISO datetime parsing for datetime fields
-     - Conversion of status string to TaskStatus enum
-    """
     field_types = {f.name: f.type for f in fields(Task)}
     data = {}
     for k, v in row.items():
@@ -99,39 +96,26 @@ def task_from_row(row: Dict[str, Any]) -> Task:
         if v is None:
             data[k] = None
             continue
-
-        # Handle datetime fields
+        # datetime fields: created, due, start, end, recur_base, updated_at
         if typ is datetime or typ == Optional[datetime]:
             try:
                 data[k] = datetime.fromisoformat(v)
             except Exception:
                 data[k] = None
             continue
-
-        # Handle TaskStatus enum field
-        # Need to detect either TaskStatus or Optional[TaskStatus]
-        # If typ is exactly TaskStatus:
-        if typ is TaskStatus:
+        # TaskStatus enum
+        if typ is TaskStatus or (get_origin(typ) is Optional and TaskStatus in get_args(typ)):
             try:
                 data[k] = TaskStatus(v)
-            except ValueError:
-                # Unknown status string in DB: fallback or None
+            except Exception:
                 data[k] = None
             continue
-        # If typ is Optional[TaskStatus], i.e. typing.Optional[TaskStatus]
-        origin = get_origin(typ)
-        if origin is Optional:
-            args = get_args(typ)  # e.g. (TaskStatus,)
-            if TaskStatus in args:
-                try:
-                    data[k] = TaskStatus(v)
-                except Exception:
-                    data[k] = None
-                continue
-
-        # For other fields, just assign directly (int, str, etc.)
+        # deleted field as int
+        if k == 'deleted':
+            data[k] = int(v)
+            continue
+        # Other fields
         data[k] = v
-
     return Task(**data)
 
 
@@ -149,33 +133,38 @@ class TimeLog(BaseModel):
     notes: Optional[str] = None
     distracted_minutes: Optional[float] = 0
     uid: str = None
+    updated_at: Optional[datetime] = None
+    deleted: Optional[int]
 
 
 def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
-    """
-    Robustly convert a sqlite3 row or dict to a TimeLog instance.
-    `row` is a dict mapping column names to values (strings or numbers).
-    """
     kwargs = {}
     for field in fields(TimeLog):
         name = field.name
         val = row.get(name)
-        # Handle datetime fields
+        if val is None:
+            kwargs[name] = None
+            continue
         if name in ("start", "end") and val:
-            # Expect val is ISO string in DB
             try:
                 kwargs[name] = datetime.fromisoformat(val)
             except Exception:
                 kwargs[name] = None
-        elif name == "distracted_minutes":
-            # If None in DB, default to 0
-            if val is None:
-                kwargs[name] = 0.0
-            else:
-                kwargs[name] = val
-        else:
-            # Other fields: just assign directly
-            kwargs[name] = val
+            continue
+        if name == "distracted_minutes":
+            kwargs[name] = float(val) if val is not None else 0.0
+            continue
+        if name == 'updated_at':
+            try:
+                kwargs[name] = datetime.fromisoformat(val)
+            except Exception:
+                kwargs[name] = None
+            continue
+        if name == 'deleted':
+            kwargs[name] = int(val)
+            continue
+        # Other fields (title, duration_minutes, task_id, etc.)
+        kwargs[name] = val
     return TimeLog(**kwargs)
 
 
@@ -191,6 +180,27 @@ class Tracker(BaseModel):
     entries: Optional[List['TrackerEntry']] = None
     goals: Optional[List['Goal']] = None
     uid: str = None
+    updated_at: Optional[datetime] = None
+    deleted: Optional[int]
+
+
+def tracker_from_row(row: Dict[str, Any]) -> Tracker:
+    return Tracker(
+        id=row.get("id"),
+        title=row.get("title", ""),
+        type=row.get("type", ""),
+        category=row.get("category"),
+        created=None if row.get(
+            "created") is None else datetime.fromisoformat(row.get("created")),
+        tags=row.get("tags"),
+        notes=row.get("notes"),
+        entries=None,
+        goals=None,
+        uid=row.get("uid"),
+        updated_at=None if row.get(
+            "updated_at") is None else datetime.fromisoformat(row.get("updated_at")),
+        deleted=int(row.get("deleted", 0))
+    )
 
 
 @dataclass

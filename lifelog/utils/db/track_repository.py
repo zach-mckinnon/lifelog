@@ -15,11 +15,13 @@ from lifelog.utils.db import (
     should_sync, is_direct_db_mode,
     queue_sync_operation, process_sync_queue
 )
+from lifelog.utils.db.db_helper import normalize_for_db
 
 logger = logging.getLogger(__name__)
 
 
 def _get_all_tracker_field_names() -> List[str]:
+    # Now get_tracker_fields includes 'updated_at' and 'deleted'
     return [f for f in get_tracker_fields() if f != "id"]
 
 
@@ -27,41 +29,36 @@ def _get_all_goal_field_names() -> List[str]:
     return [f for f in get_goal_fields() if f != "id"]
 
 
+# Pull changed trackers from host, unchanged but upsert_local_tracker will handle updated_at/deleted
 def _pull_changed_trackers_from_host() -> None:
     if not should_sync():
         return
-
     try:
         process_sync_queue()
     except Exception as e:
         logger.error(
             "Trackers pull: process_sync_queue failed: %s", e, exc_info=True)
-
     try:
         last_ts = get_last_synced("trackers")
     except Exception as e:
         logger.error("Trackers pull: get_last_synced failed: %s",
                      e, exc_info=True)
         last_ts = None
-
     params: Dict[str, Any] = {}
     if last_ts:
         params["since"] = last_ts
-
     try:
         remote_list = fetch_from_server("trackers", params=params) or []
     except Exception as e:
         logger.error("Trackers pull: fetch_from_server failed: %s",
                      e, exc_info=True)
         remote_list = []
-
     for remote in remote_list:
         try:
             upsert_local_tracker(remote)
         except Exception as e:
             logger.error(
                 "Trackers pull: upsert_local_tracker failed: %s", e, exc_info=True)
-
     try:
         set_last_synced("trackers", datetime.utcnow().isoformat())
     except Exception as e:
@@ -111,27 +108,54 @@ def _pull_changed_goals_from_host() -> None:
                      e, exc_info=True)
 
 
+# Upsert local tracker from server payload, handling updated_at and deleted
 def upsert_local_tracker(data: Dict[str, Any]) -> None:
     uid_val = data.get("uid")
     if not uid_val:
         logger.warning("upsert_local_tracker: missing uid")
         return
-
+    # Ensure status of fields: parse updated_at and deleted if present
+    # Convert updated_at to ISO or leave as string; normalize_for_db will handle
+    # Convert deleted to 0/1
+    if 'deleted' in data:
+        try:
+            data['deleted'] = 1 if data.get('deleted') else 0
+        except Exception:
+            data.pop('deleted', None)
+    if 'updated_at' in data:
+        # assume ISO string; leave as is
+        pass
     rows = safe_query("SELECT id FROM trackers WHERE uid = ?", (uid_val,))
     fields = _get_all_tracker_field_names()
-
     if rows:
         local_id = rows[0]["id"]
+        # Prepare updates: include only fields present
         updates = {k: data[k] for k in fields if k in data}
         if updates:
+            # Ensure updated_at included if present
             try:
-                update_record("trackers", local_id, updates)
+                update_record("trackers", local_id, normalize_for_db(updates))
             except Exception as e:
                 logger.error(
                     "upsert_local_tracker: update failed: %s", e, exc_info=True)
     else:
+        # Insert: ensure created, updated_at, deleted present
+        now = datetime.utcnow()
+        record = {}
+        for k in fields:
+            if k in data:
+                record[k] = data[k]
+        # Set defaults if missing
+        if 'created' not in record or record.get('created') is None:
+            record['created'] = now.isoformat()
+        if 'uid' not in record:
+            record['uid'] = uid_val
+        if 'updated_at' not in record or record.get('updated_at') is None:
+            record['updated_at'] = now.isoformat()
+        if 'deleted' not in record:
+            record['deleted'] = 0
         try:
-            add_record("trackers", data, fields)
+            add_record("trackers", normalize_for_db(record), fields)
         except Exception as e:
             logger.error("upsert_local_tracker: insert failed: %s",
                          e, exc_info=True)
@@ -164,6 +188,28 @@ def upsert_local_goal(data: Dict[str, Any]) -> None:
                 "upsert_local_goal: core insert failed: %s", e, exc_info=True)
         # detail handling omitted for brevity
 
+# Get tracker by id, ignoring soft-deleted? Business logic may skip deleted trackers
+
+
+def get_tracker_by_id(tracker_id: int) -> Optional[Tracker]:
+    if should_sync():
+        _pull_changed_trackers_from_host()
+    rows = safe_query(
+        "SELECT * FROM trackers WHERE id = ? AND deleted = 0", (tracker_id,))
+    return tracker_from_row(dict(rows[0])) if rows else None
+
+# Get by uid similarly
+
+
+def get_tracker_by_uid(uid_val: str) -> Optional[Tracker]:
+    if should_sync():
+        _pull_changed_trackers_from_host()
+    rows = safe_query(
+        "SELECT * FROM trackers WHERE uid = ? AND deleted = 0", (uid_val,))
+    return tracker_from_row(dict(rows[0])) if rows else None
+
+# Fetch all trackers, exclude deleted
+
 
 def get_all_trackers(
     title_contains: Optional[str] = None,
@@ -171,8 +217,7 @@ def get_all_trackers(
 ) -> List[Tracker]:
     if should_sync():
         _pull_changed_trackers_from_host()
-
-    query = "SELECT * FROM trackers WHERE 1=1"
+    query = "SELECT * FROM trackers WHERE deleted = 0"
     params: List[Any] = []
     if title_contains:
         query += " AND title LIKE ?"
@@ -181,59 +226,67 @@ def get_all_trackers(
         query += " AND category = ?"
         params.append(category)
     query += " ORDER BY created DESC"
-
     rows = safe_query(query, tuple(params))
     return [tracker_from_row(dict(r)) for r in rows]
-
-
-def get_tracker_by_id(tracker_id: int) -> Optional[Tracker]:
-    if should_sync():
-        _pull_changed_trackers_from_host()
-
-    rows = safe_query("SELECT * FROM trackers WHERE id = ?", (tracker_id,))
-    return tracker_from_row(dict(rows[0])) if rows else None
-
-
-def get_tracker_by_uid(uid_val: str) -> Optional[Tracker]:
-    if should_sync():
-        _pull_changed_trackers_from_host()
-
-    rows = safe_query("SELECT * FROM trackers WHERE uid = ?", (uid_val,))
-    return tracker_from_row(dict(rows[0])) if rows else None
+# Add tracker: set created, updated_at, deleted, serialize any enums if needed
 
 
 def add_tracker(tracker_data: Any) -> Tracker:
-    # normalize
+    # Normalize input
     data = tracker_data.to_dict() if hasattr(
         tracker_data, "to_dict") else dict(tracker_data)
-    data.setdefault("created", datetime.utcnow().isoformat())
-    data.setdefault("uid", str(uuid.uuid4()))
+    now = datetime.utcnow()
+    # Set created
+    if data.get("created") is None:
+        data["created"] = now.isoformat()
+    # UID
+    if not data.get("uid"):
+        data["uid"] = str(uuid.uuid4())
+    # New fields:
+    data['updated_at'] = now.isoformat()
+    data['deleted'] = 0
     fields = _get_all_tracker_field_names()
-    add_record("trackers", data, fields)
-
-    # re-fetch
+    # Write to DB
+    add_record("trackers", normalize_for_db(data), fields)
+    # Re-fetch
     rows = safe_query("SELECT * FROM trackers WHERE uid = ?", (data["uid"],))
-    new = tracker_from_row(dict(rows[0]))
-
-    if not is_direct_db_mode() and should_sync():
-        queue_sync_operation("trackers", "create", data)
+    new = tracker_from_row(dict(rows[0])) if rows else None
+    if new and not is_direct_db_mode() and should_sync():
+        # Queue full payload including updated_at and deleted
+        payload = {k: getattr(new, k) for k in fields if hasattr(new, k)}
+        queue_sync_operation("trackers", "create", normalize_for_db(payload))
         process_sync_queue()
-
     return new
+
+# Update tracker: set updated_at, serialize enums if any, include deleted if provided? Normally update fields
 
 
 def update_tracker(tracker_id: int, updates: Dict[str, Any]) -> Optional[Tracker]:
+    now = datetime.utcnow()
+    # Handle any enum fields here (if Tracker.type is enum, convert to .value)
+    if 'type' in updates:
+        # Example: if there is a TrackerType enum, convert similarly to TaskStatus
+        val = updates['type']
+        # if isinstance(val, Enum): updates['type'] = val.value
+        # else: leave as is or validate
+        pass
+    # Set updated_at
+    updates['updated_at'] = now.isoformat()
+    # Optionally handle deleted flag: if user requests deletion via this, but typically delete_tracker handles
+    # Normalize and write
     if is_direct_db_mode():
-        update_record("trackers", tracker_id, updates)
+        update_record("trackers", tracker_id, normalize_for_db(updates))
         return get_tracker_by_id(tracker_id)
-
-    # client mode
-    update_record("trackers", tracker_id, updates)
+    # Client mode
+    update_record("trackers", tracker_id, normalize_for_db(updates))
     rows = safe_query("SELECT * FROM trackers WHERE id = ?", (tracker_id,))
-    full = dict(rows[0])
-    queue_sync_operation("trackers", "update", full)
-    process_sync_queue()
-    return tracker_from_row(full)
+    full = dict(rows[0]) if rows else None
+    if full and should_sync():
+        queue_sync_operation("trackers", "update", normalize_for_db(full))
+        process_sync_queue()
+    return tracker_from_row(full) if full else None
+
+# Delete tracker: soft-delete by setting deleted=1 and updated_at, queue delete
 
 
 def delete_tracker(tracker_id: int) -> bool:
@@ -241,12 +294,15 @@ def delete_tracker(tracker_id: int) -> bool:
     if not rows:
         return False
     uid_val = rows[0]["uid"]
-    safe_execute("DELETE FROM trackers WHERE id = ?", (tracker_id,))
-
+    # Soft-delete locally: set deleted and updated_at
+    now_iso = datetime.utcnow().isoformat()
+    safe_execute(
+        "UPDATE trackers SET deleted = 1, updated_at = ? WHERE id = ?", (now_iso, tracker_id))
     if not is_direct_db_mode() and should_sync():
-        queue_sync_operation("trackers", "delete", {"uid": uid_val})
+        # Payload for delete: include uid, deleted flag, updated_at
+        payload = {"uid": uid_val, "deleted": True, "updated_at": now_iso}
+        queue_sync_operation("trackers", "delete", payload)
         process_sync_queue()
-
     return True
 
 

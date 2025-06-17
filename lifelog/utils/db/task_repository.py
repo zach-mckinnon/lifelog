@@ -85,34 +85,59 @@ def get_task_by_id(task_id):
 
 
 def add_task(task_data: Any) -> Task:
-    # prepare dict
+    """Insert a new Task, ensuring Enums are stored as strings, and set created, updated_at, deleted."""
     data = asdict(task_data) if hasattr(
         task_data, "__dataclass_fields__") else task_data.copy()
     fields = get_task_fields()
     for f in fields:
         data.setdefault(f, None)
 
-    # defaults
-    if data["created"] is None:
-        data["created"] = datetime.utcnow()
-    if data.get("status") is None:
-        data["status"] = TaskStatus.BACKLOG
+    # Defaults and type normalization
+    now = datetime.utcnow()
+    if data.get("created") is None:
+        data["created"] = now
+    # Handle status Enum: if None, default; if string, convert to Enum then back to value; if Enum, get value
+    status_val = data.get("status")
+    if status_val is None:
+        data["status"] = TaskStatus.BACKLOG.value
     else:
-        data["status"] = TaskStatus(data["status"])  # will raise if invalid
+        # Convert possible values to TaskStatus enum then to string
+        try:
+            # If already Enum
+            if isinstance(status_val, TaskStatus):
+                data["status"] = status_val.value
+            else:
+                # If string, validate Enum
+                data["status"] = TaskStatus(status_val).value
+        except Exception:
+            logger.warning(
+                f"Invalid status '{status_val}', defaulting to BACKLOG")
+            data["status"] = TaskStatus.BACKLOG.value
+    # Importance
     if data.get("importance") is None:
         data["importance"] = 1
+    # Priority
     if data.get("priority") is None:
         try:
             data["priority"] = calculate_priority(data)
         except Exception as e:
             logger.error("Priority calc failed: %s", e, exc_info=True)
             data["priority"] = 1.0
+    # Due date string to datetime
     if data.get("due") is not None and isinstance(data["due"], str):
-        data["due"] = datetime.fromisoformat(data["due"])
+        try:
+            data["due"] = datetime.fromisoformat(data["due"])
+        except Exception:
+            data["due"] = None
+    # UID
     if not data.get("uid"):
         data["uid"] = str(uuid.uuid4())
+    # New fields: updated_at and deleted
+    data["updated_at"] = now
+    data["deleted"] = 0
 
-    # normalize before writing
+    # Before writing, convert Enum or datetime into normalized DB values
+    # normalize_for_db should handle datetime -> ISO; ensure status is string
     db_data = normalize_for_db(data)
 
     if is_direct_db_mode():
@@ -123,12 +148,33 @@ def add_task(task_data: Any) -> Task:
         queue_sync_operation("tasks", "create", db_data)
         process_sync_queue()
         rows = safe_query(
-            "SELECT * FROM tasks WHERE uid = ?", (db_data["uid"],))
+            "SELECT * FROM tasks WHERE uid = ?", (db_data["uid"],)
+        )
         return task_from_row(dict(rows[0]))
 
 
 def update_task(task_id: int, updates: Dict[str, Any]) -> None:
-    # normalize
+    """Update local task; queue sync with correct updated_at and Enum serialization."""
+    # Handle status Enum
+    if 'status' in updates:
+        status_val = updates['status']
+        try:
+            if isinstance(status_val, TaskStatus):
+                updates['status'] = status_val.value
+            else:
+                updates['status'] = TaskStatus(status_val).value
+        except Exception:
+            logger.warning(
+                f"Invalid status '{status_val}' in update, ignoring field")
+            updates.pop('status', None)
+    # Normalize other fields: due string to datetime object
+    if 'due' in updates and isinstance(updates['due'], str):
+        try:
+            updates['due'] = datetime.fromisoformat(updates['due'])
+        except Exception:
+            updates.pop('due', None)
+    # Set updated_at
+    updates['updated_at'] = datetime.utcnow()
     db_updates = normalize_for_db(updates)
 
     if is_direct_db_mode():
@@ -137,50 +183,59 @@ def update_task(task_id: int, updates: Dict[str, Any]) -> None:
 
     # client mode
     update_record("tasks", task_id, db_updates)
-
-    # fetch full row and queue
+    # fetch full row to queue
     rows = safe_query("SELECT * FROM tasks WHERE id = ?", (task_id,))
     full = dict(rows[0]) if rows else {"id": task_id, **db_updates}
-    normalize_for_db(full)
+    # Ensure status in full is string
+    if 'status' in full:
+        try:
+            full['status'] = TaskStatus(full['status']).value
+        except Exception:
+            full['status'] = TaskStatus.BACKLOG.value
     queue_sync_operation("tasks", "update", full)
     process_sync_queue()
 
 
 def delete_task(task_id):
-    """
-    Delete a task by numeric ID.
-      • Host/direct-DB: DELETE WHERE id = ?. 
-      • Client mode:
-         a) SELECT uid from local row.
-         b) DELETE locally by ID.
-         c) Queue a “delete” by UID (or numeric ID if UID missing).
-         d) Attempt to drain queue.
-    """
+    """Delete local and queue soft-delete with updated_at."""
     if is_direct_db_mode():
         safe_execute("DELETE FROM tasks WHERE id = ?", (task_id,))
     else:
-        # fetch UID
         rows = safe_query("SELECT uid FROM tasks WHERE id = ?", (task_id,))
         uid_val = rows[0]["uid"] if rows and rows[0]["uid"] else None
-
-        # delete locally
-        safe_execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-
-        # queue
-        payload = {"uid": uid_val} if uid_val else {"id": task_id}
+        # Soft-delete locally: set deleted=1 and updated_at
+        now_iso = datetime.utcnow().isoformat()
+        safe_execute(
+            "UPDATE tasks SET deleted = 1, updated_at = ? WHERE id = ?", (now_iso, task_id))
+        payload = {"uid": uid_val, "deleted": True,
+                   "updated_at": now_iso} if uid_val else {"id": task_id}
         queue_sync_operation("tasks", "delete", payload)
         process_sync_queue()
 
 
 def upsert_local_task(data: dict) -> None:
+    """Upsert from server payload: parse status string to TaskStatus? Keep as string in DB."""
     uid_val = data.get("uid")
     if not uid_val:
         return
-
+    # Prepare db_data: ensure status is string
+    if 'status' in data:
+        try:
+            data['status'] = TaskStatus(data['status']).value
+        except Exception:
+            data['status'] = TaskStatus.BACKLOG.value
+    # Set updated_at and deleted if present; ensure datetime
+    if 'updated_at' in data and isinstance(data['updated_at'], str):
+        try:
+            # leave as ISO string; normalize_for_db will handle
+            pass
+        except Exception:
+            data.pop('updated_at', None)
+    if 'deleted' in data:
+        data['deleted'] = 1 if data.get('deleted') else 0
     rows = safe_query("SELECT id FROM tasks WHERE uid = ?", (uid_val,))
     fields = get_task_fields()
     db_data = normalize_for_db(data)
-
     if rows:
         update_record("tasks", rows[0]["id"], {
                       k: db_data[k] for k in fields if k in db_data})
@@ -262,8 +317,20 @@ def query_tasks(
 
 
 def update_task_by_uid(uid: str, updates: Dict[str, Any]) -> None:
+    """Host-only: update fields, serialize Enum, set updated_at."""
     if not is_host_server():
         return
+    if 'status' in updates:
+        try:
+            val = updates['status']
+            if isinstance(val, TaskStatus):
+                updates['status'] = val.value
+            else:
+                updates['status'] = TaskStatus(val).value
+        except Exception:
+            updates.pop('status', None)
+    # Set updated_at
+    updates['updated_at'] = datetime.utcnow()
     db_updates = normalize_for_db(updates)
     cols = ", ".join(f"{k}=?" for k in db_updates)
     params = tuple(db_updates.values()) + (uid,)
@@ -271,10 +338,9 @@ def update_task_by_uid(uid: str, updates: Dict[str, Any]) -> None:
 
 
 def delete_task_by_uid(uid: str) -> None:
-    """
-    Host-only delete by UID.
-    """
+    """Host-only: soft-delete by UID."""
     if not is_host_server():
         return
-
-    safe_execute("DELETE FROM tasks WHERE uid = ?", (uid,))
+    now_iso = datetime.utcnow().isoformat()
+    safe_execute(
+        "UPDATE tasks SET deleted = 1, updated_at = ? WHERE uid = ?", (now_iso, uid))

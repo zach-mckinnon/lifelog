@@ -1,5 +1,8 @@
 # lifelog/commands/api_module.py
 
+from lifelog.commands.api_module import is_server_up
+from lifelog.config import config_manager as cf
+from subprocess import DEVNULL
 import os
 from pathlib import Path
 import sys
@@ -13,12 +16,15 @@ from rich.console import Console
 
 import lifelog.config.config_manager as cf
 from lifelog.utils import log_utils
-
 from lifelog.utils.db import should_sync, auto_sync
 
 app = typer.Typer(help="🖥️  API server & pairing commands")
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+app = typer.Typer()
+console = Console()
 
 
 @app.command("start")
@@ -33,42 +39,49 @@ def start_api(
     - In server mode → Gunicorn
     - Otherwise → flask run (with FLASK_APP set)
     """
-    from lifelog.llog import initialize_application
+    # 1️⃣ Ensure logging + initialization
     log_utils.setup_logging()
-
-    # 1️⃣ Initialize (DB, config, hooks, scheduled jobs,…)
+    from lifelog.llog import initialize_application
     initialize_application()
 
-    # 2️⃣ Don’t start if already up
+    # 2️⃣ If already up, bail out
     if is_server_up(host, port):
         console.print(
             f"[yellow]Already running at http://{host}:{port}[/yellow]")
         raise typer.Exit()
 
-    # 3️⃣ Auto-sync any pending data (optional)
+    # 3️⃣ Optional auto-sync
     if should_sync():
         try:
             auto_sync()
         except Exception as e:
-            logger.warning(f"Auto-sync failed: {e}", exc_info=True)
+            console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
 
-    # 4️⃣ Decide Gunicorn vs Flask-run
+    # 4️⃣ Decide Gunicorn vs Flask
     config = cf.load_config()
     mode = config.get("deployment", {}).get("mode", "local")
     use_gunicorn = prod or (mode == "server")
 
+    # 5️⃣ Prepare log file
+    log_dir = cf.BASE_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "api_server.log"
+    log_file = open(log_path, "a", buffering=1)  # line-buffered
+
     if use_gunicorn:
         console.print("[cyan]Starting production server (Gunicorn)…[/cyan]")
         cmd = [
-            "gunicorn", "-b", f"{host}:{port}",
-            "-w", "4", "--timeout", "120",
+            "gunicorn",
+            "-b", f"{host}:{port}",
+            "-w", "4",
+            "--timeout", "120",
             "lifelog.app:app"
         ]
         subprocess.Popen(
             cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdin=DEVNULL,
+            stdout=log_file,
+            stderr=log_file,
             start_new_session=True,
         )
     else:
@@ -77,10 +90,24 @@ def start_api(
         env["FLASK_APP"] = "lifelog.app:app"
         if debug:
             env["FLASK_ENV"] = "development"
-        subprocess.Popen([sys.executable, "-m", "flask", "run",
-                          "--host", host, "--port", str(port)], env=env)
+        cmd = [
+            sys.executable,
+            "-m", "flask", "run",
+            "--host", host,
+            "--port", str(port)
+        ]
+        subprocess.Popen(
+            cmd,
+            stdin=DEVNULL,
+            stdout=log_file,
+            stderr=log_file,
+            env=env,
+            start_new_session=True,
+        )
 
     console.print(f"[green]🚀 Server launch command issued.[/green]")
+    console.print(
+        f"[dim]Logs are being written to:[/dim] [cyan]{log_path}[/cyan]")
 
 
 @app.command("pair")
