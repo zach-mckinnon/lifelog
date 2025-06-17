@@ -770,66 +770,79 @@ def focus_cli(
     # Main loop: repeat for each block (focus or break)
     try:
         while True:
-            # Determine the block duration in seconds
             duration_secs = break_len * 60 if in_break else focus_len * 60
             start_block = time.time()
 
-            # Create a Rich Progress for this block
+            # Build a Rich Progress for this block
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(bar_width=None),
                 TextColumn("{task.percentage:>3.0f}%"),
                 TimeRemainingColumn(),
                 console=console,
-                transient=True,  # remove after completion
+                transient=True,
             )
             task_desc = "Break" if in_break else "Focus"
             task_id_prog = progress.add_task(task_desc, total=duration_secs)
 
-            # Build a Layout: upper region for big timer, lower for progress bar
+            # === UPDATED: Build a Layout with header, timer, progress, and footer ===
             layout = Layout()
+            # Split into four regions: header, timer-panel, progress-bar, footer
             layout.split(
-                Layout(name="upper", ratio=3),
-                Layout(name="lower", size=3)
+                Layout(name="header", size=3),   # fixed height for header
+                Layout(name="upper", ratio=3),    # timer region
+                Layout(name="lower", size=3),     # progress bar region
+                Layout(name="footer", size=3),    # fixed height for commands
             )
 
-            # Enter Live context to update in-place
+            # Populate header and footer once before entering Live:
+            header_panel = Panel(
+                Align.left(f"[bold blue]Focus mode:[/] {task.title}"),
+                style="bold blue"
+            )
+            commands_text = "[dim]Commands: [bold]p[/bold]=pause & exit, [bold]d[/bold]=done & exit, " \
+                            "[bold]t[/bold]=toggle Pomodoro on/off, [bold]l[/bold]=log distracted time[/dim]"
+            footer_panel = Panel(
+                Align.center(commands_text),
+                style="dim"
+            )
+            layout["header"].update(header_panel)
+            layout["footer"].update(footer_panel)
+            # Note: during Live, we will only update layout["upper"] and layout["lower"].
+
+            # Enter Live context
             with Live(layout, refresh_per_second=4, console=console, screen=False):
-                # Loop until block ends or a key event interrupts
+                # Loop until block ends or key interrupts
                 while True:
                     elapsed = time.time() - start_block
-                    # Clamp elapsed between 0 and duration_secs
                     if elapsed < 0:
                         elapsed = 0
                     if elapsed > duration_secs:
                         elapsed = duration_secs
                     remaining = int(duration_secs - elapsed)
 
-                    # 1) Render big timer panel
+                    # 1) Render big timer or plain
                     big_text = render_big_timer(remaining)
-                    # Center the big_text in the panel
-                    panel = Panel(
+                    timer_panel = Panel(
                         Align.center(big_text, vertical="middle"),
                         title=task_desc,
                         border_style="green" if not in_break else "magenta",
                         padding=(1, 2),
                     )
-                    layout["upper"].update(panel)
+                    layout["upper"].update(timer_panel)
 
                     # 2) Update progress bar
                     progress.update(task_id_prog, completed=elapsed)
                     layout["lower"].update(progress)
 
-                    # 3) Check for keypress (non-blocking)
+                    # 3) Check keypress
                     key = read_char_nonblocking(timeout=0.25)
                     if key:
                         key = key.lower()
-                        # Pause/exit
                         if key == "p":
                             console.print(
                                 "\n[yellow]⏸️ Pausing focus mode.[/yellow]")
-                            return  # exit entire focus mode
-                        # Done: stop time entry and mark done
+                            return
                         elif key == "d":
                             console.print(
                                 "\n[green]✔️ Marking task done.[/green]")
@@ -847,19 +860,15 @@ def focus_cli(
                                 console.print(
                                     f"[red]Error updating task status: {e}[/red]")
                             return
-                        # Toggle Pomodoro on/off: exit this block, flip in_break if turning off breaks?
                         elif key == "t":
                             pomodoro = not pomodoro
                             console.print(
                                 f"\n[cyan]Pomodoro {'ON' if pomodoro else 'OFF'}[/cyan]")
-                            # If Pomodoro turned off, treat as continuous focus; we exit current block
-                            return_or_continue = "toggle"
-                            # Exiting block loop by breaking out; outer while will handle new state
+                            # Exit block loop; next outer iteration handles new in_break or exit
                             break
-                        # Log distracted time
                         elif key == "l" and not in_break:
-                            # Exit Live to prompt cleanly
-                            Live.stop(layout)  # stop Live rendering
+                            # Exit Live to prompt
+                            Live.stop(layout)
                             extra = console.input("Distracted minutes? ")
                             try:
                                 lost = int(extra)
@@ -868,29 +877,32 @@ def focus_cli(
                             total_distracted += lost
                             console.print(
                                 f"[magenta]Added {lost}m distracted. Total now: {total_distracted}m[/magenta]")
-                            # Re-print header & commands (Live cleared them)
-                            console.print(
-                                f"[bold blue]Entering focus mode for:[/] {task.title}")
-                            console.print("[dim]Commands: [bold]p[/bold]=pause & exit, [bold]d[/bold]=done & exit, "
-                                          "[bold]t[/bold]=toggle Pomodoro on/off, [bold]l[/bold]=log distracted time[/dim]")
-                            # Adjust start_block so elapsed remains unchanged after prompt
-                            # elapsed_before = elapsed; new start_block such that new_elapsed == elapsed_before
+                            # Re-draw header & footer since Live cleared below region
+                            header_panel = Panel(
+                                Align.left(
+                                    f"[bold blue]Focus mode:[/] {task.title}"),
+                                style="bold blue"
+                            )
+                            layout["header"].update(header_panel)
+                            footer_panel = Panel(
+                                Align.center(commands_text),
+                                style="dim"
+                            )
+                            layout["footer"].update(footer_panel)
+                            # Adjust start_block so elapsed remains unchanged
                             start_block = time.time() - elapsed
-                            # Continue inner loop
                             continue
-                    # 4) Check if block time is up
+
+                    # 4) End-of-block check
                     if elapsed >= duration_secs:
                         break
-                    # Else continue; Live updates each iteration
-                # End of block loop
-            # After Live context ends for this block:
+                    # Loop continues; Live updates display
 
-            # Block complete handling
+            # === After exiting Live for this block ===
             if in_break:
                 console.print("[green]✨ Break over — back to focus.[/green]")
             else:
                 console.print("[cyan]⏰ Focus block complete![/cyan]")
-                # Prompt distracted minutes now (only after focus blocks)
                 extra = console.input("Distracted minutes? ")
                 try:
                     lost = int(extra)
@@ -899,15 +911,11 @@ def focus_cli(
                 total_distracted += lost
                 run_hooks("task", "pomodoro_done", task)
 
-            # Flip mode if pomodoro enabled; otherwise if pomodoro disabled, we loop continuous focus
+            # Flip or exit based on pomodoro
             if pomodoro:
                 in_break = not in_break
-                # Continue outer while for next block
-                # Loop restarts: new block_start etc.
+                # outer while repeats for next block
             else:
-                # Pomodoro disabled: run continuous focus only once, then exit
-                # After first block completes, we continue timing if desired, or simply exit?
-                # Here: we treat continuous focus as one long block, so after first we exit:
                 console.print(
                     "[yellow]Continuous focus block complete; exiting focus mode.[/yellow]")
                 break
@@ -916,7 +924,6 @@ def focus_cli(
         console.print(
             "\n[yellow]Interrupted by user. Exiting focus mode.[/yellow]")
     finally:
-        # 3) Stop time entry when exiting focus mode (unless already stopped by “done”)
         try:
             time_repository.stop_active_time_entry(
                 end_time=now_utc().isoformat())
