@@ -1,8 +1,5 @@
 from __future__ import annotations
-import logging
-from shlex import quote
-import shutil
-from typing import Optional
+
 # lifelog/config/cron_manager.py
 '''
 cron_manager.py - Manage cron jobs for lifelog
@@ -11,9 +8,12 @@ import os
 import platform
 import subprocess
 from pathlib import Path
-import sys
 from tomlkit import dumps
 import lifelog.config.config_manager as cf
+import logging
+from shlex import quote
+import shutil
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -127,42 +127,48 @@ def apply_scheduled_jobs() -> None:
 
 def _apply_user_cron_jobs(final_content: str) -> bool:
     """
-    Merge our jobs into the current user's crontab, but first remove
-    any existing Lifelog entries to prevent duplicates.
+    Install our jobs into the current user's crontab,
+    but first strip out any old Lifelog entries and the 'root' field.
     """
     try:
-        # 1) Grab existing crontab (empty string if none)
-        proc = subprocess.run(
-            ["crontab", "-l"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            text=True
-        )
+        # 1) Read existing crontab
+        proc = subprocess.run(["crontab", "-l"],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              text=True)
         existing = proc.stdout if proc.returncode == 0 else ""
         lines = existing.splitlines()
 
-        # 2) Filter out any old Lifelog entries (by command substring).
+        # 2) Remove old Lifelog entries
         filtered = [
             line for line in lines
             if "llog task auto_recur" not in line
-            and "llog env sync-all" not in line
-            and not line.strip().startswith("# Lifelog")
+               and "llog env sync-all" not in line
+               and not line.strip().startswith("# Lifelog")
         ]
 
-        # 3) Prepend a comment header so you can spot them in `crontab -l`
-        header = "# Lifelog scheduled jobs"
-        new_lines = filtered + [header] + final_content.splitlines()
+        # 3) Convert each system‐cron line "… root cmd" → user‐cron "… cmd"
+        cron_lines = []
+        for entry in final_content.splitlines():
+            parts = entry.split()
+            # If we see "root" in the 6th position, drop it
+            if len(parts) >= 6 and parts[5] == "root":
+                userless = parts[:5] + parts[6:]
+                cron_lines.append(" ".join(userless))
+            else:
+                cron_lines.append(entry)
 
-        # 4) Install into user crontab
-        new_cron = "\n".join(new_lines) + "\n"
-        subprocess.run(
-            ["crontab", "-"],
-            input=new_cron,
-            text=True,
-            check=True
-        )
+        # 4) Prepend a header for clarity
+        header = "# Lifelog scheduled jobs"
+        new_cron = "\n".join(filtered + [header] + cron_lines) + "\n"
+
+        # 5) Write back to the user crontab
+        subprocess.run(["crontab", "-"], input=new_cron, text=True, check=True)
         logger.info("Installed Lifelog jobs into user crontab")
         return True
 
+    except subprocess.CalledProcessError as e:
+        logger.error(f"crontab update failed: {e}", exc_info=True)
+        return False
     except Exception as e:
         logger.error(f"Failed to update user crontab: {e}", exc_info=True)
         return False

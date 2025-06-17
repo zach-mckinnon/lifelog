@@ -94,11 +94,14 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = no
     base_part = ts
     target = None
     is_time_only = False
-    if "." in time_string:
-        time_string = time_string.split(".")[0]
+
+    if "." in ts:
+        ts = ts.split(".", 1)[0]
+
     # Handle "T" separator (e.g. 1dT18:00 or 4/5T17:00)
     if 'T' in ts:
         base_part, time_part = ts.split('T', 1)
+
     elif re.match(r'^\d{1,2}:\d{2}$', ts):
         base_part, time_part = '', ts
         is_time_only = True
@@ -165,6 +168,21 @@ def parse_date_string(time_string: str, future: bool = False, now: datetime = no
             # if they want the most recent but we ended up in the future…
             if target > now:
                 target = target - timedelta(days=1)
+    if time_part is None and not is_time_only:
+        if target.tzinfo:
+            local_dt = target.astimezone(get_user_timezone())
+            target = local_dt.replace(
+                hour=23, minute=59, second=0, microsecond=0)
+            # then convert back to UTC if needed:
+            target = target.astimezone(timezone.utc)
+        else:
+            target = target.replace(
+                hour=23, minute=59, second=0, microsecond=0)
+
+    if future and target < now:
+        raise ValueError(
+            f"Due date {target.strftime('%Y-%m-%d %H:%M')} is in the past")
+
     if target is None:
         raise ValueError(f"Could not parse: '{time_string}'")
 
