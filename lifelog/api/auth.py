@@ -42,7 +42,7 @@ def start_pairing():
     data = request.get_json() or {}
     device_name = data.get('device_name', 'Unknown Device')
     code = generate_code()
-    expires_at = (datetime.utc_now() +
+    expires_at = (datetime.now() +
                   timedelta(minutes=PAIRING_EXPIRY_MINUTES)).isoformat()
     # Remove expired codes before inserting new
     with get_connection() as conn:
