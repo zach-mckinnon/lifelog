@@ -1,6 +1,5 @@
 # lifelog/commands/api_module.py
 
-from lifelog.commands.api_module import is_server_up
 from lifelog.config import config_manager as cf
 from subprocess import DEVNULL
 import os
