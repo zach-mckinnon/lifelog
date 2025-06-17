@@ -9,19 +9,19 @@ from dataclasses import asdict
 from datetime import datetime, timedelta
 import re
 import platform
-import select
 from shlex import quote
 import shutil
 import subprocess
-import sys
 import termios
-import time
 import tty
 import typer
 import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 import plotext as plt
+import sys
+import time
+import select
 
 from rich.console import Console
 from rich.prompt import Confirm
@@ -30,14 +30,21 @@ from rich.panel import Panel
 from rich.text import Text
 import calendar
 
-if sys.platform == "win32":
-    # Windows: use msvcrt for single-key reads
-    try:
-        import msvcrt
-    except ImportError:
-        msvcrt = None
+
+# For Unix-like:
+try:
+    import tty
+    import termios
+except ImportError:
     tty = None
     termios = None
+
+# For Windows:
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
+
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
@@ -650,40 +657,32 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 def read_char_nonblocking(timeout: float = 1.0):
     """
     Cross-platform single-character non-blocking read:
-    - On Windows (sys.platform == "win32"), uses msvcrt.kbhit() and msvcrt.getwch().
-    - On Unix-like, uses select + termios/tty.
-    Returns the character as a string, or None if no key was pressed within `timeout`.
+    - On Windows, uses msvcrt.
+    - On Unix-like, uses select+termios/tty.
     """
     if msvcrt:
         # Windows path
         start_time = time.time()
         while True:
             if msvcrt.kbhit():
-                # getwch() returns a Unicode string of length 1 (or special key sequence)
-                ch = msvcrt.getwch()
-                return ch
+                return msvcrt.getwch()
             if (time.time() - start_time) >= timeout:
                 return None
-            # small sleep to avoid busy-wait spinning too fast
             time.sleep(0.01)
     elif termios and tty:
         # Unix-like path
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
-            # set cbreak/raw mode so we can read single chars without Enter
             tty.setcbreak(fd)
             rlist, _, _ = select.select([sys.stdin], [], [], timeout)
             if rlist:
-                ch = sys.stdin.read(1)
-                return ch
+                return sys.stdin.read(1)
             else:
                 return None
         finally:
-            # restore terminal settings
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     else:
-        # No non-blocking single-char support: always return None
         return None
 
 
@@ -734,7 +733,7 @@ def focus_cli(
 
     console.print(f"[bold blue]Entering focus mode for:[/] {task.title}")
     console.print(
-        "[dim]Commands: [p]ause & exit, [d]one & exit, [t]oggle Pomodoro on/off, [l]log distracted time[/dim]")
+        "[dim]Commands: [[p]]ause & exit, [[d]]one & exit, [[t]]oggle Pomodoro on/off, [[l]]og distracted time[/dim]")
 
     total_distracted = 0  # in minutes
     in_break = False

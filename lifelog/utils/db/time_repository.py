@@ -1,6 +1,5 @@
 import logging
 import uuid
-import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
@@ -17,6 +16,7 @@ from lifelog.utils.db import (
 )
 from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
+from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -384,23 +384,74 @@ def stop_active_time_entry(
     tags: Optional[str] = None,
     notes: Optional[str] = None
 ) -> TimeLog:
-    # normalize end_time to ISO
-    if isinstance(end_time, datetime):
-        end_iso = end_time.isoformat()
-    else:
-        end_iso = datetime.fromisoformat(end_time).isoformat()
+    """
+    Stop the currently active time entry, setting its end, duration, tags, notes,
+    and updated_at. Accepts end_time as ISO string or datetime or human-friendly string.
+    """
+    # 1) Fetch active entry
     active = get_active_time_entry()
     if not active:
         raise RuntimeError("No active time entry to stop.")
-    start_dt = datetime.fromisoformat(active.start)
-    end_dt = datetime.fromisoformat(end_iso)
-    duration = max(0.0, (end_dt - start_dt).total_seconds() / 60.0)
-    updates: Dict[str, Any] = {"end": end_iso, "duration_minutes": duration}
+
+    # 2) Normalize start_dt from active.start
+    # active.start may be a datetime or ISO string. We ensure datetime and convert to UTC.
+    raw_start = getattr(active, "start", None)
+    if raw_start is None:
+        raise RuntimeError("Active time entry has no start time recorded.")
+    if isinstance(raw_start, datetime):
+        start_dt = to_utc(raw_start)
+    else:
+        # assume string: try ISO parse
+        try:
+            parsed = datetime.fromisoformat(raw_start)
+        except Exception:
+            # Optionally: try human-friendly parsing
+            try:
+                parsed = parse_date_string(raw_start, now=now_utc())
+            except Exception as e:
+                raise ValueError(
+                    f"Cannot parse active.start '{raw_start}': {e}")
+        start_dt = to_utc(parsed)
+
+    # 3) Normalize end_dt from end_time parameter
+    if isinstance(end_time, datetime):
+        end_dt = to_utc(end_time)
+    else:
+        # end_time is a string: try ISO first
+        try:
+            parsed_end = datetime.fromisoformat(end_time)
+        except Exception:
+            # Optionally: try human-friendly parsing
+            try:
+                parsed_end = parse_date_string(end_time, now=now_utc())
+            except Exception as e:
+                raise ValueError(f"Cannot parse end_time '{end_time}': {e}")
+        end_dt = to_utc(parsed_end)
+
+    # 4) Check that end_dt is not before start_dt
+    if end_dt < start_dt:
+        raise ValueError(
+            f"end_time ({end_dt.isoformat()}) is before start time ({start_dt.isoformat()}).")
+
+    # 5) Compute duration in minutes
+    duration = (end_dt - start_dt).total_seconds() / 60.0
+    # Clamp to zero just in case of tiny negative due to rounding, though above check prevents major negatives
+    duration = max(0.0, duration)
+
+    # 6) Prepare update payload
+    end_iso = end_dt.isoformat()
+    updates: Dict[str, Any] = {
+        "end": end_iso,
+        "duration_minutes": duration,
+        # Explicitly set updated_at to now UTC:
+        "updated_at": now_utc().isoformat(),
+    }
     if tags is not None:
         updates["tags"] = tags
     if notes is not None:
         updates["notes"] = notes
-    # This calls update_time_entry, which now sets updated_at and syncs
+
+    # 7) Call update_time_entry, which applies the DB update and sync logic
     return update_time_entry(active.id, **updates)
 
 # Delete time entry: soft-delete instead of hard delete
