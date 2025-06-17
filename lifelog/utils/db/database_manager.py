@@ -74,7 +74,9 @@ def initialize_schema():
                 category TEXT,
                 created DATETIME,
                 notes TEXT,
-                tags TEXT
+                tags TEXT,
+                updated_at TEXT,
+                deleted INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS tasks (
@@ -95,7 +97,9 @@ def initialize_schema():
                 recur_days_of_week TEXT,
                 recur_base DATETIME,
                 notes TEXT,
-                tags TEXT
+                tags TEXT,
+                updated_at TEXT,
+                deleted INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS goals (
@@ -221,7 +225,9 @@ def initialize_schema():
                 tags TEXT,
                 notes TEXT,
                 distracted_minutes FLOAT DEFAULT 0,
-                FOREIGN KEY (task_id) REFERENCES tasks(id)
+                FOREIGN KEY (task_id) REFERENCES tasks(id),
+                updated_at TEXT,
+                deleted INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS environment_data (
