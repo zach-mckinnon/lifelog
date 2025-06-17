@@ -29,7 +29,7 @@ import calendar
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, get_available_categories, get_available_projects, get_available_tags, now_local, now_utc, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, utc_iso_to_local, validate_task_inputs
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, format_due_for_display, get_available_categories, get_available_projects, get_available_tags, now_local, now_utc, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, utc_iso_to_local, validate_task_inputs
 import lifelog.config.config_manager as cf
 from lifelog.config.schedule_manager import IS_POSIX, apply_scheduled_jobs, build_linux_notifier, build_windows_notifier, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
@@ -229,21 +229,16 @@ def list(
     )
     table.add_column("ID", justify="right", width=2)
     table.add_column("Title", overflow="ellipsis", min_width=8)
-    table.add_column("Priority", overflow="ellipsis")
-    table.add_column("Due", style="yellow", overflow="ellipsis", width=5)
+    table.add_column("Priority", width=3, overflow="ellipsis")
+    table.add_column("Due", style="yellow", width=8, overflow="ellipsis")
 
     for task in tasks:
         id_str = str(task.id)
         title_str = task.title
-        due_raw = task.due  # <-- fix typo here
+        due_raw = task.due
         due_str = "-"
         if due_raw:
-            try:
-                due_dt = datetime.fromisoformat(due_raw)
-                due_str = format_datetime_for_user(
-                    datetime.fromisoformat(task.due))
-            except Exception:
-                due_str = str(due_raw)
+            due_str = format_due_for_display(due_raw)
         prio = str(task.priority)
         color = priority_color(prio)
         prio_text = Text(prio)
@@ -303,8 +298,7 @@ def agenda():
         prio_text = Text(str(prio_raw), style=priority_color(prio_raw))
         due_str = "-"
         if task.due:
-            due_str = format_datetime_for_user(
-                datetime.fromisoformat(task.due))
+            due_str = format_due_for_display(task.due)
         title = task.title or "-"
 
         table.add_row(id_str, prio_text, due_str, title)

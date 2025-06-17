@@ -230,6 +230,31 @@ def to_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def format_due_for_display(iso_str: str) -> str:
+    """
+    Given an ISO‐format UTC datetime string, convert to the user's local tz
+    and render as:
+      - "MM-DD HH:MM" if it's this calendar year
+      - "YYYY-MM-DD HH:MM" otherwise
+    """
+    try:
+        # parse and ensure UTC‐aware
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        # convert to local tz
+        user_tz = get_user_timezone()
+        local_dt = dt.astimezone(user_tz)
+    except Exception:
+        return iso_str  # fallback to raw
+
+    now = datetime.now(user_tz)
+    if local_dt.year == now.year:
+        return local_dt.strftime("%m-%d %H:%M")
+    else:
+        return local_dt.strftime("%m-%d-%Y %H:%M")
+
+
 def to_local(dt: datetime) -> datetime:
     """
     Convert a datetime to the user’s local timezone.
