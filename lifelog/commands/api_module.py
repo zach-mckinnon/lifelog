@@ -64,7 +64,13 @@ def start_api(
             "-w", "4", "--timeout", "120",
             "lifelog.app:app"
         ]
-        subprocess.Popen(cmd)
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     else:
         console.print("[cyan]Starting Flask development server…[/cyan]")
         env = os.environ.copy()
@@ -194,15 +200,13 @@ def docker_cmd(
 
 
 def is_server_up(host: str, port: int) -> bool:
-    """
-    Check if API server is up by GET /api/status.
-    Returns True if status_code==200, False otherwise.
-    """
+    check_host = "127.0.0.1" if host in ("0.0.0.0", "*") else host
     try:
-        resp = requests.get(f"http://{host}:{port}/api/status", timeout=1)
+        resp = requests.get(
+            f"http://{check_host}:{port}/api/status", timeout=1)
         return resp.status_code == 200
-    except Exception as e:
-        logger.info(f"is_server_up check failed: {e}", exc_info=True)
+    except requests.RequestException as e:
+        logger.debug(f"is_server_up failed: {e}")     # drop exc_info
         return False
 
 
