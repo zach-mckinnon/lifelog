@@ -675,7 +675,7 @@ def focus_cli(
 
     console.print(f"[bold blue]Entering focus mode for:[/] {task.title}")
     console.print(
-        "[dim]Commands: [p]ause & exit, [d]one & exit, [P]toggle Pomodoro on/off[/dim]"
+        "[dim]Commands: [p]ause & exit, [d]one & exit, [t]toggle Pomodoro on/off[/dim]"
     )
 
     # 2) loop until pause (p) or done (d)
@@ -699,8 +699,9 @@ def focus_cli(
     while True:
         show_status()
         # non-blocking check for keypress
-        if console.input("[grey]?[/grey]", prompt_suffix="", show_default=False, style=None, end="") in ("p", "d", "P"):
-            key = console.input("")  # capture it
+        user_input = console.input("?")
+        if user_input in ("p", "d", "t"):
+            key = user_input
         else:
             key = None
 
@@ -715,7 +716,7 @@ def focus_cli(
             task_repository.update_task(id, {"status": "done"})
             run_hooks("task", "completed", task)
             return
-        if key == "P":
+        if key == "t":
             pomodoro = not pomodoro
             console.print(
                 f"\n[cyan]Pomodoro {'ON' if pomodoro else 'OFF'}[/cyan]")
@@ -733,7 +734,7 @@ def focus_cli(
                         "\n[green]✨ Break over — back to focus.[/green]")
                 else:
                     console.print(
-                        "\n[magenta]⏰ Focus block complete![/magenta]")
+                        "\n[cyan]⏰ Focus block complete![/cyan]")
                     # ask distraction
                     extra = typer.prompt("Distracted minutes?", default="0")
                     try:
