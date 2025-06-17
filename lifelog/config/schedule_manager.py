@@ -1,5 +1,7 @@
 from __future__ import annotations
 import logging
+from shlex import quote
+import shutil
 from typing import Optional
 # lifelog/config/cron_manager.py
 '''
@@ -293,3 +295,46 @@ def apply_windows_tasks() -> bool:
         logger.warning(
             "Some Windows scheduled tasks failed to update; check logs.")
     return all_ok
+
+
+def build_linux_notifier(cmd_msg: str) -> str:
+    """
+    Build a bash-safe one-liner that sends a persistent critical notification
+    and plays a sound. 
+    """
+    # timeout 0 = until dismissed; urgency critical = high visibility
+    notify = f"notify-send -u critical -t 0 {quote(cmd_msg)}"
+    # try canberra-gtk-play if installed, otherwise paplay, otherwise bell
+    if shutil.which("canberra-gtk-play"):
+        sound = "canberra-gtk-play --id='message'"
+    elif shutil.which("paplay"):
+        sound = "paplay /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+    else:
+        # fallback to terminal bell
+        sound = "printf '\\a'"
+    # run both
+    return f"bash -lc {quote(notify + ' && ' + sound)}"
+
+
+def build_windows_notifier(cmd_msg: str) -> list[str]:
+    """
+    Returns a PowerShell command array that:
+     - plays the system Exclamation sound,
+     - shows a blocking MessageBox until user clicks OK.
+    """
+    ps = [
+        "powershell.exe", "-NoProfile", "-Command",
+        # load forms and media, play sound, then MessageBox
+        (
+            "[Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null;"
+            "[Reflection.Assembly]::LoadWithPartialName('System.Drawing') | Out-Null;"
+            "[System.Media.SystemSounds]::Exclamation.Play();"
+            f"[void][System.Windows.Forms.MessageBox]::Show({quote(cmd_msg)},"
+            "'Lifelog Reminder',"
+            "[System.Windows.Forms.MessageBoxButtons]::OK,"
+            "[System.Windows.Forms.MessageBoxIcon]::Warning,"
+            "[System.Windows.Forms.MessageBoxDefaultButton]::Button1,"
+            "[System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly)"
+        )
+    ]
+    return ps

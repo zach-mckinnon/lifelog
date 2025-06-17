@@ -740,48 +740,34 @@ def initialize_application():
     """
     Full application initialization sequence.
     - Ensures base directory exists.
-    - Initializes DB schema if needed (no seeding here).
+    - Initializes DB schema if needed.
     - Loads config and ensures hooks directory.
-    - For non-UI commands: checks first-run and prompts if needed.
-    Returns True if initialization passes; exits on critical failure.
+    - Exits (1) if first-run not complete.
     """
     from lifelog.utils.shared_utils import now_utc
     try:
-        console.print(
-            "[bold green]🚀 Starting Lifelog initialization...[/bold green]")
-
         # 1. Ensure base directory exists
         cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
-        console.print(f"[dim]• Created base directory: {cf.BASE_DIR}[/dim]")
 
-        # 2. Initialize database schema (but do NOT seed here)
+        # 2. Initialize database schema if needed
         if not database_manager.is_initialized():
             database_manager.initialize_schema()
-            console.print("[dim]• Database schema initialized[/dim]")
+            run_seed()   # seed badges/skills
 
         # 3. Load or create config
         config = cf.load_config()
-        console.print("[dim]• Configuration loaded[/dim]")
         hooks_util.ensure_hooks_dir()
 
-        # 4. If setup hasn’t been completed, prompt the user to run ‘llog setup’
+        # 4. If first-run still not complete, tell the caller to invoke setup
         if not config.get("meta", {}).get("first_run_complete", False):
-            console.print(Panel(
-                "[bold yellow]Initial Setup Required[/bold yellow]\n"
-                "Please run: [bold cyan]llog setup[/bold cyan] to configure Lifelog",
-                style="yellow"
-            ))
+            # return False or sys.exit(1) so main_callback can handle it
             sys.exit(1)
 
-        # 5. Show daily greeting if this is the first command of the day
-        if check_first_command_of_day():
-            greet_user()
-            save_first_command_flag(str(now_utc()))
-
+        # All good
         return True
 
     except Exception as e:
-        console.print(f"[red]⚠️ Critical initialization error: {e}[/red]")
+        logger.error(f"Critical initialization error: {e}", exc_info=True)
         sys.exit(1)
 
 
@@ -990,53 +976,37 @@ def docker_deployment_exists() -> bool:
     return False
 
 
-@app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     """
-    Main callback invoked before any command.
-    - Ensures app initialization and logging setup.
-    - Skips profile/notification checks for setup/config-edit.
-    - Performs auto-sync if needed for other commands.
+    Main callback before any command.
+    - Sets up logging.
+    - Runs a silent initialization (no console.print).
+    - Then only prints notifications if present.
     """
-    # 1️⃣ Early logging and initialization
     log_utils.setup_logging()
     try:
-        ensure_app_initialized()
+        initialize_application()
     except typer.Exit:
-        # Let Typer handle exits (e.g. `llog setup`)
+        # let typer handle exit cleanly (e.g. when first-run detects setup needed)
         raise
     except Exception as e:
         logger.error(
-            f"Error in main_callback initialization: {e}", exc_info=True)
+            f"Initialization error in main_callback: {e}", exc_info=True)
         console.print(f"[red]Initialization error: {e}[/red]")
         raise typer.Exit(1)
 
-    # 2️⃣ If we're just running `setup` or editing config, skip user-profile hooks
-    if ctx.invoked_subcommand in ("setup", "config-edit"):
-        return
-
-    # 3️⃣ Auto-sync for normal commands
+    # Only show pending notifications, without any init banners
     if should_sync():
         try:
             auto_sync()
         except Exception as e:
-            logger.warning(
-                f"Auto-sync failed in main_callback: {e}", exc_info=True)
-            console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
+            logger.warning(f"Auto-sync failed: {e}", exc_info=True)
 
-    # 4️⃣ Fetch user profile & show notifications
-    try:
-        profile = _ensure_profile()
-        unread = get_unread_notifications(profile.id)
-        if unread:
-            console.print(
-                "[bold yellow]You have new notifications![/bold yellow]")
-            console.print("Run `llog hero notify` to view them.")
-    except Exception as e:
-        # If something is really wrong with the gamification tables, log it but don't block
-        logger.error(
-            f"Failed to load user profile/notifications: {e}", exc_info=True)
-    return
+    profile = _ensure_profile()
+    unread = get_unread_notifications(profile.id)
+    if unread:
+        console.print("[bold yellow]You have new notifications![/bold yellow]")
+        console.print("Run `llog hero notify` to view them.")
 
 
 lifelog_app = app

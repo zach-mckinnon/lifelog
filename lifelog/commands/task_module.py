@@ -8,9 +8,10 @@ from dataclasses import asdict
 
 from datetime import datetime, timedelta
 import re
-from shlex import shlex
+import platform
+from shlex import quote
+import shutil
 import subprocess
-from sys import platform
 import time
 import typer
 import json
@@ -28,12 +29,12 @@ import calendar
 
 from lifelog.utils.db.models import Task, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
-from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, get_available_categories, get_available_projects, get_available_tags, now_utc, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, validate_task_inputs
+from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, get_available_categories, get_available_projects, get_available_tags, now_local, now_utc, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, utc_iso_to_local, validate_task_inputs
 import lifelog.config.config_manager as cf
-from lifelog.config.schedule_manager import IS_POSIX, apply_scheduled_jobs, save_config
+from lifelog.config.schedule_manager import IS_POSIX, apply_scheduled_jobs, build_linux_notifier, build_windows_notifier, save_config
 from lifelog.utils.shared_options import category_option, project_option, due_option, impt_option, recur_option, past_option
 from lifelog.utils.get_quotes import get_feedback_saying
-from lifelog.utils.hooks import build_payload, run_hooks
+from lifelog.utils.hooks import run_hooks
 
 
 app = typer.Typer(help="Create and manage your personal tasks.")
@@ -1129,146 +1130,94 @@ def parse_due_offset(due_str):
     return timedelta(days_of_week=1)  # default fallback
 
 
-def create_due_alert(task, offset_str: str):
+def create_due_alert(task: Task, offset_str: str):
     """
-    Schedule a reminder alert for `task` at (due_time - offset).
-    On POSIX: writes a cron job (one‐off) in the [cron] section and calls apply_scheduled_jobs().
-    On Windows: creates a one‐time Scheduled Task via schtasks.exe at the exact date/time.
-    offset_str: e.g. '120' (minutes), '1d', '2h', '30m', '1w', etc.
+    Schedule a one-off reminder for `task` at (due_local_time - offset).
+    On POSIX: uses `at` if available, else falls back to cron via schedule_manager.
+    On Windows: uses schtasks.exe to run a PowerShell modal + sound.
     """
-    # 1. Obtain due_time from task.due
-    due = getattr(task, "due", None)
-    if not due:
+    # — 1) Parse and normalize the due time into a LOCAL-TZ aware datetime
+    if not task.due:
         raise ValueError("Task has no due date")
-    if isinstance(due, str):
-        try:
-            due_time = datetime.fromisoformat(due)
-        except Exception as e:
-            raise ValueError(
-                f"Task.due is not valid ISO datetime: {due}") from e
-    elif isinstance(due, datetime):
-        due_time = due
-    else:
-        raise ValueError(f"Unsupported due type: {type(due)}")
 
-    # 2. Parse offset_str into timedelta
-    try:
-        offset = parse_offset_to_timedelta(offset_str)
-    except ValueError as e:
-        raise ValueError(f"Invalid reminder offset: {e}") from e
+    # Parse ISO → aware UTC → to user's local TZ
+    due_local: datetime = utc_iso_to_local(task.due)
+    # — 2) Compute alert time
+    offset = parse_offset_to_timedelta(offset_str)
+    alert_local = due_local - offset
 
-    # 3. Compute alert_time
-    alert_time = due_time - offset
-    now = now_utc()
-    if alert_time < now:
+    now_l = now_local()
+    if alert_local < now_l:
         console.print(
-            f"[yellow]⚠️ Reminder time {alert_time.strftime('%Y-%m-%d %H:%M')} is in the past. Scheduling immediately.[/yellow]"
+            f"[yellow]⚠️ Reminder time {alert_local.strftime('%Y-%m-%d %H:%M')} is in the past. Scheduling immediately.[/yellow]"
         )
-        # schedule in ~5 seconds from now
-        alert_time = now + timedelta(seconds=5)
+        alert_local = now_l + timedelta(seconds=5)
+
+    # Build the textual message
+    msg = f"Reminder: Task [{task.id}] \"{task.title}\" is due at {due_local.strftime('%Y-%m-%d %H:%M')}"
 
     system = platform.system()
+    if system in ("Linux", "Darwin"):
+        # POSIX
+        notifier = build_linux_notifier(msg)
 
-    # Build the notification command. You may adjust for cross‐platform.
-    # For POSIX, we assume notify-send is available; for Windows, user might configure
-    # their own command or we can default to msg or PowerShell toast (left as an exercise).
-    # Here we simply reuse the same command string; on Windows you may need to adjust.
-    due_str = due_time.strftime('%Y-%m-%d %H:%M')
-    # Escape quotes via shlex.quote or manual
-    # We'll wrap title in quotes carefully:
-    # On POSIX: notify-send 'Reminder: Task [id] "title" is due at ...'
-    notification_message = f"Reminder: Task [{task.id}] \"{task.title}\" is due at {due_str}"
-    if IS_POSIX:
-        # POSIX: use notify-send
-        cmd = f"notify-send {shlex.quote(notification_message)}"
-    else:
-        # Windows: you might use PowerShell `New-BurntToastNotification` or `msg`, but leaving
-        # it simple: echo to console or use msg.exe if configured. User can customize config.
-        # Here we default to PowerShell popup if available; for now, fallback to msg:
-        # msg * "Reminder: Task [id] title is due at due_str"
-        # Note: msg requires messenger service or admin privileges; better to let user configure.
-        # For demo, we use a PowerShell balloon tip via PowerShell:
-        #   powershell -Command "New-BurntToastNotification -Text 'Reminder', 'Task ... is due at ...'"
-        # But BurntToast module may not be installed. As fallback, we just `msg`:
-        # We'll choose msg for simplicity:
-        msg_text = notification_message
-        cmd = f"msg * {shlex.quote(msg_text)}"
-        # You may let user override or detect a better notification command in config.
-
-    # 4. Schedule based on OS
-    if IS_POSIX:
-        # Build cron schedule: minute hour day month *
-        minute = alert_time.minute
-        hour = alert_time.hour
-        day = alert_time.day
-        month = alert_time.month
-        cron_time = f"{minute} {hour} {day} {month} *"
-
-        # Insert into config under [cron]
-        doc = cf.load_config()
-        cron_section = doc.get("cron", {})
-        name = f"task_due_{task.id}"
-        cron_section[name] = {
-            "schedule": cron_time,
-            "command": cmd
-        }
-        doc["cron"] = cron_section
-        ok = save_config(doc)
-        if not ok:
-            raise RuntimeError("Failed to save config for reminder")
-        apply_scheduled_jobs()
-        console.print(
-            f"[green]✅ Reminder scheduled at {alert_time.strftime('%Y-%m-%d %H:%M')} via cron[/green]")
-
-    else:
-        # Windows: schedule a one-time task via schtasks.exe
-        # Task name must be unique; prefix to avoid conflicts
-        name = f"Lifelog_task_due_{task.id}"
-        # Delete existing task with same name if any
-        try:
-            subprocess.run(
-                ["schtasks", "/Delete", "/TN", name, "/F"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=False
+        if shutil.which("at"):
+            # format for at: "HH:MM YYYY-MM-DD"
+            at_time = alert_local.strftime("%H:%M %m/%d/%Y")
+            # e.g. echo "<notifier>" | at 15:30 06/20/2025
+            full = f"echo {quote(notifier)} | at {at_time}"
+            subprocess.run(["bash", "-lc", full], check=True)
+            console.print(
+                f"[green]✅ Reminder scheduled via at at {alert_local.strftime('%Y-%m-%d %H:%M')}[/green]"
             )
-        except Exception:
-            # ignore
-            pass
+        else:
+            # fallback to cron entries
+            from lifelog.config.schedule_manager import save_config, apply_scheduled_jobs
+            import lifelog.config.config_manager as cf
+            cfg = cf.load_config()
+            name = f"task_due_{task.id}"
+            entry = {
+                "schedule": f"{alert_local.minute} {alert_local.hour} {alert_local.day} {alert_local.month} *",
+                "command": notifier
+            }
+            cron_sec = cfg.get("cron", {})
+            cron_sec[name] = entry
+            cfg["cron"] = cron_sec
+            if not save_config(cfg):
+                raise RuntimeError("Failed to save cron reminder")
+            apply_scheduled_jobs()
+            console.print(
+                f"[green]✅ Reminder scheduled via cron at {alert_local.strftime('%Y-%m-%d %H:%M')}[/green]"
+            )
 
-        # Prepare date/time strings for schtasks:
-        # /SC ONCE /ST HH:MM /SD MM/DD/YYYY
-        time_str = alert_time.strftime("%H:%M")
-        date_str = alert_time.strftime("%m/%d/%Y")
-        # Build command array
-        # Note: If cmd contains spaces or quotes, schtasks expects /TR "..." including quotes:
-        # We'll wrap cmd in double quotes.
-        # On Windows, msg * "text" may require double quotes around the message.
-        tr = cmd
-        # If the cmd string itself contains double quotes, escape them:
-        # For simplicity, wrap the entire cmd in double quotes and escape inner double quotes by backslash:
-        escaped_cmd = tr.replace('"', '\\"')
-        tr_quoted = f"\"{escaped_cmd}\""
-
-        schtasks_cmd = [
-            "schtasks",
-            "/Create",
+    elif system == "Windows":
+        # Windows Scheduled Task
+        # Build our PowerShell one-liner
+        ps_cmd = build_windows_notifier(msg)
+        name = f"Lifelog_task_due_{task.id}"
+        # delete any existing
+        subprocess.run(["schtasks", "/Delete", "/TN", name, "/F"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # format
+        date_str = alert_local.strftime("%m/%d/%Y")
+        time_str = alert_local.strftime("%H:%M")
+        sch = [
+            "schtasks", "/Create",
             "/SC", "ONCE",
             "/TN", name,
-            "/TR", tr_quoted,
+            "/TR", " ".join(ps_cmd),
             "/ST", time_str,
             "/SD", date_str,
+            "/RL", "HIGHEST",
             "/F"
         ]
-        try:
-            subprocess.run(schtasks_cmd, check=True)
-            console.print(
-                f"[green]✅ Reminder scheduled at {alert_time.strftime('%Y-%m-%d %H:%M')} via Windows Scheduled Task[/green]")
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"schtasks failed: {e}") from e
-        except FileNotFoundError as e:
-            raise RuntimeError(f"schtasks.exe not found: {e}") from e
-        except Exception as e:
-            raise RuntimeError(f"Failed to schedule Windows task: {e}") from e
+        subprocess.run(sch, check=True)
+        console.print(
+            f"[green]✅ Reminder scheduled via Windows Task Scheduler at {alert_local.strftime('%Y-%m-%d %H:%M')}[/green]"
+        )
+
+    else:
+        raise RuntimeError(f"Unsupported OS for reminders: {system}")
 
 
 def clear_due_alert(task):
