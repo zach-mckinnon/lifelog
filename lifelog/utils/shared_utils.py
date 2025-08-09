@@ -45,8 +45,15 @@ def parse_datetime_robust(dt_str: str) -> datetime:
         try:
             # Fall back to dateutil parser for complex formats
             return date_parser.isoparse(dt_str)
-        except Exception as e:
-            raise ValueError(f"Cannot parse datetime string '{dt_str}': {e}")
+        except Exception:
+            try:
+                # Manual fallback for common problematic format: "2025-08-09 19:14:23.995550+00:00"
+                # Replace space with T for ISO format
+                iso_format = dt_str.replace(' ', 'T')
+                return datetime.fromisoformat(iso_format)
+            except Exception as e:
+                raise ValueError(
+                    f"Cannot parse datetime string '{dt_str}': {e}")
 
 
 def ensure_utc_for_storage(dt: datetime) -> str:
