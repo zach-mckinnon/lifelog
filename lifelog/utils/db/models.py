@@ -327,10 +327,9 @@ Goal = Union[
 def get_tracker_fields() -> List[str]:
     """
     Return all Tracker‐table columns except 'id'.  
-    If your schema has: (id, uid, title, type, category, created),
-    this will return ['uid','title','type','category','created'].
+    Must match the actual database schema.
     """
-    return ["uid", "title", "type", "category", "created", "tags", "notes"]
+    return ["uid", "title", "type", "category", "created", "tags", "notes", "updated_at", "deleted"]
 
 
 # ───────────────────────────────────────────────────────────────────────────────
