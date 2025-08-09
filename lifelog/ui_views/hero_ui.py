@@ -26,7 +26,7 @@ def hero_menu(stdscr):
     ]
     while True:
         choices = [f"{i+1}. {o[0]}" for i, o in enumerate(options)]
-        sel = popup_show(stdscr, choices, title="🛡️ Hero Menu", wait=False)
+        sel = popup_show(stdscr, choices, title="🛡️ Hero Menu")
         key = stdscr.getch()
         idx = key - ord('1')
         if 0 <= idx < len(options):

@@ -569,7 +569,7 @@ def view_goals_list_tui(stdscr, tracker_sel):
             lines.append(display)
         lines.append("")  # blank
         lines.append("Enter: view goal  ↑/↓: select  q: quit")
-        popup_show(stdscr, lines, title=f"Goals for {t.title}", wait=False)
+        popup_show(stdscr, lines, title=f"Goals for {t.title}")
         c = stdscr.getch()
         if c in (ord('q'), 27):
             break
