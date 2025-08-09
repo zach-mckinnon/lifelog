@@ -41,7 +41,11 @@ def _ensure_profile() -> UserProfile:
 
     data = {
         "uid": str(uuid.uuid4()),
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "xp": 0,
+        "level": 1,
+        "gold": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "last_level_up": None
     }
     new_id = add_record(
         "user_profiles", normalize_for_db(data), get_profile_fields()
