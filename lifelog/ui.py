@@ -27,7 +27,19 @@ from lifelog.ui_views.ui_helpers import (
 )
 from lifelog.ui_views.popups import popup_confirm, popup_error, show_help_popup
 from lifelog.ui_views.start_day_ui import start_day_tui
-from lifelog.ui_views.reports_ui import draw_report, run_clinical_insights, run_daily_tracker, run_insights, run_summary_time, run_summary_trackers, draw_burndown
+from lifelog.ui_views.reports_ui import (
+    draw_report,
+    run_comprehensive_summary,
+    run_tracker_analysis,
+    run_time_analysis,
+    run_goals_analysis,
+    run_insights_analysis,
+    show_quick_summary,
+    show_tracker_popup,
+    # Legacy imports for backwards compatibility
+    run_clinical_insights,
+    draw_burndown
+)
 from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_filter, delete_task_tui, done_task_tui, draw_agenda,  edit_notes_tui, edit_recurrence_tui, edit_task_tui, focus_mode_tui, quick_add_task_tui, set_task_reminder_tui, start_task_tui, stop_task_tui, view_task_tui
 from lifelog.ui_views.time_ui import add_manual_time_entry_tui, delete_time_entry_tui, draw_time, edit_time_entry_tui, set_time_period, start_time_tui, status_time_tui, stop_time_tui, stopwatch_tui, summary_time_tui, view_time_entry_tui
 from lifelog.ui_views.trackers_ui import add_tracker_tui, delete_goal_tui, delete_tracker_tui, draw_trackers, edit_tracker_tui, log_entry_tui, show_goals_help_tui, view_goals_list_tui, view_tracker_tui
@@ -273,13 +285,21 @@ def main(stdscr, show_status: bool = True):
                 if key == ord("?"):
                     show_help_popup(stdscr, current)
                 elif key == ord("1"):
-                    run_summary_trackers(stdscr)
+                    show_quick_summary(stdscr)
                 elif key == ord("2"):
-                    run_summary_time(stdscr)
+                    run_comprehensive_summary(stdscr)
                 elif key == ord("3"):
-                    run_daily_tracker(stdscr)
+                    run_tracker_analysis(stdscr)
                 elif key == ord("4"):
-                    run_insights(stdscr)
+                    run_time_analysis(stdscr)
+                elif key == ord("5"):
+                    run_goals_analysis(stdscr)
+                elif key == ord("6"):
+                    run_insights_analysis(stdscr)
+                elif key == ord("Q") or key == ord("q"):
+                    show_quick_summary(stdscr)
+                elif key == ord("W") or key == ord("w"):
+                    show_tracker_popup(stdscr)
                 elif key == ord("C"):
                     run_clinical_insights(stdscr)
                 elif key == ord("B"):

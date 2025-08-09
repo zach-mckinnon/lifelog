@@ -49,7 +49,7 @@ def draw_status(stdscr, h, w, current_tab):
     elif current_tab == 3:  # Trackers
         hint = "a:Add  l:Log  g:Goal  v:View  x:Del  ?:Help  Q:Quit"
     elif current_tab == 4:  # Reports
-        hint = "1-4:Run Report C:Insights B:Burndown  ?:Help  Q:Quit"
+        hint = "1-6:Reports Q:Quick W:Trackers C:Clinical B:Burndown ?:Help"
     elif current_tab == 5:  # GAME
         hint = "Enter:Hero Menu  Q:Quit  ?:Help"
     else:

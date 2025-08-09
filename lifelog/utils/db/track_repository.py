@@ -238,6 +238,27 @@ def get_all_trackers(
     query += " ORDER BY created DESC"
     rows = safe_query(query, tuple(params))
     return [tracker_from_row(dict(r)) for r in rows]
+
+
+def get_all_trackers_with_entries() -> List[Dict[str, Any]]:
+    """Get all trackers with their entries included."""
+    trackers = get_all_trackers()
+    result = []
+    for tracker in trackers:
+        tracker_dict = tracker.__dict__ if hasattr(
+            tracker, '__dict__') else tracker
+        if isinstance(tracker_dict, dict):
+            tracker_dict = tracker_dict.copy()
+        else:
+            tracker_dict = {
+                'id': tracker.id,
+                'title': tracker.title,
+                'category': tracker.category,
+                'type': tracker.type
+            }
+        tracker_dict['entries'] = get_entries_for_tracker(tracker.id)
+        result.append(tracker_dict)
+    return result
 # Add tracker: set created, updated_at, deleted, serialize any enums if needed
 
 
