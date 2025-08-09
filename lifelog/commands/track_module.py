@@ -96,10 +96,11 @@ def add(
     # Create Tracker dataclass
 
     tracker = Tracker(
+        id=None,  # Will be auto-assigned by database
         title=title,
         type=type,
         category=category,
-        created=now.isoformat(),
+        created=now,  # Pass datetime object, not ISO string
         tags=",".join(tags) if tags else None,
         notes=" ".join(notes) if notes else None,
     )

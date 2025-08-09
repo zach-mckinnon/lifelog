@@ -174,7 +174,7 @@ class Tracker(BaseModel):
     title: str
     type: str
     category: Optional[str]
-    created: str
+    created: Optional[datetime]
     tags: Optional[str] = None
     notes: Optional[str] = None
     entries: Optional[List['TrackerEntry']] = None
