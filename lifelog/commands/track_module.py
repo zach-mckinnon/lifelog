@@ -92,7 +92,7 @@ def add(
     goal = None
     if Confirm.ask("Would you like to add a goal to this tracker?"):
         goal = create_goal_interactive(type)
-        track_repository.validate_goal_fields(goal)
+        # Goal validation is handled by the repository during insertion
     # Create Tracker dataclass
 
     tracker = Tracker(
