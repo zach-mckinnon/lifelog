@@ -15,7 +15,8 @@ dependencies = [
     "requests",
     "scipy",
     "tomlkit",
-    "pandas",
+    "pandas<2.0; platform_machine != 'armv7l'",  # Avoid compilation issues on ARM
+    "pandas>=1.3.0,<2.0; platform_machine == 'armv7l'",  # Specific ARM version
     "toml",
     "plotille",
     "plotext",
@@ -31,6 +32,18 @@ dependencies = [
     "pywin32; sys_platform == 'win32'",
 ]
 requires-python = ">=3.8"
+
+[project.optional-dependencies]
+# Lightweight version for ARM devices with limited resources
+arm = [
+    "polars",  # Lightweight pandas alternative
+]
+# Full analytics for powerful machines
+analytics = [
+    "pandas>=2.0",
+    "matplotlib",
+    "seaborn",
+]
 
 [project.scripts]
 llog = "lifelog.llog:lifelog_app"
