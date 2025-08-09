@@ -335,9 +335,21 @@ class GoalReplacement(GoalBase):
     uid: str = None
 
 
+@dataclass
+class GoalAverage(GoalBase):
+    # Expected minimum (for outlier detection)
+    min_expected: Optional[float] = None
+    # Expected maximum (for outlier detection)
+    max_expected: Optional[float] = None
+    outlier_threshold: float = 1.5  # Standard deviations for outlier detection
+    period: str = "week"  # day/week/month - default to week for meaningful averages
+    unit: Optional[str] = None
+    uid: str = None
+
+
 Goal = Union[
     GoalSum, GoalCount, GoalBool, GoalStreak, GoalDuration, GoalMilestone,
-    GoalReduction, GoalRange, GoalPercentage, GoalReplacement
+    GoalReduction, GoalRange, GoalPercentage, GoalReplacement, GoalAverage
 ]
 
 # lifelog/utils/db/models.py
@@ -480,6 +492,12 @@ def goal_from_row(row):
         return GoalPercentage(**base, target_percentage=row["target_percentage"], current_percentage=row.get("current_percentage", 0))
     elif kind == "replacement":
         return GoalReplacement(**base, old_behavior=row["old_behavior"], new_behavior=row["new_behavior"])
+    elif kind == "average":
+        return GoalAverage(**base,
+                           min_expected=row.get("min_expected"),
+                           max_expected=row.get("max_expected"),
+                           outlier_threshold=row.get("outlier_threshold", 1.5),
+                           unit=row.get("unit"))
     else:
         raise ValueError(f"Unknown goal kind: {kind}")
 

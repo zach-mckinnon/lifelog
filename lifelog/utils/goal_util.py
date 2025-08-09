@@ -23,6 +23,7 @@ class GoalKind(str, Enum):
     RANGE = "range"
     PERCENTAGE = "percentage"
     REPLACEMENT = "replacement"
+    AVERAGE = "average"
 
 
 class Period(str, Enum):
@@ -44,6 +45,7 @@ def get_description_for_goal_kind(kind: GoalKind) -> str:
         GoalKind.RANGE: "Track values within specific upper and lower bounds",
         GoalKind.PERCENTAGE: "Track completion percentage toward a larger objective",
         GoalKind.REPLACEMENT: "Track substitution of one behavior for another",
+        GoalKind.AVERAGE: "Calculate averages with outlier detection and notes (e.g., mood analysis with context)",
     }
     return descriptions.get(kind, "No description available")
 
@@ -55,7 +57,8 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
 
     if type in ["int", "float"]:
         allowed_kinds = [GoalKind.SUM, GoalKind.COUNT, GoalKind.MILESTONE,
-                         GoalKind.RANGE, GoalKind.DURATION, GoalKind.PERCENTAGE, GoalKind.REDUCTION]
+                         GoalKind.RANGE, GoalKind.DURATION, GoalKind.PERCENTAGE,
+                         GoalKind.REDUCTION, GoalKind.AVERAGE]
     elif type == "bool":
         allowed_kinds = [GoalKind.COUNT, GoalKind.BOOL, GoalKind.STREAK]
     elif type == "str":
@@ -117,7 +120,7 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
 
     # Additional fields based on goal kind
     if goal_kind == GoalKind.BOOL:
-        goal.amount = True
+        goal["amount"] = True
     elif goal_kind == GoalKind.RANGE:
         goal["min_amount"] = float(typer.prompt(
             "Enter minimum value", type=float))
@@ -128,7 +131,7 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
     elif goal_kind == GoalKind.REPLACEMENT:
         goal["old_behavior"] = typer.prompt("Enter behavior to replace")
         goal["new_behavior"] = typer.prompt("Enter replacement behavior")
-        goal.amount = True
+        goal["amount"] = True
     elif goal_kind == GoalKind.PERCENTAGE:
         goal["target_percentage"] = float(typer.prompt(
             "Enter target percentage (0-100)", type=float))
@@ -144,14 +147,31 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
         goal["target_streak"] = int(typer.prompt(
             "Enter target streak length", type=int))
     elif goal_kind == GoalKind.DURATION:
-        goal.amount = float(typer.prompt(
+        goal["amount"] = float(typer.prompt(
             "Enter duration amount", type=float))
         goal["unit"] = typer.prompt(
             "Enter time unit (e.g., 'minutes', 'hours')", default="minutes")
     elif goal_kind in [GoalKind.SUM, GoalKind.COUNT, GoalKind.REDUCTION]:
-        goal.amount = float(typer.prompt("Enter target amount", type=float))
+        goal["amount"] = float(typer.prompt("Enter target amount", type=float))
         goal["unit"] = typer.prompt(
             "Enter unit (e.g., 'oz', 'times', 'pages', leave blank if none)", default="")
+    elif goal_kind == GoalKind.AVERAGE:
+        console.print(
+            "[yellow]Average goals help analyze trends and identify outliers with context.[/yellow]")
+        goal["min_expected"] = None
+        goal["max_expected"] = None
+
+        # Optional: Set expected range for outlier detection
+        if typer.confirm("Do you want to set an expected range for outlier detection?", default=False):
+            goal["min_expected"] = float(typer.prompt(
+                "Enter minimum expected value", type=float))
+            goal["max_expected"] = float(typer.prompt(
+                "Enter maximum expected value", type=float))
+
+        goal["outlier_threshold"] = float(typer.prompt(
+            "Enter outlier threshold (standard deviations)", default=1.5, type=float))
+        goal["unit"] = typer.prompt(
+            "Enter unit (e.g., 'points', 'rating', leave blank if none)", default="")
 
     return goal
 
@@ -308,6 +328,70 @@ def calculate_goal_progress(tracker: Tracker) -> Dict[str, Any]:
             "new_count": new_count,
             "old_count": old_count
         })
+    elif kind == "average":
+        import numpy as np
+
+        # Calculate basic statistics
+        values = df_filtered["value"]
+        mean_val = values.mean()
+        std_val = values.std()
+        median_val = values.median()
+        count = len(values)
+
+        # Outlier detection using standard deviations
+        outlier_threshold = getattr(goal, "outlier_threshold", 1.5)
+        z_scores = np.abs((values - mean_val) /
+                          std_val) if std_val > 0 else np.zeros(len(values))
+        outlier_mask = z_scores > outlier_threshold
+
+        # Get outliers with their context (notes, timestamps)
+        outliers = []
+        if outlier_mask.any():
+            outlier_df = df_filtered[outlier_mask].copy()
+            for _, row in outlier_df.iterrows():
+                outlier_entry = {
+                    "value": row["value"],
+                    "timestamp": row["timestamp"],
+                    "notes": row.get("notes", ""),
+                    "z_score": z_scores[outlier_df.index.get_loc(row.name)]
+                }
+                outliers.append(outlier_entry)
+
+        # Range validation if expected bounds are set
+        min_expected = getattr(goal, "min_expected", None)
+        max_expected = getattr(goal, "max_expected", None)
+        in_expected_range = True
+
+        if min_expected is not None and max_expected is not None:
+            in_expected_range = min_expected <= mean_val <= max_expected
+
+        # Trend analysis (simple: comparing first half vs second half)
+        trend = "stable"
+        if count >= 4:
+            mid_point = count // 2
+            first_half_mean = values.iloc[:mid_point].mean()
+            second_half_mean = values.iloc[mid_point:].mean()
+            diff_pct = ((second_half_mean - first_half_mean) /
+                        first_half_mean * 100) if first_half_mean != 0 else 0
+
+            if diff_pct > 10:
+                trend = "increasing"
+            elif diff_pct < -10:
+                trend = "decreasing"
+
+        progress.update({
+            "progress": mean_val,
+            "target": (min_expected, max_expected) if min_expected and max_expected else None,
+            "completed": in_expected_range,
+            "mean": mean_val,
+            "median": median_val,
+            "std_dev": std_val,
+            "count": count,
+            "outliers": outliers,
+            "outlier_count": len(outliers),
+            "trend": trend,
+            "in_expected_range": in_expected_range
+        })
     else:
         progress.update(
             {"progress": None, "status": "Unknown goal kind", "completed": False})
@@ -355,5 +439,16 @@ def format_goal_progress_for_list_view(tracker: Tracker, progress: Dict[str, Any
         new_count = progress.get("new_count", 0)
         old_count = progress.get("old_count", 0)
         return f"Replacing: {new_count} new / {old_count} old ({value:.1f}%) {check}"
+    if kind == "average":
+        mean_val = progress.get("mean", 0)
+        outlier_count = progress.get("outlier_count", 0)
+        trend = progress.get("trend", "stable")
+        count = progress.get("count", 0)
+
+        trend_icon = {"increasing": "📈", "decreasing": "📉",
+                      "stable": "➡️"}.get(trend, "➡️")
+        outlier_str = f", {outlier_count} outliers" if outlier_count > 0 else ""
+
+        return f"Avg: {mean_val:.1f} ({count} entries{outlier_str}) {trend_icon} {check}"
     # Unknown
     return str(value)

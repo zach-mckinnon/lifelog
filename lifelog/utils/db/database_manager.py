@@ -66,6 +66,23 @@ def run_migrations(silent=True):
                 migrations_run.append(
                     "Added 'notes' column to tracker_entries")
 
+            # Migration: Add goal_average table if it doesn't exist
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='goal_average'")
+            if not cursor.fetchone():
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS goal_average (
+                        goal_id INTEGER PRIMARY KEY,
+                        uid TEXT UNIQUE,
+                        min_expected REAL,
+                        max_expected REAL,
+                        outlier_threshold REAL DEFAULT 1.5,
+                        unit TEXT,
+                        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+                    )
+                """)
+                migrations_run.append("Added 'goal_average' table")
+
     except sqlite3.Error as e:
         if not silent:
             print(f"Migration error: {e}")
@@ -211,6 +228,16 @@ def initialize_schema():
                 uid TEXT UNIQUE,
                 old_behavior TEXT NOT NULL,
                 new_behavior TEXT NOT NULL,
+                FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS goal_average (
+                goal_id INTEGER PRIMARY KEY,
+                uid TEXT UNIQUE,
+                min_expected REAL,
+                max_expected REAL,
+                outlier_threshold REAL DEFAULT 1.5,
+                unit TEXT,
                 FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
             );
 

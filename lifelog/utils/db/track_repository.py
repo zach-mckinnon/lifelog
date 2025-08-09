@@ -338,6 +338,97 @@ def get_entries_for_tracker(tracker_id: int) -> List[TrackerEntry]:
     return [entry_from_row(dict(r)) for r in rows]
 
 
+def _fetch_goal_details(goal_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Fetch goal-specific details and merge with core goal data."""
+    goal_id = goal_dict["id"]
+    kind = goal_dict["kind"]
+
+    if kind in ["sum", "count", "reduction"]:
+        detail_rows = safe_query(
+            "SELECT * FROM goal_sum WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "amount": detail["amount"],
+                "unit": detail.get("unit")
+            })
+    elif kind == "bool":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_bool WHERE goal_id = ?", (goal_id,))
+        # bool goals don't have additional fields beyond core
+    elif kind == "streak":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_streak WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "target_streak": detail["target_streak"],
+                "current_streak": detail.get("current_streak", 0),
+                "best_streak": detail.get("best_streak", 0)
+            })
+    elif kind == "duration":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_duration WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "amount": detail["amount"],
+                "unit": detail.get("unit", "minutes")
+            })
+    elif kind == "milestone":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_milestone WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "target": detail["target"],
+                "current": detail.get("current", 0),
+                "unit": detail.get("unit")
+            })
+    elif kind == "range":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_range WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "min_amount": detail["min_amount"],
+                "max_amount": detail["max_amount"],
+                "unit": detail.get("unit"),
+                "mode": detail.get("mode", "goal")
+            })
+    elif kind == "percentage":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_percentage WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "target_percentage": detail["target_percentage"],
+                "current_percentage": detail.get("current_percentage", 0)
+            })
+    elif kind == "replacement":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_replacement WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "old_behavior": detail["old_behavior"],
+                "new_behavior": detail["new_behavior"]
+            })
+    elif kind == "average":
+        detail_rows = safe_query(
+            "SELECT * FROM goal_average WHERE goal_id = ?", (goal_id,))
+        if detail_rows:
+            detail = dict(detail_rows[0])
+            goal_dict.update({
+                "min_expected": detail.get("min_expected"),
+                "max_expected": detail.get("max_expected"),
+                "outlier_threshold": detail.get("outlier_threshold", 1.5),
+                "unit": detail.get("unit")
+            })
+
+    return goal_dict
+
+
 def get_goals_for_tracker(tracker_id: int) -> List[Goal]:
     if should_sync():
         _pull_changed_goals_from_host()
@@ -347,8 +438,9 @@ def get_goals_for_tracker(tracker_id: int) -> List[Goal]:
     result: List[Goal] = []
     for core in rows:
         core_d = dict(core)
-        # detail fetch omitted for brevity
-        result.append(goal_from_row(core_d))
+        # Fetch goal-specific details
+        goal_d = _fetch_goal_details(core_d)
+        result.append(goal_from_row(goal_d))
     return result
 
 
@@ -357,8 +449,9 @@ def get_goal_by_id(goal_id: int) -> Optional[Goal]:
     if not rows:
         return None
     d = dict(rows[0])
-    # detail fetch omitted for brevity
-    return goal_from_row(d)
+    # Fetch goal-specific details
+    goal_d = _fetch_goal_details(d)
+    return goal_from_row(goal_d)
 
 
 def add_goal(tracker_id: int, goal_data: Dict[str, Any]) -> Goal:
@@ -370,7 +463,56 @@ def add_goal(tracker_id: int, goal_data: Dict[str, Any]) -> Goal:
 
     rows = safe_query("SELECT id FROM goals WHERE uid = ?", (data["uid"],))
     new_id = rows[0]["id"]
-    # detail insertion omitted for brevity
+
+    # Insert goal-specific details based on kind
+    kind = data.get("kind")
+    if kind == "sum" or kind == "count" or kind == "reduction":
+        safe_execute("""
+            INSERT INTO goal_sum (goal_id, uid, amount, unit) 
+            VALUES (?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("amount"), data.get("unit")))
+    elif kind == "bool":
+        safe_execute("""
+            INSERT INTO goal_bool (goal_id, uid) 
+            VALUES (?, ?)
+        """, (new_id, data["uid"]))
+    elif kind == "streak":
+        safe_execute("""
+            INSERT INTO goal_streak (goal_id, uid, target_streak, current_streak) 
+            VALUES (?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("target_streak", 0), 0))
+    elif kind == "duration":
+        safe_execute("""
+            INSERT INTO goal_duration (goal_id, uid, amount, unit) 
+            VALUES (?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("amount"), data.get("unit", "minutes")))
+    elif kind == "milestone":
+        safe_execute("""
+            INSERT INTO goal_milestone (goal_id, uid, target, current, unit) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("target"), 0, data.get("unit")))
+    elif kind == "range":
+        safe_execute("""
+            INSERT INTO goal_range (goal_id, uid, min_amount, max_amount, unit, mode) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("min_amount"), data.get("max_amount"),
+              data.get("unit"), data.get("mode", "goal")))
+    elif kind == "percentage":
+        safe_execute("""
+            INSERT INTO goal_percentage (goal_id, uid, target_percentage, current_percentage) 
+            VALUES (?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("target_percentage"), 0))
+    elif kind == "replacement":
+        safe_execute("""
+            INSERT INTO goal_replacement (goal_id, uid, old_behavior, new_behavior) 
+            VALUES (?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("old_behavior"), data.get("new_behavior")))
+    elif kind == "average":
+        safe_execute("""
+            INSERT INTO goal_average (goal_id, uid, min_expected, max_expected, outlier_threshold, unit) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (new_id, data["uid"], data.get("min_expected"), data.get("max_expected"),
+              data.get("outlier_threshold", 1.5), data.get("unit")))
 
     if not is_direct_db_mode() and should_sync():
         queue_sync_operation("goals", "create", data)
