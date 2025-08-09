@@ -182,7 +182,7 @@ def list_trackers(
     """
     List trackers with optional filtering by title or category.
     """
-    trackers = track_repository.query_trackers(
+    trackers = track_repository.get_all_trackers(
         title_contains=title_contains,
         category=category
     )
