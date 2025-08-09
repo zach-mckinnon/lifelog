@@ -49,6 +49,51 @@ def parse_datetime_robust(dt_str: str) -> datetime:
             raise ValueError(f"Cannot parse datetime string '{dt_str}': {e}")
 
 
+def ensure_utc_for_storage(dt: datetime) -> str:
+    """
+    Ensure a datetime is converted to UTC ISO string for database storage.
+
+    Args:
+        dt: datetime object (naive or timezone-aware)
+
+    Returns:
+        str: UTC ISO string suitable for database storage
+    """
+    if dt is None:
+        return None
+
+    # If naive, assume it's in user's local timezone
+    if dt.tzinfo is None:
+        user_tz = get_user_timezone()
+        dt = dt.replace(tzinfo=user_tz)
+
+    # Convert to UTC and return ISO string
+    utc_dt = dt.astimezone(timezone.utc)
+    return utc_dt.isoformat()
+
+
+def convert_local_input_to_utc(dt_input) -> datetime:
+    """
+    Convert user input (string or datetime) to UTC datetime for storage.
+    Assumes user input is in their local timezone unless explicitly specified.
+
+    Args:
+        dt_input: datetime object, ISO string, or other parseable datetime
+
+    Returns:
+        datetime: UTC-aware datetime object
+    """
+    if dt_input is None:
+        return None
+
+    if isinstance(dt_input, str):
+        dt = parse_datetime_robust(dt_input)
+    else:
+        dt = dt_input
+
+    return to_utc(dt)
+
+
 def now_utc() -> datetime:
     """
     Return current time as UTC-aware datetime.

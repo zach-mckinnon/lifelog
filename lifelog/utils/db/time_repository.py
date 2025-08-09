@@ -16,7 +16,7 @@ from lifelog.utils.db import (
 )
 from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
-from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, parse_datetime_robust
+from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, parse_datetime_robust, ensure_utc_for_storage, convert_local_input_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -192,12 +192,14 @@ def get_active_time_entry() -> Optional[TimeLog]:
 
 
 def start_time_entry(data: Dict[str, Any]) -> TimeLog:
-    from lifelog.utils.shared_utils import now_utc
-    # normalize start
+    # Normalize start time - ensure it's stored as UTC
     start_val = data.get("start")
-    if isinstance(start_val, datetime):
-        data["start"] = start_val.isoformat()
-    elif not start_val:
+    if start_val:
+        # Convert user input (local time) to UTC for storage
+        utc_start = convert_local_input_to_utc(start_val)
+        data["start"] = utc_start.isoformat()
+    else:
+        # Default to current UTC time
         data["start"] = now_utc().isoformat()
 
     # assign uid
@@ -349,14 +351,14 @@ def stop_active_time_entry(
     tags: Optional[str] = None,
     notes: Optional[str] = None
 ) -> TimeLog:
-    # Normalize end_time into a datetime
+    # Normalize end_time - convert to UTC for storage
     if isinstance(end_time, str):
         try:
-            end_dt = parse_datetime_robust(end_time)
+            end_dt = convert_local_input_to_utc(end_time)
         except Exception as e:
             raise ValueError(f"Invalid end_time format: {end_time}") from e
     elif isinstance(end_time, datetime):
-        end_dt = end_time
+        end_dt = to_utc(end_time)  # Ensure UTC for storage
     else:
         raise ValueError("end_time must be a datetime or ISO string")
 

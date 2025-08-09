@@ -6,7 +6,7 @@ from lifelog.config.config_manager import is_host_server
 from lifelog.utils.db.models import Task, TaskStatus, get_task_fields, task_from_row
 from lifelog.utils.db import get_connection, normalize_for_db
 from lifelog.utils.db import add_record, update_record
-from lifelog.utils.shared_utils import parse_datetime_robust
+from lifelog.utils.shared_utils import parse_datetime_robust, ensure_utc_for_storage, convert_local_input_to_utc, now_utc
 from datetime import datetime
 import sqlite3
 
@@ -124,16 +124,21 @@ def add_task(task_data: Any) -> Task:
             logger.error("Priority calc failed: %s", e, exc_info=True)
             data["priority"] = 1.0
 
-    # Convert datetime field strings to datetime objects (like time_repository)
+    # Convert datetime field strings to UTC datetime objects for storage
     datetime_fields = ["created", "due", "start", "end", "recur_base"]
     for field in datetime_fields:
         if field in data and data[field] is not None and isinstance(data[field], str):
             try:
-                data[field] = parse_datetime_robust(data[field])
+                # Convert user input (local time) to UTC for database storage
+                data[field] = convert_local_input_to_utc(data[field])
             except Exception:
                 logger.warning(
                     f"Invalid datetime string for {field}: {data[field]}")
                 data[field] = None
+
+    # Set created timestamp to UTC if not provided
+    if not data.get("created"):
+        data["created"] = now_utc()
 
     # UID
     if not data.get("uid"):
@@ -174,19 +179,20 @@ def update_task(task_id: int, updates: Dict[str, Any]) -> None:
                 f"Invalid status '{status_val}' in update, ignoring field")
             updates.pop('status', None)
 
-    # Convert datetime field strings to datetime objects (consistent with add_task)
+    # Convert datetime field strings to UTC datetime objects for storage
     datetime_fields = ["created", "due", "start", "end", "recur_base"]
     for field in datetime_fields:
         if field in updates and updates[field] is not None and isinstance(updates[field], str):
             try:
-                updates[field] = parse_datetime_robust(updates[field])
+                # Convert user input (local time) to UTC for database storage
+                updates[field] = convert_local_input_to_utc(updates[field])
             except Exception:
                 logger.warning(
                     f"Invalid datetime string for {field}: {updates[field]}")
                 updates.pop(field, None)
 
-    # Set updated_at
-    updates['updated_at'] = datetime.now()
+    # Set updated_at to UTC
+    updates['updated_at'] = now_utc()
     db_updates = normalize_for_db(updates)
 
     if is_direct_db_mode():
