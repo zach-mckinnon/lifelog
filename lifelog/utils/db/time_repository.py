@@ -16,7 +16,7 @@ from lifelog.utils.db import (
 )
 from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
-from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc
+from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, parse_datetime_robust
 
 logger = logging.getLogger(__name__)
 
@@ -352,7 +352,7 @@ def stop_active_time_entry(
     # Normalize end_time into a datetime
     if isinstance(end_time, str):
         try:
-            end_dt = datetime.fromisoformat(end_time)
+            end_dt = parse_datetime_robust(end_time)
         except Exception as e:
             raise ValueError(f"Invalid end_time format: {end_time}") from e
     elif isinstance(end_time, datetime):
@@ -366,7 +366,7 @@ def stop_active_time_entry(
 
     # Parse stored start (assuming active.start is ISO string)
     try:
-        start_dt = datetime.fromisoformat(active.start)
+        start_dt = parse_datetime_robust(active.start)
     except Exception:
         raise RuntimeError(
             f"Cannot parse start time of active entry: {active.start}")

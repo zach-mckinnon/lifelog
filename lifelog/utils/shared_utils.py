@@ -6,7 +6,7 @@ It includes features for generating daily, weekly, and monthly reports, as well 
 '''
 
 from datetime import datetime, timedelta, timezone
-from dateutil import tz
+from dateutil import tz, parser as date_parser
 import logging
 from dateutil.relativedelta import relativedelta
 
@@ -19,6 +19,34 @@ import lifelog.config.config_manager as cf
 from lifelog.utils.db.models import Task
 
 console = Console()
+
+
+def parse_datetime_robust(dt_str: str) -> datetime:
+    """
+    Robust datetime parsing that handles various formats including timezone-aware strings.
+    Falls back to dateutil.parser if fromisoformat fails.
+
+    Args:
+        dt_str: Datetime string in various formats
+
+    Returns:
+        datetime: Parsed datetime object (timezone-aware when possible)
+
+    Raises:
+        ValueError: If string cannot be parsed
+    """
+    if not dt_str:
+        raise ValueError("Empty datetime string")
+
+    try:
+        # Try fromisoformat first (fastest)
+        return datetime.fromisoformat(dt_str)
+    except ValueError:
+        try:
+            # Fall back to dateutil parser for complex formats
+            return date_parser.isoparse(dt_str)
+        except Exception as e:
+            raise ValueError(f"Cannot parse datetime string '{dt_str}': {e}")
 
 
 def now_utc() -> datetime:
