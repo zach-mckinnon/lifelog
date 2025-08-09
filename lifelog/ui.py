@@ -36,8 +36,6 @@ from lifelog.ui_views.reports_ui import (
     run_insights_analysis,
     show_quick_summary,
     show_tracker_popup,
-    # Legacy imports for backwards compatibility
-    run_clinical_insights,
     draw_burndown
 )
 from lifelog.ui_views.tasks_ui import add_task_tui, clone_task_tui, cycle_task_filter, delete_task_tui, done_task_tui, draw_agenda,  edit_notes_tui, edit_recurrence_tui, edit_task_tui, focus_mode_tui, quick_add_task_tui, set_task_reminder_tui, start_task_tui, stop_task_tui, view_task_tui
@@ -301,7 +299,8 @@ def main(stdscr, show_status: bool = True):
                 elif key == ord("W") or key == ord("w"):
                     show_tracker_popup(stdscr)
                 elif key == ord("C"):
-                    run_clinical_insights(stdscr)
+                    # Use comprehensive insights instead
+                    run_insights_analysis(stdscr)
                 elif key == ord("B"):
                     draw_burndown(stdscr, 0)
                 elif key in (ord("q"), 27):
