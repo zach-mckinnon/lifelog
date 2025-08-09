@@ -160,12 +160,15 @@ def start_day_tui(stdscr):
         _log_initial_trackers_tui(stdscr)
         mood = safe_input(stdscr, "How did you feel?", default="")
         if mood:
-            entry = track_repository.add_tracker_entry(
-                tracker_id=None,
-                timestamp=now_utc(),
-                value=mood
-            )
-            run_hooks("tracker", "logged", entry)
+            # Try to find a "mood" tracker, skip if not found
+            mood_tracker = track_repository.get_tracker_by_title("mood")
+            if mood_tracker:
+                entry = track_repository.add_tracker_entry(
+                    tracker_id=mood_tracker.id,
+                    timestamp=now_utc(),
+                    value=mood
+                )
+                run_hooks("tracker", "logged", entry)
 
         # Hydration & lunch reminders
         elapsed = datetime.now(timezone.utc) - session_start

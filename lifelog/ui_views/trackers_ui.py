@@ -95,16 +95,16 @@ def add_tracker_tui(stdscr):
     if not data or not data.get("title"):
         return
 
-    now = now_utc().isoformat()
+    now = now_utc()  # Keep as datetime object
     tracker = Tracker(
         id=None,
         title=data["title"],
         type=data["type"],
         category=data["category"],
-        created=now,
+        created=now,  # Pass datetime object
         tags=data["tags"],
         notes=data["notes"],
-        goals=[]
+        goals=None
     )
 
     # Ask about adding a goal (optional)
@@ -151,13 +151,11 @@ def log_entry_tui(stdscr):
         value = value.lower() in ("1", "true", "yes", "y")
     # else, str
 
-    entry = TrackerEntry(
-        id=None,
+    entry = track_repository.add_tracker_entry(
         tracker_id=tracker.id,
         timestamp=timestamp,
-        value=value,
+        value=value
     )
-    entry = track_repository.add_tracker_entry(entry)
     run_hooks("tracker", "logged", entry)
     npyscreen.notify_confirm(f"Entry logged for '{tracker.title}'.")
 
@@ -305,13 +303,11 @@ def log_tracker_entry_tui(stdscr, sel):
         value = value_str
 
     timestamp = now_utc().isoformat()
-    entry = TrackerEntry(
-        id=None,
+    _ent = track_repository.add_tracker_entry(
         tracker_id=tracker.id,
         timestamp=timestamp,
-        value=value,
+        value=value
     )
-    _ent = track_repository.add_tracker_entry(entry)
     run_hooks("tracker", "logged", _ent)
     popup_show(stdscr, [f"Entry logged for '{tracker.title}'."])
 

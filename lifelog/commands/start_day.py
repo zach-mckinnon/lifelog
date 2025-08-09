@@ -248,12 +248,15 @@ def start_day(overload_threshold: int = 480):
         feeling = typer.prompt(
             "How did you feel? (e.g. great, tired)", default="")
         if feeling:
-            entry = track_repository.add_tracker_entry(
-                tracker_id=None,  # or use a special "mood" tracker
-                timestamp=now_utc(),
-                value=feeling,
-            )
-            run_hooks("tracker", "logged", entry)
+            # Try to find a "mood" tracker, skip if not found
+            mood_tracker = track_repository.get_tracker_by_title("mood")
+            if mood_tracker:
+                entry = track_repository.add_tracker_entry(
+                    tracker_id=mood_tracker.id,
+                    timestamp=now_utc(),
+                    value=feeling,
+                )
+                run_hooks("tracker", "logged", entry)
 
         # Periodic reminders
         hydrate_and_lunch_reminder(session_start, reminders)

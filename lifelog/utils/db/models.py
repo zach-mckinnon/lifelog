@@ -205,10 +205,10 @@ def tracker_from_row(row: Dict[str, Any]) -> Tracker:
 
 @dataclass
 class TrackerEntry(BaseModel):
-    id: int
-    tracker_id: int
-    timestamp: str
-    value: float
+    id: Optional[int] = None
+    tracker_id: int = None
+    timestamp: str = None
+    value: float = None
     uid: str = None
 
 
@@ -377,22 +377,6 @@ def get_goal_fields() -> List[str]:
 #
 #    In many tables, you may not store 'tags' or 'notes'; they can default to None.
 # ───────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class Tracker(BaseModel):
-    id: Optional[int]
-    title: str
-    type: str
-    category: Optional[str]
-    created: str
-    tags: Optional[str] = None
-    notes: Optional[str] = None
-    goals: Optional[list] = None
-    uid: str = None
-
-
-# ───────────────────────────────────────────────────────────────────────────────
 # 4) entry_from_row(row: Dict[str,Any]) → TrackerEntry
 #
 #    The “tracker_entries” schema is:
@@ -415,6 +399,8 @@ class Tracker(BaseModel):
 #
 #    We simply pull the four stored columns; uid isn’t stored locally, so it stays None.
 # ───────────────────────────────────────────────────────────────────────────────
+
+
 @dataclass
 class EnvironmentData(BaseModel):
     uid: str = None
@@ -424,28 +410,6 @@ class EnvironmentData(BaseModel):
     air_quality: str = None
     moon: str = None
     satellite: str = None
-
-
-@dataclass
-class TrackerEntry(BaseModel):
-    id: int
-    tracker_id: int
-    timestamp: str
-    value: float
-    uid: str = None
-
-
-def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
-    """
-    Convert a sqlite3‐row (or dict) into a TrackerEntry object.
-    """
-    return TrackerEntry(
-        id=row.get("id"),
-        tracker_id=row.get("tracker_id"),
-        timestamp=row.get("timestamp"),
-        value=row.get("value"),
-        uid=row.get("uid"),
-    )
 
 
 def goal_from_row(row):

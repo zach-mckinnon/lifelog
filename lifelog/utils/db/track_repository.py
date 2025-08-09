@@ -208,6 +208,16 @@ def get_tracker_by_uid(uid_val: str) -> Optional[Tracker]:
         "SELECT * FROM trackers WHERE uid = ? AND deleted = 0", (uid_val,))
     return tracker_from_row(dict(rows[0])) if rows else None
 
+
+def get_tracker_by_title(title: str) -> Optional[Tracker]:
+    """Find tracker by exact title match (case-insensitive)."""
+    if should_sync():
+        _pull_changed_trackers_from_host()
+    rows = safe_query(
+        "SELECT * FROM trackers WHERE LOWER(title) = LOWER(?) AND deleted = 0", (title,))
+    return tracker_from_row(dict(rows[0])) if rows else None
+
+
 # Fetch all trackers, exclude deleted
 
 
