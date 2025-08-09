@@ -212,6 +212,16 @@ class TrackerEntry(BaseModel):
     uid: str = None
 
 
+def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
+    return TrackerEntry(
+        id=row.get("id"),
+        tracker_id=row.get("tracker_id"),
+        timestamp=row.get("timestamp"),
+        value=float(row.get("value", 0.0)) if row.get("value") is not None else None,
+        uid=row.get("uid")
+    )
+
+
 @dataclass
 class GoalBase(BaseModel):
     id: Optional[int]
