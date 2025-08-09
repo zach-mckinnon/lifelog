@@ -316,14 +316,14 @@ def delete_tracker(tracker_id: int) -> bool:
     return True
 
 
-def add_tracker_entry(tracker_id: int, timestamp: Union[str, datetime], value: float) -> TrackerEntry:
+def add_tracker_entry(tracker_id: int, timestamp: Union[str, datetime], value: float, notes: Optional[str] = None) -> TrackerEntry:
     import uuid
     ts_str = timestamp if isinstance(timestamp, str) else timestamp.isoformat()
     uid = str(uuid.uuid4())
     # use safe_execute for insert
     cur = safe_execute(
-        "INSERT INTO tracker_entries (tracker_id, timestamp, value, uid) VALUES (?, ?, ?, ?)",
-        (tracker_id, ts_str, value, uid)
+        "INSERT INTO tracker_entries (tracker_id, timestamp, value, notes, uid) VALUES (?, ?, ?, ?, ?)",
+        (tracker_id, ts_str, value, notes, uid)
     )
     new_id = cur.lastrowid
     rows = safe_query("SELECT * FROM tracker_entries WHERE id = ?", (new_id,))

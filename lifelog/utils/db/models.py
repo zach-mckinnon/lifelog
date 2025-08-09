@@ -232,6 +232,7 @@ class TrackerEntry(BaseModel):
     tracker_id: int = None
     timestamp: str = None
     value: float = None
+    notes: Optional[str] = None
     uid: str = None
 
 
@@ -242,6 +243,7 @@ def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
         timestamp=row.get("timestamp"),
         value=float(row.get("value", 0.0)) if row.get(
             "value") is not None else None,
+        notes=row.get("notes"),
         uid=row.get("uid")
     )
 

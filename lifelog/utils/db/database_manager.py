@@ -209,6 +209,7 @@ def initialize_schema():
                 tracker_id INTEGER,
                 timestamp DATETIME,
                 value FLOAT,
+                notes TEXT,
                 FOREIGN KEY (tracker_id) REFERENCES trackers(id) ON DELETE CASCADE
             );
 
@@ -354,6 +355,13 @@ def initialize_schema():
             CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due);
             CREATE INDEX IF NOT EXISTS idx_goals_tracker_id ON goals(tracker_id);
             """)
+
+            # Migration: Add notes column to tracker_entries if it doesn't exist
+            cursor.execute("PRAGMA table_info(tracker_entries)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'notes' not in columns:
+                cursor.execute(
+                    "ALTER TABLE tracker_entries ADD COLUMN notes TEXT")
 
             # simple test query
             cursor.execute("SELECT COUNT(*) FROM feedback_sayings")

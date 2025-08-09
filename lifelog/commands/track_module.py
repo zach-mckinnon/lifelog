@@ -494,6 +494,8 @@ def log_entry(
                                              help="Tracker name or ID to log entry for"),
     value: str = typer.Argument(...,
                                 help="Value to log (int, float, bool, or string)"),
+    notes: Optional[str] = typer.Option(
+        None, "--notes", "-n", help="Optional notes for this entry"),
     timestamp: Optional[str] = typer.Option(
         None, "--time", "-t", help="Custom timestamp (default: now)")
 ):
@@ -501,8 +503,8 @@ def log_entry(
     Log a value for an existing tracker. You can use the tracker name or ID.
 
     Examples:
-      llog track log "Mood" 7
-      llog track log mood 7          # fuzzy match
+      llog track log "Mood" 7 --notes "Feeling great after exercise"
+      llog track log mood 7 -n "Post-workout mood"
       llog track log 1 7             # by ID
     """
     try:
@@ -577,10 +579,12 @@ def log_entry(
 
         # Add the entry
         entry = track_repository.add_tracker_entry(
-            tracker.id, log_time, typed_value)
+            tracker.id, log_time, typed_value, notes)
 
         console.print(
             f"[green]✅ Logged {value} for '{tracker.title}' (ID: {tracker.id})[/green]")
+        if notes:
+            console.print(f"[dim]   Notes: {notes}[/dim]")
 
     except ValueError as e:
         console.print(
