@@ -3,6 +3,19 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union, get_args, get_origin
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
+from dateutil import parser as date_parser
+
+
+def _parse_datetime_robust(dt_str: str) -> datetime:
+    """
+    Robust datetime parsing for models - handles timezone-aware strings.
+    """
+    if not dt_str:
+        raise ValueError("Empty datetime string")
+    try:
+        return datetime.fromisoformat(dt_str)
+    except ValueError:
+        return date_parser.isoparse(dt_str)
 
 
 class BaseModel:
@@ -99,7 +112,7 @@ def task_from_row(row: Dict[str, Any]) -> Task:
         # datetime fields: created, due, start, end, recur_base, updated_at
         if typ is datetime or typ == Optional[datetime]:
             try:
-                data[k] = datetime.fromisoformat(v)
+                data[k] = _parse_datetime_robust(v)
             except Exception:
                 data[k] = None
             continue
@@ -147,7 +160,7 @@ def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
             continue
         if name in ("start", "end") and val:
             try:
-                kwargs[name] = datetime.fromisoformat(val)
+                kwargs[name] = _parse_datetime_robust(val)
             except Exception:
                 kwargs[name] = None
             continue
@@ -156,7 +169,7 @@ def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
             continue
         if name == 'updated_at':
             try:
-                kwargs[name] = datetime.fromisoformat(val)
+                kwargs[name] = _parse_datetime_robust(val)
             except Exception:
                 kwargs[name] = None
             continue
@@ -191,14 +204,14 @@ def tracker_from_row(row: Dict[str, Any]) -> Tracker:
         type=row.get("type", ""),
         category=row.get("category"),
         created=None if row.get(
-            "created") is None else datetime.fromisoformat(row.get("created")),
+            "created") is None else _parse_datetime_robust(row.get("created")),
         tags=row.get("tags"),
         notes=row.get("notes"),
         entries=None,
         goals=None,
         uid=row.get("uid"),
         updated_at=None if row.get(
-            "updated_at") is None else datetime.fromisoformat(row.get("updated_at")),
+            "updated_at") is None else _parse_datetime_robust(row.get("updated_at")),
         deleted=int(row.get("deleted", 0))
     )
 

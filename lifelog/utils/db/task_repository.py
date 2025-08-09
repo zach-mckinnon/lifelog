@@ -6,6 +6,7 @@ from lifelog.config.config_manager import is_host_server
 from lifelog.utils.db.models import Task, TaskStatus, get_task_fields, task_from_row
 from lifelog.utils.db import get_connection, normalize_for_db
 from lifelog.utils.db import add_record, update_record
+from lifelog.utils.shared_utils import parse_datetime_robust
 from datetime import datetime
 import sqlite3
 
@@ -128,7 +129,7 @@ def add_task(task_data: Any) -> Task:
     for field in datetime_fields:
         if field in data and data[field] is not None and isinstance(data[field], str):
             try:
-                data[field] = datetime.fromisoformat(data[field])
+                data[field] = parse_datetime_robust(data[field])
             except Exception:
                 logger.warning(
                     f"Invalid datetime string for {field}: {data[field]}")
@@ -178,7 +179,7 @@ def update_task(task_id: int, updates: Dict[str, Any]) -> None:
     for field in datetime_fields:
         if field in updates and updates[field] is not None and isinstance(updates[field], str):
             try:
-                updates[field] = datetime.fromisoformat(updates[field])
+                updates[field] = parse_datetime_robust(updates[field])
             except Exception:
                 logger.warning(
                     f"Invalid datetime string for {field}: {updates[field]}")
