@@ -392,25 +392,6 @@ class Tracker(BaseModel):
     uid: str = None
 
 
-def tracker_from_row(row: Dict[str, Any]) -> Tracker:
-    """
-    Convert a sqlite3‐row (or dict) into a Tracker dataclass.
-    Any missing keys default to None. Embedded fields (entries/goals) remain None here.
-    """
-    return Tracker(
-        id=row.get("id"),
-        title=row.get("title", ""),
-        type=row.get("type", ""),
-        category=row.get("category"),
-        created=row.get("created", ""),
-        tags=row.get("tags"),
-        notes=row.get("notes"),
-        entries=None,
-        goals=None,
-        uid=row.get("uid"),
-    )
-
-
 # ───────────────────────────────────────────────────────────────────────────────
 # 4) entry_from_row(row: Dict[str,Any]) → TrackerEntry
 #
@@ -457,14 +438,13 @@ class TrackerEntry(BaseModel):
 def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
     """
     Convert a sqlite3‐row (or dict) into a TrackerEntry object.
-    The 'uid' field is not stored in the 'tracker_entries' table, so it will be None.
     """
     return TrackerEntry(
         id=row.get("id"),
         tracker_id=row.get("tracker_id"),
         timestamp=row.get("timestamp"),
         value=row.get("value"),
-        uid=None,
+        uid=row.get("uid"),
     )
 
 
@@ -473,7 +453,7 @@ def goal_from_row(row):
         row = dict(row)
     kind = row["kind"]
     base = {
-        "id": row.id,
+        "id": row["id"],
         "tracker_id": row["tracker_id"],
         "title": row["title"],
         "kind": row["kind"],

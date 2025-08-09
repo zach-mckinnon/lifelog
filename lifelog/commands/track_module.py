@@ -58,7 +58,7 @@ def add(
     try:
         tags, notes = parse_args(args) if args else ([], [])
     except ValueError as e:
-        console.print(f"[error]{e}[/error]")
+        console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1)
 
     # Check if tracker already exists by title (now using dataclass)
@@ -135,7 +135,7 @@ def modify(
     try:
         tags, notes = parse_args(args) if args else ([], [])
     except ValueError as e:
-        console.print(f"[error]{e}[/error]")
+        console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1)
 
     tracker = track_repository.get_tracker_by_id(id)
