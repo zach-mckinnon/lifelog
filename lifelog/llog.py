@@ -144,9 +144,11 @@ def setup_command():
         run_seed()
         console.print("[dim]• Initial data seeded[/dim]")
     else:
-        # Run migrations on existing databases
-        run_migrations()
-        console.print("[dim]• Database migrations checked[/dim]")
+        # Run migrations on existing databases (silent unless migrations actually run)
+        migrations = run_migrations(silent=True)
+        if migrations:
+            console.print(
+                f"[dim]• Database updated: {', '.join(migrations)}[/dim]")
 
     # 3️⃣ Load (or create) the config file
     try:

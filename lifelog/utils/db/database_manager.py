@@ -50,8 +50,9 @@ def is_initialized() -> bool:
         return False
 
 
-def run_migrations():
+def run_migrations(silent=True):
     """Run database migrations for existing databases."""
+    migrations_run = []
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -62,10 +63,14 @@ def run_migrations():
             if 'notes' not in columns:
                 cursor.execute(
                     "ALTER TABLE tracker_entries ADD COLUMN notes TEXT")
-                print("Migration: Added 'notes' column to tracker_entries table")
+                migrations_run.append(
+                    "Added 'notes' column to tracker_entries")
 
     except sqlite3.Error as e:
-        print(f"Migration error: {e}")
+        if not silent:
+            print(f"Migration error: {e}")
+
+    return migrations_run
 
 
 def initialize_schema():
