@@ -276,9 +276,9 @@ def initialize_schema():
                 tags TEXT,
                 notes TEXT,
                 distracted_minutes FLOAT DEFAULT 0,
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
                 updated_at TEXT,
-                deleted INTEGER DEFAULT 0
+                deleted INTEGER DEFAULT 0,
+                FOREIGN KEY (task_id) REFERENCES tasks(id)
             );
 
             CREATE TABLE IF NOT EXISTS environment_data (

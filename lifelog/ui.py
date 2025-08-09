@@ -336,7 +336,7 @@ def draw_home(pane, h, w):
             if time_info:
                 sections.append(("Time:", time_info))
         except Exception as e:
-            sections.append(("Time Error", [str(e)]))
+            sections.append(("Time Error", [(str(e), None)]))
 
         # Section 3: Recent Trackers
         try:
@@ -345,7 +345,7 @@ def draw_home(pane, h, w):
                 sections.append(
                     ("Recent Trackers:", [(t['title'], None) for t in trackers]))
         except Exception as e:
-            sections.append(("Trackers Error", [str(e)]))
+            sections.append(("Trackers Error", [(str(e), None)]))
 
         # Render sections with adaptive layout
         for header, items in sections:
