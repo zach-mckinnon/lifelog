@@ -16,7 +16,7 @@ from lifelog.utils.db import (
 )
 from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields, _parse_datetime_robust
-from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, parse_datetime_robust, ensure_utc_for_storage, convert_local_input_to_utc
+from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, ensure_utc_for_storage, convert_local_input_to_utc
 
 logger = logging.getLogger(__name__)
 
