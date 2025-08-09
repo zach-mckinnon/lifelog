@@ -15,7 +15,17 @@ def _parse_datetime_robust(dt_str: str) -> datetime:
     try:
         return datetime.fromisoformat(dt_str)
     except ValueError:
-        return date_parser.isoparse(dt_str)
+        try:
+            return date_parser.isoparse(dt_str)
+        except Exception:
+            try:
+                # Manual fallback for common problematic format: "2025-08-09 19:14:23.995550+00:00"
+                # Replace space with T for ISO format
+                iso_format = dt_str.replace(' ', 'T')
+                return datetime.fromisoformat(iso_format)
+            except Exception as e:
+                raise ValueError(
+                    f"Cannot parse datetime string '{dt_str}': {e}")
 
 
 class BaseModel:
