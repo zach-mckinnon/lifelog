@@ -16,7 +16,7 @@ from lifelog.utils.db import (
 )
 from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields, _parse_datetime_robust
-from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, ensure_utc_for_storage, convert_local_input_to_utc
+from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, parse_datetime_robust, ensure_utc_for_storage, convert_local_input_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -366,9 +366,15 @@ def stop_active_time_entry(
     if not active:
         raise RuntimeError("No active time entry to stop.")
 
-    # Parse stored start (assuming active.start is ISO string)
+    # Parse stored start (handle both datetime objects and ISO strings)
     try:
-        start_dt = _parse_datetime_robust(active.start)
+        if isinstance(active.start, datetime):
+            start_dt = active.start
+        elif isinstance(active.start, str):
+            start_dt = _parse_datetime_robust(active.start)
+        else:
+            raise ValueError(
+                f"Unexpected start time type: {type(active.start)}")
     except Exception:
         raise RuntimeError(
             f"Cannot parse start time of active entry: {active.start}")
