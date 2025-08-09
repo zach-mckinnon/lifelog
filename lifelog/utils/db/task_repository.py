@@ -122,12 +122,18 @@ def add_task(task_data: Any) -> Task:
         except Exception as e:
             logger.error("Priority calc failed: %s", e, exc_info=True)
             data["priority"] = 1.0
-    # Due date string to datetime
-    if data.get("due") is not None and isinstance(data["due"], str):
-        try:
-            data["due"] = datetime.fromisoformat(data["due"])
-        except Exception:
-            data["due"] = None
+
+    # Convert datetime field strings to datetime objects (like time_repository)
+    datetime_fields = ["created", "due", "start", "end", "recur_base"]
+    for field in datetime_fields:
+        if field in data and data[field] is not None and isinstance(data[field], str):
+            try:
+                data[field] = datetime.fromisoformat(data[field])
+            except Exception:
+                logger.warning(
+                    f"Invalid datetime string for {field}: {data[field]}")
+                data[field] = None
+
     # UID
     if not data.get("uid"):
         data["uid"] = str(uuid.uuid4())
@@ -166,12 +172,18 @@ def update_task(task_id: int, updates: Dict[str, Any]) -> None:
             logger.warning(
                 f"Invalid status '{status_val}' in update, ignoring field")
             updates.pop('status', None)
-    # Normalize other fields: due string to datetime object
-    if 'due' in updates and isinstance(updates['due'], str):
-        try:
-            updates['due'] = datetime.fromisoformat(updates['due'])
-        except Exception:
-            updates.pop('due', None)
+
+    # Convert datetime field strings to datetime objects (consistent with add_task)
+    datetime_fields = ["created", "due", "start", "end", "recur_base"]
+    for field in datetime_fields:
+        if field in updates and updates[field] is not None and isinstance(updates[field], str):
+            try:
+                updates[field] = datetime.fromisoformat(updates[field])
+            except Exception:
+                logger.warning(
+                    f"Invalid datetime string for {field}: {updates[field]}")
+                updates.pop(field, None)
+
     # Set updated_at
     updates['updated_at'] = datetime.now()
     db_updates = normalize_for_db(updates)

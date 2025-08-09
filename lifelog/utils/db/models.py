@@ -59,7 +59,7 @@ class TaskStatus(Enum):
 
 @dataclass
 class Task(BaseModel):
-    id: int = None
+    id: Optional[int] = None
     title: str = ""
     project: Optional[str] = None
     category: Optional[str] = None
@@ -121,9 +121,9 @@ def task_from_row(row: Dict[str, Any]) -> Task:
 
 @dataclass
 class TimeLog(BaseModel):
-    id: int = None
+    id: Optional[int] = None
     title: str = ""
-    start: datetime = None
+    start: Optional[datetime] = None
     end: Optional[datetime] = None
     duration_minutes: Optional[float] = None
     task_id: Optional[int] = None

@@ -244,48 +244,6 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
     return new_log
 
 
-def stop_active_time_entry(
-    end_time: Union[datetime, str],
-    tags: Optional[str] = None,
-    notes: Optional[str] = None
-) -> TimeLog:
-    # normalize end_time
-    if isinstance(end_time, str):
-        end_dt = datetime.fromisoformat(end_time)
-    else:
-        end_dt = end_time
-
-    active = get_active_time_entry()
-    if not active:
-        raise RuntimeError("No active time entry to stop.")
-
-    start_dt = datetime.fromisoformat(active.start)
-    end_iso = end_dt.isoformat()
-    duration = max(0.0, (end_dt - start_dt).total_seconds() / 60.0)
-    updates: Dict[str, Any] = {"end": end_iso, "duration_minutes": duration}
-    if tags is not None:
-        updates["tags"] = tags
-    if notes is not None:
-        updates["notes"] = notes
-
-    # local update
-    update_record("time_history", active.id, updates)
-
-    # fetch updated
-    updated = get_time_log_by_uid(active.uid)
-    if updated is None:
-        raise RuntimeError(
-            f"Failed to retrieve stopped entry uid={active.uid}")
-
-    # sync if needed
-    if not is_direct_db_mode() and should_sync():
-        payload = {**vars(updated)}
-        queue_sync_operation("time_history", "update", payload)
-        process_sync_queue()
-
-    return updated
-
-
 # Add a new time entry: set updated_at and deleted=0
 def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     # Normalize datetimes
@@ -334,6 +292,13 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
 
 # Update time entry: set updated_at
 def update_time_entry(entry_id: int, **updates) -> Optional[TimeLog]:
+    # First get the uid for later retrieval
+    existing = safe_query(
+        "SELECT uid, start FROM time_history WHERE id = ?", (entry_id,))
+    if not existing:
+        return None
+    uid_val = existing[0]["uid"]
+
     # Normalize datetimes in updates
     from datetime import datetime
     norm_updates = {}
@@ -342,24 +307,24 @@ def update_time_entry(entry_id: int, **updates) -> Optional[TimeLog]:
             norm_updates[k] = v.isoformat()
         else:
             norm_updates[k] = v
+    # Set updated_at
+    norm_updates['updated_at'] = datetime.now().isoformat()
+
     # Possibly check if updating 'end': ensure end >= start, if both known
     if 'end' in norm_updates:
-        # fetch existing start to compare
-        existing = safe_query(
-            "SELECT start FROM time_history WHERE id = ?", (entry_id,))
-        if existing:
-            try:
-                start_dt = datetime.fromisoformat(existing[0]["start"])
-                end_dt = datetime.fromisoformat(norm_updates['end'])
-                if end_dt < start_dt:
-                    raise ValueError(
-                        f"End time {end_dt.isoformat()} is before start {start_dt.isoformat()}")
-            except Exception as e:
-                raise
+        try:
+            start_dt = datetime.fromisoformat(existing[0]["start"])
+            end_dt = datetime.fromisoformat(norm_updates['end'])
+            if end_dt < start_dt:
+                raise ValueError(
+                    f"End time {end_dt.isoformat()} is before start {start_dt.isoformat()}")
+        except Exception as e:
+            raise ValueError(f"Error validating end time: {e}") from e
+
     # Update locally
     update_record("time_history", entry_id, norm_updates)
     # Fetch updated
-    updated = get_time_log_by_uid(...)  # by uid fetched earlier
+    updated = get_time_log_by_uid(uid_val)  # by uid fetched earlier
     if updated is None:
         return None
     # Sync if needed, converting any datetime fields
