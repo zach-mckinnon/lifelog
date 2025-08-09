@@ -50,6 +50,24 @@ def is_initialized() -> bool:
         return False
 
 
+def run_migrations():
+    """Run database migrations for existing databases."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Migration: Add notes column to tracker_entries if it doesn't exist
+            cursor.execute("PRAGMA table_info(tracker_entries)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'notes' not in columns:
+                cursor.execute(
+                    "ALTER TABLE tracker_entries ADD COLUMN notes TEXT")
+                print("Migration: Added 'notes' column to tracker_entries table")
+
+    except sqlite3.Error as e:
+        print(f"Migration error: {e}")
+
+
 def initialize_schema():
     """
     Create all tables, indexes and do a simple test query.

@@ -135,7 +135,7 @@ def setup_command():
     cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
 
     # 2️⃣ Initialize DB schema + seed badges/skills if this is the first time
-    from lifelog.utils.db.database_manager import is_initialized, initialize_schema
+    from lifelog.utils.db.database_manager import is_initialized, initialize_schema, run_migrations
     from lifelog.utils.gamification_seed import run_seed
 
     if not is_initialized():
@@ -143,6 +143,10 @@ def setup_command():
         console.print("[dim]• Database schema initialized[/dim]")
         run_seed()
         console.print("[dim]• Initial data seeded[/dim]")
+    else:
+        # Run migrations on existing databases
+        run_migrations()
+        console.print("[dim]• Database migrations checked[/dim]")
 
     # 3️⃣ Load (or create) the config file
     try:

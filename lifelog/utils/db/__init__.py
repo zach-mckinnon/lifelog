@@ -28,6 +28,7 @@ from lifelog.utils.db.database_manager import (
     DBConnection,
     is_initialized,
     initialize_schema,
+    run_migrations,
     add_record,
     update_record,
     get_all_api_devices,
@@ -73,6 +74,7 @@ __all__ = [
     "DBConnection",
     "is_initialized",
     "initialize_schema",
+    "run_migrations",
     # models & repositories
     "models",
     "environment_repository",
