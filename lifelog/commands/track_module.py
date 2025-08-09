@@ -486,3 +486,106 @@ def validate_value_against_tracker(tracker: Tracker, value: Any) -> Any:
         console.print(
             f"[bold red]⚠️ '{value}' is not a valid {tracker_type}. Let's try again.[/bold red]")
         return _prompt_correct_value()
+
+
+@app.command("log")
+def log_entry(
+    tracker_identifier: str = typer.Argument(...,
+                                             help="Tracker name or ID to log entry for"),
+    value: str = typer.Argument(...,
+                                help="Value to log (int, float, bool, or string)"),
+    timestamp: Optional[str] = typer.Option(
+        None, "--time", "-t", help="Custom timestamp (default: now)")
+):
+    """
+    Log a value for an existing tracker. You can use the tracker name or ID.
+
+    Examples:
+      llog track log "Mood" 7
+      llog track log mood 7          # fuzzy match
+      llog track log 1 7             # by ID
+    """
+    try:
+        # Try to find tracker by name or ID
+        tracker = None
+
+        # First try as ID if it's numeric
+        if tracker_identifier.isdigit():
+            tracker_id = int(tracker_identifier)
+            tracker = track_repository.get_tracker_by_id(tracker_id)
+
+        # If not found or not numeric, search by name
+        if not tracker:
+            all_trackers = track_repository.get_all_trackers()
+
+            # Exact match first
+            for t in all_trackers:
+                if t.title.lower() == tracker_identifier.lower():
+                    tracker = t
+                    break
+
+            # Fuzzy match if no exact match
+            if not tracker:
+                matches = []
+                for t in all_trackers:
+                    if tracker_identifier.lower() in t.title.lower():
+                        matches.append(t)
+
+                if len(matches) == 1:
+                    tracker = matches[0]
+                elif len(matches) > 1:
+                    console.print(
+                        f"[yellow]Multiple trackers match '{tracker_identifier}':[/yellow]")
+                    for i, t in enumerate(matches, 1):
+                        console.print(f"  {i}. {t.title} (ID: {t.id})")
+
+                    try:
+                        choice = typer.prompt("Select number", type=int)
+                        if 1 <= choice <= len(matches):
+                            tracker = matches[choice - 1]
+                        else:
+                            console.print(
+                                "[bold red]❌ Invalid selection.[/bold red]")
+                            raise typer.Exit(code=1)
+                    except (KeyboardInterrupt, typer.Abort):
+                        console.print("[yellow]Operation cancelled.[/yellow]")
+                        raise typer.Exit(code=0)
+
+        if not tracker:
+            console.print(
+                f"[bold red]❌ No tracker found matching '{tracker_identifier}'.[/bold red]")
+            console.print(
+                "[dim]Use 'llog track list' to see available trackers.[/dim]")
+            raise typer.Exit(code=1)
+
+        # Convert value to appropriate type
+        if tracker.type == "int":
+            typed_value = int(value)
+        elif tracker.type == "float":
+            typed_value = float(value)
+        elif tracker.type == "bool":
+            typed_value = value.lower() in ('true', '1', 'yes', 'y', 'on')
+        elif tracker.type == "str":
+            typed_value = str(value)
+        else:
+            console.print(
+                f"[bold red]❌ Unsupported tracker type: {tracker.type}[/bold red]")
+            raise typer.Exit(code=1)
+
+        # Use current time if no timestamp provided
+        log_time = timestamp if timestamp else now_utc()
+
+        # Add the entry
+        entry = track_repository.add_tracker_entry(
+            tracker.id, log_time, typed_value)
+
+        console.print(
+            f"[green]✅ Logged {value} for '{tracker.title}' (ID: {tracker.id})[/green]")
+
+    except ValueError as e:
+        console.print(
+            f"[bold red]❌ Invalid value '{value}' for tracker type '{tracker.type}': {e}[/bold red]")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[bold red]❌ Failed to log entry: {e}[/bold red]")
+        raise typer.Exit(code=1)
