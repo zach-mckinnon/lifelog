@@ -145,6 +145,7 @@ def log_trackers_cli():
                     tracker_id=tr.id,
                     timestamp=now_utc(),
                     value=val,
+                    notes=None  # Start day command doesn't support notes
                 )
                 run_hooks("tracker", "logged", entry)
                 console.print(f"[green]Logged {tr.title} → {val}[/green]")
@@ -255,6 +256,7 @@ def start_day(overload_threshold: int = 480):
                     tracker_id=mood_tracker.id,
                     timestamp=now_utc(),
                     value=feeling,
+                    notes=None  # Start day mood doesn't support notes
                 )
                 run_hooks("tracker", "logged", entry)
 

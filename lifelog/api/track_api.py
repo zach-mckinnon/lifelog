@@ -146,6 +146,7 @@ def add_tracker_entry_api(tracker_uid):
     data = parse_json()
     ts = data.get('timestamp')
     val = data.get('value')
+    notes = data.get('notes')  # Optional notes field
     if ts is None or val is None:
         error('Missing "timestamp" or "value"', 400)
     validate_iso('timestamp', ts)
@@ -155,7 +156,7 @@ def add_tracker_entry_api(tracker_uid):
         error(f'Invalid "value": {val}', 400)
 
     try:
-        entry = track_repository.add_tracker_entry(t.id, ts, val_f)
+        entry = track_repository.add_tracker_entry(t.id, ts, val_f, notes)
         return jsonify(entry.to_dict()), 201
     except ValueError as ve:
         error(str(ve), 400)

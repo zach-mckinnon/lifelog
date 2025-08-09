@@ -142,6 +142,7 @@ def log_entry_tui(stdscr):
 
     # Parse and validate
     value = entry_data["value"]
+    notes = entry_data.get("notes", "").strip() or None
     timestamp = entry_data.get("timestamp") or now_utc().isoformat()
     if tracker.type == "int":
         value = int(value)
@@ -154,7 +155,8 @@ def log_entry_tui(stdscr):
     entry = track_repository.add_tracker_entry(
         tracker_id=tracker.id,
         timestamp=timestamp,
-        value=value
+        value=value,
+        notes=notes
     )
     run_hooks("tracker", "logged", entry)
     npyscreen.notify_confirm(f"Entry logged for '{tracker.title}'.")
@@ -306,7 +308,8 @@ def log_tracker_entry_tui(stdscr, sel):
     _ent = track_repository.add_tracker_entry(
         tracker_id=tracker.id,
         timestamp=timestamp,
-        value=value
+        value=value,
+        notes=None  # Quick log doesn't support notes
     )
     run_hooks("tracker", "logged", _ent)
     popup_show(stdscr, [f"Entry logged for '{tracker.title}'."])
@@ -326,7 +329,24 @@ def view_tracker_tui(stdscr, sel):
         f"Notes:    {t.notes or '-'}",
         f"Goals:    {len(goals)}",
         f"Entries:  {len(entries)}",
+        "",
+        "Recent Entries:",
     ]
+
+    # Show last 5 entries with notes
+    recent_entries = sorted(
+        entries, key=lambda e: e.timestamp, reverse=True)[:5]
+    for entry in recent_entries:
+        timestamp = entry.timestamp.split(
+            'T')[0] if 'T' in entry.timestamp else entry.timestamp[:10]
+        entry_line = f"  {timestamp}: {entry.value}"
+        if entry.notes:
+            entry_line += f" - {entry.notes}"
+        lines.append(entry_line)
+
+    if not recent_entries:
+        lines.append("  No entries yet")
+
     popup_show(stdscr, lines, title=" Tracker Details ")
 
 

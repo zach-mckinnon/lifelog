@@ -166,7 +166,8 @@ def start_day_tui(stdscr):
                 entry = track_repository.add_tracker_entry(
                     tracker_id=mood_tracker.id,
                     timestamp=now_utc(),
-                    value=mood
+                    value=mood,
+                    notes=None  # Start day mood doesn't support notes
                 )
                 run_hooks("tracker", "logged", entry)
 
@@ -329,6 +330,7 @@ def _log_initial_trackers_tui(stdscr):
                 entry = track_repository.add_tracker_entry(
                     tracker_id=tr.id,
                     timestamp=now_utc(),
-                    value=val
+                    value=val,
+                    notes=None  # Start day tracker log doesn't support notes
                 )
                 run_hooks("tracker", "logged", entry)

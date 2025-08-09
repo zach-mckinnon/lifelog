@@ -351,6 +351,8 @@ class TrackerEntryForm(npyscreen.ActionFormV2):
             npyscreen.FixedText, value="(tracker info here)", editable=False)
         self.value = self.add(npyscreen.TitleText,
                               name="Value*", value="", begin_entry_at=12)
+        self.notes = self.add(npyscreen.TitleText,
+                              name="Notes", value="", begin_entry_at=12)
         self.timestamp = self.add(
             npyscreen.TitleText, name="Timestamp (YYYY-MM-DD HH:MM, blank=now):", begin_entry_at=42)
 
@@ -358,6 +360,7 @@ class TrackerEntryForm(npyscreen.ActionFormV2):
         try:
             self.parentApp.form_data = {
                 "value": self.value.value.strip(),
+                "notes": self.notes.value.strip(),
                 "timestamp": self.timestamp.value.strip()
             }
             self.parentApp.setNextForm(None)
