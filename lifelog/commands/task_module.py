@@ -50,7 +50,7 @@ except ImportError:
     msvcrt = None
 
 
-from lifelog.utils.db.models import Task, get_task_fields
+from lifelog.utils.db.models import Task, TaskStatus, get_task_fields
 from lifelog.utils.db import task_repository, time_repository
 from lifelog.utils.shared_utils import add_category_to_config, add_project_to_config, add_tag_to_config, calculate_priority, format_datetime_for_user, format_due_for_display, get_available_categories, get_available_projects, get_available_tags, now_local, parse_date_string, create_recur_schedule, parse_args, parse_offset_to_timedelta, utc_iso_to_local, validate_task_inputs
 import lifelog.config.config_manager as cf
@@ -176,14 +176,14 @@ def add(
         raise typer.Exit(code=1)
     # Save using repository (already generic)
     try:
-        task_repository.add_task(task)
-        run_hooks("task", "created", task)
+        created_task = task_repository.add_task(task)
+        run_hooks("task", "created", created_task)
     except Exception as e:
         console.print(f"[bold red]❌ Failed to save task: {e}[/bold red]")
         raise typer.Exit(code=1)
 
     console.print(
-        f"[green]✅ Task added[/green]: [bold blue]{title}[/bold blue]")
+        f"[green]✅ Task added[/green] [bold yellow]#{created_task.id}[/bold yellow]: [bold blue]{title}[/bold blue]")
     if due_dt:
         if Confirm.ask("Would you like to set a reminder before due?"):
             # Prompt for offset
@@ -367,8 +367,8 @@ def start(id: int):
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
-    # Assuming Task.status is a string or Enum; compare accordingly
-    if getattr(task, "status", None) not in ["backlog", "active"]:
+    # Check if task is in a startable state
+    if getattr(task, "status", None) not in [TaskStatus.BACKLOG, TaskStatus.ACTIVE]:
         console.print(
             f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (backlog or active only).")
         raise typer.Exit(code=1)
