@@ -114,7 +114,17 @@ def gamify(module: str, event: str, entity: Any):
     """
     # 1) Determine XP context
     if module == "task" and event == "completed":
-        on_time = entity.end <= entity.due if entity.end and entity.due else True
+        # Handle task completion timing - check if task has due date and completion time
+        if hasattr(entity, 'due') and entity.due and hasattr(entity, 'end') and entity.end:
+            on_time = entity.end <= entity.due
+        elif hasattr(entity, 'due') and entity.due:
+            # If no end time set, assume completed now
+            from datetime import datetime
+            on_time = datetime.now() <= entity.due
+        else:
+            # No due date, consider it on time
+            on_time = True
+
         base_xp = 50 if on_time else 20
         context = "task_on_time" if on_time else "task_late"
     elif module == "task" and event == "pomodoro_done":

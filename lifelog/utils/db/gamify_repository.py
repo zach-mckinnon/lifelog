@@ -142,6 +142,15 @@ def award_badge(badge_uid: str) -> None:
     if not br:
         raise ValueError(f"No badge '{badge_uid}'")
     badge = dict(br[0])
+
+    # Check if already awarded to prevent duplicates
+    existing = safe_query(
+        "SELECT 1 FROM profile_badges WHERE profile_id = ? AND badge_id = ?",
+        (profile.id, badge["id"])
+    )
+    if existing:
+        return  # Already awarded
+
     data = {
         "profile_id": profile.id,
         "badge_id":   badge["id"],
@@ -230,13 +239,12 @@ def add_skill_xp(skill_uid: str, amount: int) -> ProfileSkill:
         new_lvl = ps_obj.level + level_gain
 
         # Use direct SQL update for composite key table
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE profile_skills SET xp = ?, level = ? WHERE profile_id = ? AND skill_id = ?",
-            (rem, new_lvl, profile.id, skill["id"])
-        )
-        conn.commit()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE profile_skills SET xp = ?, level = ? WHERE profile_id = ? AND skill_id = ?",
+                (rem, new_lvl, profile.id, skill["id"])
+            )
     else:
         data = {
             "profile_id": profile.id,
@@ -262,19 +270,20 @@ def add_skill_xp(skill_uid: str, amount: int) -> ProfileSkill:
 def apply_xp_bonus(base_xp: int, context: str) -> int:
     """
     Returns adjusted XP:
-      - 'pomodoro': +1% per level of focus_wizardry
-      - 'tracker':  +2% per level of tracker_tactics
-      - 'task_late':+1% per level of time_alchemy on base_xp
+      - 'pomodoro': +1% per level of focus_mastery
+      - 'tracker':  +2% per level of tracker_mastery
+      - 'task_late':+1% per level of task_mastery on base_xp
     """
     xp = base_xp
     if context == "pomodoro":
-        lvl = get_skill_level("focus_wizardry")
+        lvl = get_skill_level("focus_mastery")  # Fixed: was "focus_wizardry"
         xp += (xp * lvl) // 100
     if context == "tracker":
-        lvl = get_skill_level("tracker_tactics")
+        # Fixed: was "tracker_tactics"
+        lvl = get_skill_level("tracker_mastery")
         xp += (xp * 2 * lvl) // 100
     if context == "task_late":
-        lvl = get_skill_level("time_alchemy")
+        lvl = get_skill_level("task_mastery")  # Fixed: was "time_alchemy"
         xp = base_xp + (base_xp * lvl) // 100
     return xp
 
@@ -322,7 +331,13 @@ def buy_item(item_uid: str) -> InventoryItem:
     )
     if inv:
         qty = inv[0]["quantity"] + 1
-        update_record("inventory", (profile.id, item["id"]), {"quantity": qty})
+        # Use direct SQL update for composite key table
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE inventory SET quantity = ? WHERE profile_id = ? AND item_id = ?",
+                (qty, profile.id, item["id"])
+            )
     else:
         add_record(
             "inventory",

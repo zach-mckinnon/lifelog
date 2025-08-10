@@ -612,19 +612,25 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     # Check if there's an active timer
     active = time_repository.get_active_time_entry()
     if not active:
-        # No active timer, just mark task done
-        task_repository.update_task(id, {"status": "done"})
+        # No active timer, just mark task done with current time as end
+        end_time = parse_date_string(past, now=now) if past else now
+        task_repository.update_task(id, {"status": "done", "end": end_time})
+        # Get updated task for hooks
+        updated_task = task_repository.get_task_by_id(id)
         console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
-        run_hooks("task", "completed", task)
+        run_hooks("task", "completed", updated_task)
         return
 
     # Check if active log belongs to this task
     active_task_id = getattr(active, "task_id", None)
     if active_task_id != id:
         # Different task is being tracked, just mark this task done without affecting timer
-        task_repository.update_task(id, {"status": "done"})
+        end_time = parse_date_string(past, now=now) if past else now
+        task_repository.update_task(id, {"status": "done", "end": end_time})
+        # Get updated task for hooks
+        updated_task = task_repository.get_task_by_id(id)
         console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
-        run_hooks("task", "completed", task)
+        run_hooks("task", "completed", updated_task)
         return
 
     # Compute end_time
