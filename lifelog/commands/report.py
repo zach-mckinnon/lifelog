@@ -356,8 +356,14 @@ def time_report(
             hours = cat['duration_minutes'] / 60
             percentage = (cat['duration_minutes'] /
                           total_minutes * 100) if total_minutes > 0 else 0
+
+            # Handle nan/null category names
+            category_name = cat['category']
+            if pd.isna(category_name) or category_name is None:
+                category_name = "Uncategorized"
+
             table.add_row(
-                cat['category'],
+                str(category_name),
                 f"{hours:.1f}",
                 f"{percentage:.1f}%"
             )
@@ -367,8 +373,15 @@ def time_report(
         # ASCII Chart if requested
         if chart and len(top_categories) > 1:
             console.print(f"\n[bold]📊 Visual Distribution:[/bold]")
-            chart_data = [(cat['category'], cat['duration_minutes']/60)
-                          for cat in top_categories[:8]]
+            chart_data = []
+            for cat in top_categories[:8]:
+                # Handle nan/null category names for chart
+                category_name = cat['category']
+                if pd.isna(category_name) or category_name is None:
+                    category_name = "Uncategorized"
+                chart_data.append(
+                    (str(category_name), cat['duration_minutes']/60))
+
             ascii_chart = create_ascii_chart(
                 chart_data, "Time Distribution (hours)", 40)
             console.print(f"[cyan]{ascii_chart}[/cyan]")
