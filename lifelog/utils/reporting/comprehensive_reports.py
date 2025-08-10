@@ -211,30 +211,37 @@ class PersonalAnalytics:
             correlations = []
 
             if not tracker_df.empty and not time_df.empty:
-                # Group by date for correlation analysis
-                daily_tracker = tracker_df.groupby(['date', 'tracker_title'])[
-                    'value'].mean().unstack(fill_value=0)
-                daily_time = time_df.groupby('date')['duration_minutes'].sum()
+                # Check if time_df has the expected structure
+                if 'date' in time_df.columns:
+                    # Group by date for correlation analysis
+                    daily_tracker = tracker_df.groupby(['date', 'tracker_title'])[
+                        'value'].mean().unstack(fill_value=0)
+                    daily_time = time_df.groupby(
+                        'date')['duration_minutes'].sum()
 
-                # Find correlations between trackers and time spent
-                for tracker in daily_tracker.columns:
-                    # Need variance for correlation
-                    if len(daily_tracker[tracker].unique()) > 1:
-                        # Align dates
-                        common_dates = daily_tracker.index.intersection(
-                            daily_time.index)
-                        if len(common_dates) > 3:  # Need enough data points
-                            corr = daily_tracker.loc[common_dates, tracker].corr(
-                                daily_time.loc[common_dates])
-                            # Only significant correlations
-                            if not pd.isna(corr) and abs(corr) > 0.3:
-                                correlations.append({
-                                    'tracker': tracker,
-                                    'metric': 'total_daily_time',
-                                    'correlation': round(float(corr), 3),
-                                    'strength': 'strong' if abs(corr) > 0.7 else 'moderate',
-                                    'direction': 'positive' if corr > 0 else 'negative'
-                                })
+                    # Find correlations between trackers and time spent
+                    for tracker in daily_tracker.columns:
+                        # Need variance for correlation
+                        if len(daily_tracker[tracker].unique()) > 1:
+                            # Align dates
+                            common_dates = daily_tracker.index.intersection(
+                                daily_time.index)
+                            if len(common_dates) > 3:  # Need enough data points
+                                corr = daily_tracker.loc[common_dates, tracker].corr(
+                                    daily_time.loc[common_dates])
+                                # Only significant correlations
+                                if not pd.isna(corr) and abs(corr) > 0.3:
+                                    correlations.append({
+                                        'tracker': tracker,
+                                        'metric': 'total_daily_time',
+                                        'correlation': round(float(corr), 3),
+                                        'strength': 'strong' if abs(corr) > 0.7 else 'moderate',
+                                        'direction': 'positive' if corr > 0 else 'negative'
+                                    })
+                else:
+                    # time_df is already grouped by category, no date correlation possible
+                    logger.info(
+                        "Time data is grouped by category, skipping date-based correlations")
 
             return {
                 'correlations_found': len(correlations),
