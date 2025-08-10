@@ -144,8 +144,12 @@ def gamify(module: str, event: str, entity: Any):
         old = get_skill_level(sid)
         skill = add_skill_xp(sid, adjusted // 2)
         if skill.level > old:
+            # Get the skill name from the skills table
+            skill_data = safe_query(
+                "SELECT name FROM skills WHERE uid = ?", (sid,))
+            skill_name = skill_data[0]["name"] if skill_data else "Unknown Skill"
             add_notification(
-                profile.id, f"Your '{skill.name}' skill leveled up to {skill.level}!")
+                profile.id, f"Your '{skill_name}' skill leveled up to {skill.level}!")
 
     # 4) First-time badges
     user = _ensure_profile()
