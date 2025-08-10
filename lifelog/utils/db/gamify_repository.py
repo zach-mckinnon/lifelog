@@ -12,6 +12,7 @@ from lifelog.utils.db import (
     safe_execute,
     add_record,
     update_record,
+    get_connection,
 )
 from lifelog.utils.db.models import (
     UserProfile,
@@ -227,12 +228,15 @@ def add_skill_xp(skill_uid: str, amount: int) -> ProfileSkill:
         new_xp = ps_obj.xp + amount
         level_gain, rem = divmod(new_xp, 100)
         new_lvl = ps_obj.level + level_gain
-        updates = {"xp": rem, "level": new_lvl}
-        update_record(
-            "profile_skills",
-            (profile.id, skill["id"]),
-            normalize_for_db(updates)
+
+        # Use direct SQL update for composite key table
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE profile_skills SET xp = ?, level = ? WHERE profile_id = ? AND skill_id = ?",
+            (rem, new_lvl, profile.id, skill["id"])
         )
+        conn.commit()
     else:
         data = {
             "profile_id": profile.id,
