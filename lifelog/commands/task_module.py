@@ -609,20 +609,60 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
         console.print(f"[bold red]❌ Error[/bold red]: Task ID {id} not found.")
         raise typer.Exit(code=1)
 
+    # Check if there's an active timer
     active = time_repository.get_active_time_entry()
     if not active:
-        console.print("[yellow]⚠️ No active timer. No new log saved.[/yellow]")
+        console.print(
+            "[yellow]⚠️ No active timer. Marking task as completed.[/yellow]")
         # Just mark task done directly
         task_repository.update_task(id, {"status": "done"})
         console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
         run_hooks("task", "completed", task)
         return
 
-    # Ensure active log belongs to this task
-    if getattr(active, "task_id", None) != id:
+    # Check if active log belongs to this task
+    active_task_id = getattr(active, "task_id", None)
+    if active_task_id != id:
+        # Give user options instead of just erroring out
+        active_title = getattr(active, "title", "Unknown")
         console.print(
-            f"[bold red]❌ Error[/bold red]: Active log is not for task ID {id}.")
-        raise typer.Exit(code=1)
+            f"[yellow]⚠️ Currently tracking:[/yellow] {active_title}")
+
+        if active_task_id:
+            console.print(f"[yellow]   (Task #{active_task_id})[/yellow]")
+
+        console.print(f"[cyan]💡 Options:[/cyan]")
+        console.print(
+            f"   1. Mark task #{id} as done without stopping current timer")
+        console.print(f"   2. Stop current timer and mark task #{id} as done")
+        console.print(f"   3. Cancel")
+
+        choice = typer.prompt("Choose option (1-3)", type=int)
+
+        if choice == 1:
+            # Just mark task done, don't touch timer
+            task_repository.update_task(id, {"status": "done"})
+            console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
+            console.print(
+                f"[dim]Timer for '{active_title}' continues running[/dim]")
+            run_hooks("task", "completed", task)
+            return
+        elif choice == 2:
+            # Stop timer and mark task done
+            try:
+                time_repository.stop_active_time_entry()
+                console.print(
+                    f"[green]⏹️ Stopped timer for '{active_title}'[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Failed to stop timer: {e}[/yellow]")
+
+            task_repository.update_task(id, {"status": "done"})
+            console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
+            run_hooks("task", "completed", task)
+            return
+        else:
+            console.print("[dim]Cancelled[/dim]")
+            return
 
     # Compute end_time
     try:

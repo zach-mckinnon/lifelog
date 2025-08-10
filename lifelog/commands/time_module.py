@@ -311,6 +311,54 @@ def distracted(
             f"[green]✅ Distracted time ({mins} min) logged as standalone block.[/green]")
 
 
+@app.command("status")
+def status():
+    """
+    Show current time tracking status.
+    """
+    active = time_repository.get_active_time_entry()
+
+    if not active:
+        console.print("[yellow]⏸️ No active time tracking[/yellow]")
+        return
+
+    # Calculate elapsed time
+    start_time = getattr(active, "start", None)
+    if start_time:
+        now = now_utc()
+        if isinstance(start_time, str):
+            start_dt = datetime.fromisoformat(
+                start_time.replace('Z', '+00:00'))
+        else:
+            start_dt = start_time
+
+        elapsed_minutes = (now - start_dt).total_seconds() / 60
+        elapsed_str = _format_duration(elapsed_minutes)
+    else:
+        elapsed_str = "Unknown"
+
+    # Get task info if tracking a task
+    task_id = getattr(active, "task_id", None)
+    task_info = ""
+    if task_id:
+        try:
+            from lifelog.utils.db import task_repository
+            task = task_repository.get_task_by_id(task_id)
+            if task:
+                task_info = f" (Task #{task_id}: {task.title})"
+        except Exception:
+            task_info = f" (Task #{task_id})"
+
+    title = getattr(active, "title", "Unknown")
+    category = getattr(active, "category", "uncategorized")
+
+    console.print(f"[green]▶️ Active:[/green] {title}")
+    console.print(f"[cyan]📂 Category:[/cyan] {category}")
+    console.print(f"[yellow]⏱️ Elapsed:[/yellow] {elapsed_str}")
+    if task_info:
+        console.print(f"[blue]📋{task_info}[/blue]")
+
+
 def _format_duration(minutes: float) -> str:
     """
     Format minutes into a human-readable string.
