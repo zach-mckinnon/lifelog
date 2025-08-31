@@ -114,7 +114,7 @@ def gamify(module: str, event: str, entity: Any):
     """
     # 1) Determine XP context
     if module == "task" and event == "completed":
-        on_time = entity.finished <= entity.due
+        on_time = entity.end <= entity.due
         base_xp = 50 if on_time else 20
         context = "task_on_time" if on_time else "task_late"
     elif module == "task" and event == "pomodoro_done":
