@@ -174,13 +174,12 @@ class Tracker(BaseModel):
     title: str
     type: str
     category: Optional[str]
-    created: Optional[datetime]
+    created: str
     tags: Optional[str] = None
     notes: Optional[str] = None
-    entries: Optional[List['TrackerEntry']] = None
-    goals: Optional[List['Goal']] = None
+    goals: Optional[list] = None
     uid: str = None
-    updated_at: Optional[datetime] = None
+    updated_at: Optional[str] = None
     deleted: int = 0
 
 
@@ -386,6 +385,8 @@ class Tracker(BaseModel):
     notes: Optional[str] = None
     goals: Optional[list] = None
     uid: str = None
+    updated_at: Optional[str] = None
+    deleted: int = 0
 
 
 # ───────────────────────────────────────────────────────────────────────────────
