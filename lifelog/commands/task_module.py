@@ -297,8 +297,8 @@ def agenda():
 
     # --- Select top 3 by priority DESC and due ASC (already sorted by SQL) ---
     def sort_key(t):
-        due_dt = datetime.fromisoformat(t.due) if t.due else datetime.max
-        return due_dt
+        # t.due is already a datetime object (or None), no need to parse
+        return t.due if t.due else datetime.max
 
     top_three = sorted(tasks, key=sort_key)[:3]
 
@@ -354,8 +354,6 @@ def info(id: int):
 
 
 # Start tracking a task (Like moving to in-progress)
-
-
 @app.command()
 def start(id: int):
     """
@@ -1049,7 +1047,11 @@ def burndown():
                     # Process due date
                     if due and status != "done":
                         try:
-                            due_date = datetime.fromisoformat(due)
+                            # Handle both datetime objects and ISO strings
+                            if isinstance(due, datetime):
+                                due_date = due
+                            else:
+                                due_date = datetime.fromisoformat(due)
                             if due_date.date() <= date_obj.date():
                                 not_done_count += 1
                             if due_date.date() < now.date() and date_obj.date() >= now.date():
@@ -1061,8 +1063,12 @@ def burndown():
                     # Process completed tasks
                     if completed:
                         try:
-                            completed_date = datetime.fromisoformat(
-                                completed).date()
+                            # Handle both datetime objects and ISO strings
+                            if isinstance(completed, datetime):
+                                completed_date = completed.date()
+                            else:
+                                completed_date = datetime.fromisoformat(
+                                    completed).date()
                             if completed_date == date_obj.date():
                                 completed_today += 1
                         except (ValueError, TypeError) as e:
@@ -1072,8 +1078,12 @@ def burndown():
                     # Process created tasks
                     if created:
                         try:
-                            created_date = datetime.fromisoformat(
-                                created).date()
+                            # Handle both datetime objects and ISO strings
+                            if isinstance(created, datetime):
+                                created_date = created.date()
+                            else:
+                                created_date = datetime.fromisoformat(
+                                    created).date()
                             if created_date == date_obj.date():
                                 added_today += 1
                         except (ValueError, TypeError) as e:
@@ -1179,7 +1189,7 @@ def build_calendar_panel(now: datetime, tasks: list) -> Panel:
                     due_dt = t.due
                 else:
                     due_dt = datetime.fromisoformat(t.due)
-                
+
                 # Only add if it's in current month/year
                 if (due_dt.month == now.month and due_dt.year == now.year):
                     due_days.add(due_dt.day)
@@ -1273,8 +1283,17 @@ def clone_task_for_db(task, now):
     new_due = None
     if task.due and task.created:
         try:
-            due_dt = datetime.fromisoformat(task.due)
-            created_dt = datetime.fromisoformat(task.created)
+            # Handle both datetime objects and ISO strings
+            if isinstance(task.due, datetime):
+                due_dt = task.due
+            else:
+                due_dt = datetime.fromisoformat(task.due)
+
+            if isinstance(task.created, datetime):
+                created_dt = task.created
+            else:
+                created_dt = datetime.fromisoformat(task.created)
+
             offset = due_dt - created_dt
             new_due = (now + offset).replace(microsecond=0).isoformat()
         except Exception:
@@ -1337,8 +1356,6 @@ def priority_color(priority_value):
         return "green3"
     else:
         return "blueviolet"
-
-# Calculate the priority using an Eisenhower Matrix.
 
 
 def parse_due_offset(due_str):
