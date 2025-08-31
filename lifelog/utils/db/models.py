@@ -190,16 +190,12 @@ def tracker_from_row(row: Dict[str, Any]) -> Tracker:
         title=row.get("title", ""),
         type=row.get("type", ""),
         category=row.get("category"),
-        created=None if row.get(
-            "created") is None else datetime.fromisoformat(row.get("created")),
+        created=row.get("created"),
         tags=row.get("tags"),
         notes=row.get("notes"),
-        entries=None,
-        goals=None,
         uid=row.get("uid"),
-        updated_at=None if row.get(
-            "updated_at") is None else datetime.fromisoformat(row.get("updated_at")),
-        deleted=int(row.get("deleted", 0))
+        updated_at=row.get("updated_at"),
+        deleted=row.get("deleted", 0)
     )
 
 
