@@ -644,7 +644,15 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 
     # Compute duration using active.start (a datetime)
     start_dt = getattr(active, "start", None)
-    if start_dt and isinstance(start_dt, datetime):
+    print(start_dt, type(start_dt))
+    if isinstance(start_dt, str):
+        try:
+            start_dt = datetime.fromisoformat(start_dt)
+        except ValueError:
+            console.print(
+                f"[bold red]❌ Invalid start time format: {start_dt}[/bold red]")
+            raise typer.Exit(code=1)
+    if start_dt and not isinstance(start_dt, datetime):
         try:
             duration = (end_time - start_dt).total_seconds() / 60
         except (TypeError, AttributeError):
