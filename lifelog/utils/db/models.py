@@ -294,9 +294,17 @@ class GoalReplacement(GoalBase):
     uid: str = None
 
 
+@dataclass
+class GoalAverage(GoalBase):
+    amount: float
+    unit: Optional[str] = None
+    period: str = "day"
+    uid: str = None
+
+
 Goal = Union[
     GoalSum, GoalCount, GoalBool, GoalStreak, GoalDuration, GoalMilestone,
-    GoalReduction, GoalRange, GoalPercentage, GoalReplacement
+    GoalReduction, GoalRange, GoalPercentage, GoalReplacement, GoalAverage
 ]
 
 # lifelog/utils/db/models.py
@@ -477,6 +485,8 @@ def goal_from_row(row):
         return GoalPercentage(**base, target_percentage=row["target_percentage"], current_percentage=row.get("current_percentage", 0))
     elif kind == "replacement":
         return GoalReplacement(**base, old_behavior=row["old_behavior"], new_behavior=row["new_behavior"])
+    elif kind == "average":
+        return GoalAverage(**base, amount=row.get("amount", 0), unit=row.get("unit"))
     else:
         raise ValueError(f"Unknown goal kind: {kind}")
 
