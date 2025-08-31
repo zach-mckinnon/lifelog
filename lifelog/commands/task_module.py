@@ -177,7 +177,7 @@ def add(
     # Save using repository (already generic)
     try:
         task_repository.add_task(task)
-        run_hooks("task", "created", task)
+        # run_hooks("task", "created", task)
     except Exception as e:
         console.print(f"[bold red]❌ Failed to save task: {e}[/bold red]")
         raise typer.Exit(code=1)
@@ -414,7 +414,7 @@ def start(id: int):
         # Optionally roll back task status? For now, exit with error
         raise typer.Exit(code=1)
 
-    run_hooks("task", "started", task)
+    # run_hooks("task", "started", task)
     console.print(
         f"[green]▶️ Started[/green] task [bold blue][{id}][/bold blue]: {task.title}")
 
@@ -509,7 +509,7 @@ def modify(
 
     task_repository.update_task(id, updates)
     updated_task = task_repository.get_task_by_id(id)
-    run_hooks("task", "updated", updated_task)
+    # run_hooks("task", "updated", updated_task)
     console.print(
         f"[green]✏️ Updated[/green] task [bold blue][{id}][/bold blue].")
 
@@ -598,7 +598,7 @@ def stop(
     else:
         duration_minutes = 0.0
 
-    run_hooks("task", "stopped", task)
+    # run_hooks("task", "stopped", task)
     console.print(
         f"[yellow]⏸️ Paused[/yellow] task [bold blue][{task.id}][/bold blue]: {task.title} — Duration: [cyan]{round(duration_minutes, 2)}[/cyan] minutes")
 
@@ -626,7 +626,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
         # Just mark task done directly
         task_repository.update_task(id, {"status": "done"})
         console.print(f"[green]✔️ Done[/green] [{id}]: {task.title}")
-        run_hooks("task", "completed", task)
+        # run_hooks("task", "completed", task)
         return
 
     # Ensure active log belongs to this task
@@ -669,7 +669,7 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
     console.print(
         f"[green]✔️ Task Complete! [/green] task [bold blue]{task.title}[/bold blue] — Duration: [cyan]{round(duration, 2)}[/cyan] minutes")
     console.print(get_feedback_saying("task_completed"))
-    run_hooks("task", "completed", task)
+    # run_hooks("task", "completed", task)
 
 
 def read_char_nonblocking(timeout: float = 1.0):
@@ -747,7 +747,7 @@ def focus_cli(
         }
         try:
             time_repository.start_time_entry(entry_data)
-            run_hooks("task", "started", task)
+            # run_hooks("task", "started", task)
             console.print(
                 f"[green]▶️ Focus mode started for task {id}.[/green]")
         except Exception as e:
@@ -907,7 +907,7 @@ def focus_cli(
                             try:
                                 task_repository.update_task(
                                     id, {"status": "done"})
-                                run_hooks("task", "completed", task)
+                                # run_hooks("task", "completed", task)
                             except Exception as e:
                                 console.print(
                                     f"[red]Error updating task status: {e}[/red]")
@@ -961,7 +961,7 @@ def focus_cli(
                 except Exception:
                     lost = 0
                 total_distracted += lost
-                run_hooks("task", "pomodoro_done", task)
+                # run_hooks("task", "pomodoro_done", task)
 
             # Decide next:
             if pomodoro:
@@ -981,7 +981,7 @@ def focus_cli(
         try:
             time_repository.stop_active_time_entry(
                 end_time=now_local().isoformat())
-            run_hooks("task", "stopped", task)
+            # run_hooks("task", "stopped", task)
             console.print("[yellow]🔒 Focus mode exited.[/yellow]")
         except Exception as e:
             console.print(f"[red]Error stopping time entry on exit: {e}[/red]")
@@ -1258,7 +1258,8 @@ def auto_recur():
         interval = recur_interval
         unit = recur_unit
         try:
-            days_of_week = json.loads(recur_days_of_week) if recur_days_of_week else []
+            days_of_week = json.loads(
+                recur_days_of_week) if recur_days_of_week else []
         except (json.JSONDecodeError, TypeError):
             days_of_week = []
 
@@ -1375,7 +1376,7 @@ def priority_color(priority_value):
         priority_as_int = float(priority_value or 0)
     except (ValueError, TypeError):
         priority_as_int = 0.0
-    
+
     if priority_as_int >= 20.0:
         return "red"
     elif priority_as_int >= 15.0:

@@ -152,7 +152,7 @@ def start_day_tui(stdscr):
             run_makeup_tui(stdscr, task, distracted)
 
         # Mark complete
-        run_hooks("task", "completed", task)
+        # run_hooks("task", "completed", task)
         safe_show(stdscr, [f"✔️ Completed '{task.title}'"], title="Task Done")
 
         # After-task trackers & mood
@@ -165,7 +165,7 @@ def start_day_tui(stdscr):
                 timestamp=now_utc(),
                 value=mood
             )
-            run_hooks("tracker", "logged", entry)
+            # run_hooks("tracker", "logged", entry)
 
         # Hydration & lunch reminders
         elapsed = datetime.now(timezone.utc) - session_start
@@ -207,7 +207,7 @@ def run_pomodoro_tui(stdscr, task, total_minutes: int) -> int:
             title="Focus Time"
         )
         completed = countdown_timer_ui(stdscr, focus * 60, title="Focus")
-        run_hooks("task", "pomodoro_done", task)
+        # run_hooks("task", "pomodoro_done", task)
 
         if completed:
             extra = tui_input_int(stdscr, "Distracted minutes?", 0)
@@ -239,7 +239,7 @@ def run_makeup_tui(stdscr, task, total_distracted: int, focus_len: int = 25):
         )
         completed = countdown_timer_ui(
             stdscr, min(rem, focus_len) * 60, title="Makeup")
-        run_hooks("task", "pomodoro_done", task)
+        # run_hooks("task", "pomodoro_done", task)
 
         if not completed:
             actual = tui_input_int(
@@ -328,4 +328,4 @@ def _log_initial_trackers_tui(stdscr):
                     timestamp=now_utc(),
                     value=val
                 )
-                run_hooks("tracker", "logged", entry)
+                # run_hooks("tracker", "logged", entry)

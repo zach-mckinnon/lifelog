@@ -146,7 +146,7 @@ def log_trackers_cli():
                     timestamp=now_utc(),
                     value=val,
                 )
-                run_hooks("tracker", "logged", entry)
+                # run_hooks("tracker", "logged", entry)
                 console.print(f"[green]Logged {tr.title} → {val}[/green]")
 
 
@@ -218,7 +218,7 @@ def start_day(overload_threshold: int = 480):
             console.print(
                 f"▶️ [bold]Session {s+1}/{sessions}: Focus {focus} min[/bold]")
             pomodoro_timer(focus)
-            run_hooks("task", "pomodoro_done", task)
+            # run_hooks("task", "pomodoro_done", task)
 
             extra = prompt_for_int("Distracted minutes?", 0)
             distracted += extra
@@ -235,11 +235,11 @@ def start_day(overload_threshold: int = 480):
                 length = min(focus, distracted)
                 console.print(f"▶️ Makeup {m+1}/{makeups}: {length} min")
                 pomodoro_timer(length)
-                run_hooks("task", "pomodoro_done", task)
+                # run_hooks("task", "pomodoro_done", task)
                 distracted -= length
 
         # Mark complete & record notes
-        run_hooks("task", "completed", task)
+        # run_hooks("task", "completed", task)
         console.print(f"[green]✔️ Completed '{task.title}'[/green]")
 
         # Log trackers & feelings
@@ -253,7 +253,7 @@ def start_day(overload_threshold: int = 480):
                 timestamp=now_utc(),
                 value=feeling,
             )
-            run_hooks("tracker", "logged", entry)
+            # run_hooks("tracker", "logged", entry)
 
         # Periodic reminders
         hydrate_and_lunch_reminder(session_start, reminders)

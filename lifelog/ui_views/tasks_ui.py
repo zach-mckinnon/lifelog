@@ -214,7 +214,7 @@ def add_task_tui(_stdscr=None):
         task_repository.add_task(task)
 
         # Run hooks like CLI
-        run_hooks("task", "created", task)
+        # run_hooks("task", "created", task)
 
         npyscreen.notify_confirm(
             f"Task '{task.title}' added!", title="Success")
@@ -250,7 +250,7 @@ def quick_add_task_tui(stdscr):
         task_repository.add_task(task)
 
         # Run hooks like CLI
-        run_hooks("task", "created", task)
+        # run_hooks("task", "created", task)
 
         popup_show(stdscr, [f"Quick Task '{title}' added!"], title="Success")
     except Exception as e:
@@ -455,7 +455,7 @@ def edit_task_tui(_stdscr, sel):
         try:
             task_repository.update_task(t.id, updates)
             updated_task = task_repository.get_task_by_id(t.id)
-            run_hooks("task", "updated", updated_task)
+            # run_hooks("task", "updated", updated_task)
             npyscreen.notify_confirm(f"Task #{t.id} updated!", title="Updated")
         except Exception as e:
             popup_error(_stdscr, f"Error updating task: {e}")
@@ -601,7 +601,7 @@ def focus_mode_tui(stdscr, sel):
         }
         try:
             time_repository.start_time_entry(time_entry_data)
-            run_hooks("task", "started", t)
+            # run_hooks("task", "started", t)
         except Exception as e:
             popup_show(
                 stdscr, [f"Error starting time entry: {e}"], title="Error")
@@ -961,7 +961,7 @@ def start_task_tui(stdscr, sel):
         time_repository.start_time_entry(time_entry_data)
         # Refresh task for hooks
         updated_task = task_repository.get_task_by_id(t.id)
-        run_hooks("task", "started", updated_task)
+        # run_hooks("task", "started", updated_task)
         popup_show(stdscr, [f"Started '{t.title}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
@@ -1020,7 +1020,7 @@ def stop_task_tui(stdscr):
         # Update the task record
         task_repository.update_task(tid, updates)
         updated_task = task_repository.get_task_by_id(tid)
-        run_hooks("task", "stopped", updated_task)
+        # run_hooks("task", "stopped", updated_task)
         popup_show(stdscr, [f"Paused '{task.title}'"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])
@@ -1076,7 +1076,7 @@ def done_task_tui(stdscr, sel):
         # Update task record
         task_repository.update_task(t.id, updates)
         updated_task = task_repository.get_task_by_id(t.id)
-        run_hooks("task", "completed", updated_task)
+        # run_hooks("task", "completed", updated_task)
         popup_show(stdscr, [f"Task '{t.title}' marked done"])
     except Exception as e:
         popup_show(stdscr, [f"Error: {e}"])

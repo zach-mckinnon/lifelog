@@ -35,10 +35,9 @@ def run_hooks(module: str, action: str, entity: Any) -> None:
     """
     1) Always run our internal gamify logic.
     2) Then, if there are external hook scripts matching
-       ~/.lifelog/hooks/post-<module>-<action>*,
-       invoke each of them with the JSON payload returned by build_payload().
+    ~/.lifelog/hooks/post-<module>-<action>*, invoke each of them with the JSON payload returned by build_payload().
     """
-    # ——— 1) Internal gamification ——————————————————————————————————————
+    # ——— 1) Internal gamification —————————————————————————————————
     try:
         gamify(module, action, entity)
     except Exception:

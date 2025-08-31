@@ -158,7 +158,7 @@ def log_entry_tui(stdscr):
         value=value,
     )
     entry = track_repository.add_tracker_entry(entry)
-    run_hooks("tracker", "logged", entry)
+    # run_hooks("tracker", "logged", entry)
     npyscreen.notify_confirm(f"Entry logged for '{tracker.title}'.")
 
 
@@ -312,7 +312,7 @@ def log_tracker_entry_tui(stdscr, sel):
         value=value,
     )
     _ent = track_repository.add_tracker_entry(entry)
-    run_hooks("tracker", "logged", _ent)
+    # run_hooks("tracker", "logged", _ent)
     popup_show(stdscr, [f"Entry logged for '{tracker.title}'."])
 
 
