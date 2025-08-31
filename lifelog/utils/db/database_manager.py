@@ -399,12 +399,10 @@ def update_record(table, record_id, updates):
 def get_all_api_devices():
     with get_connection() as conn:
         cursor = conn.cursor()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT device_name, device_token, paired_at
-        FROM api_devices
-        ORDER BY paired_at DESC
-    """)
-    devices = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+        cursor.execute("""
+            SELECT device_name, device_token, paired_at
+            FROM api_devices
+            ORDER BY paired_at DESC
+        """)
+        devices = [dict(row) for row in cursor.fetchall()]
     return devices

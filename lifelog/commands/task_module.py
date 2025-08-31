@@ -22,7 +22,7 @@ import plotext as plt
 import sys
 import time
 import select
-from pyfiglet import Figlet
+# Lazy import for performance - pyfiglet loaded only when needed in focus mode
 from rich.console import Console
 from rich.prompt import Confirm
 from rich.live import Live
@@ -754,12 +754,15 @@ def focus_cli(
     total_distracted = 0  # in minutes
     in_break = False
 
-    # Prepare Figlet if available
+    # Prepare Figlet if available (lazy import for performance)
     figler = None
     try:
+        from pyfiglet import Figlet
         figler = Figlet(font="big")
+    except ImportError:
+        figler = None  # pyfiglet not installed, use simple timer
     except Exception:
-        figler = None
+        figler = None  # Other error with pyfiglet
 
     def render_big_timer(remaining_secs: int) -> str:
         """
@@ -1167,13 +1170,22 @@ def build_calendar_panel(now: datetime, tasks: list) -> Panel:
     month_str = cal.formatmonth(now.year, now.month)
 
     # gather days_of_week to highlight
-    due_days = {
-        datetime.fromisoformat(t.due).day
-        for t in tasks
-        if t.get("due")
-        and datetime.fromisoformat(t.due).month == now.month
-        and datetime.fromisoformat(t.due).year == now.year
-    }
+    due_days = set()
+    for t in tasks:
+        if t.due:  # Use attribute access, not dict.get()
+            try:
+                # Handle case where t.due might be datetime object or ISO string
+                if isinstance(t.due, datetime):
+                    due_dt = t.due
+                else:
+                    due_dt = datetime.fromisoformat(t.due)
+                
+                # Only add if it's in current month/year
+                if (due_dt.month == now.month and due_dt.year == now.year):
+                    due_days.add(due_dt.day)
+            except (ValueError, TypeError, AttributeError):
+                # Skip tasks with invalid due dates
+                continue
 
     def highlight_month(text: str, due_days: set, today: int) -> Text:
         plain_text = text  # Do NOT modify this in place
