@@ -481,11 +481,16 @@ def setup_ai_credentials():
 
 
 def gather_all_data():
+    # Fix: get all tracker entries by iterating over trackers
+    trackers = track_repository.get_all_trackers()
+    tracker_entries = []
+    for t in trackers:
+        tracker_entries.extend(track_repository.get_entries_for_tracker(t.id))
     return {
         "tasks": task_repository.get_all_tasks(),
-        "trackers": track_repository.get_all_trackers(),
-        "tracker_entries": track_repository.get_all_entries(),
-        "goals": [g for t in track_repository.get_all_trackers() for g in track_repository.get_goals_for_tracker(t.id)],
+        "trackers": trackers,
+        "tracker_entries": tracker_entries,
+        "goals": [g for t in trackers for g in track_repository.get_goals_for_tracker(t.id)],
         "time_logs": time_repository.get_all_time_logs(),
         "environment": environment_repository.get_all_environmental_data() if hasattr(environment_repository, "get_all_environmental_data") else [],
     }
