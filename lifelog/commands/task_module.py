@@ -6,7 +6,7 @@ It includes features for tracking time spent on tasks, setting reminders, and ma
 '''
 from dataclasses import asdict
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import re
 import platform
 from shlex import quote
@@ -298,7 +298,11 @@ def agenda():
     # --- Select top 3 by priority DESC and due ASC (already sorted by SQL) ---
     def sort_key(t):
         # t.due is already a datetime object (or None), no need to parse
-        return t.due if t.due else datetime.max
+        if t.due:
+            return t.due
+        else:
+            # Return a timezone-aware max datetime to match t.due timezone
+            return datetime.max.replace(tzinfo=timezone.utc)
 
     top_three = sorted(tasks, key=sort_key)[:3]
 
@@ -366,7 +370,13 @@ def start(id: int):
         raise typer.Exit(code=1)
 
     # Assuming Task.status is a string or Enum; compare accordingly
-    if getattr(task, "status", None) not in ["backlog", "active"]:
+    status = getattr(task, "status", None)
+    # Handle both TaskStatus enum and string values
+    if hasattr(status, 'value'):
+        status_val = status.value  # Get string value from enum
+    else:
+        status_val = status
+    if status_val not in ["backlog", "active"]:
         console.print(
             f"[yellow]⚠️ Warning[/yellow]: Task [[bold blue]{id}[/bold blue]] is not in a startable state (backlog or active only).")
         raise typer.Exit(code=1)
@@ -580,8 +590,11 @@ def stop(
 
     # Compute duration: active.start is a datetime
     start_dt = getattr(active, "start", None)
-    if isinstance(start_dt, datetime):
-        duration_minutes = (end_time - start_dt).total_seconds() / 60
+    if start_dt and isinstance(start_dt, datetime):
+        try:
+            duration_minutes = (end_time - start_dt).total_seconds() / 60
+        except (TypeError, AttributeError):
+            duration_minutes = 0.0
     else:
         duration_minutes = 0.0
 
@@ -631,8 +644,11 @@ def done(id: int, past: Optional[str] = past_option, args: Optional[List[str]] =
 
     # Compute duration using active.start (a datetime)
     start_dt = getattr(active, "start", None)
-    if isinstance(start_dt, datetime):
-        duration = (end_time - start_dt).total_seconds() / 60
+    if start_dt and isinstance(start_dt, datetime):
+        try:
+            duration = (end_time - start_dt).total_seconds() / 60
+        except (TypeError, AttributeError):
+            duration = 0.0
     else:
         duration = 0.0
 
@@ -1019,8 +1035,10 @@ def burndown():
             open_now = sum(1 for t in tasks if t and getattr(
                 t, 'status', None) != "done")
             total_days = len(all_dates) if all_dates else 1
-            ideal_per_day = open_now / \
-                (total_days - 1) if total_days > 1 else open_now
+            if total_days > 1 and open_now > 0:
+                ideal_per_day = open_now / (total_days - 1)
+            else:
+                ideal_per_day = 0
         except Exception as e:
             console.print(f"[red]Error calculating task metrics: {e}[/red]")
             return
@@ -1230,11 +1248,19 @@ def auto_recur():
         if not (recur_interval and recur_unit and recur_base):
             continue
 
-        base_dt = datetime.fromisoformat(recur_base)
+        try:
+            if isinstance(recur_base, datetime):
+                base_dt = recur_base
+            else:
+                base_dt = datetime.fromisoformat(recur_base)
+        except (ValueError, TypeError):
+            continue  # Skip tasks with invalid recur_base
         interval = recur_interval
         unit = recur_unit
-        days_of_week = json.loads(
-            recur_days_of_week) if recur_days_of_week else []
+        try:
+            days_of_week = json.loads(recur_days_of_week) if recur_days_of_week else []
+        except (json.JSONDecodeError, TypeError):
+            days_of_week = []
 
         should_recur = False
 
@@ -1345,7 +1371,11 @@ def get_due_color(due_str: str, now: datetime) -> str:
 
 
 def priority_color(priority_value):
-    priority_as_int = float(priority_value)
+    try:
+        priority_as_int = float(priority_value or 0)
+    except (ValueError, TypeError):
+        priority_as_int = 0.0
+    
     if priority_as_int >= 20.0:
         return "red"
     elif priority_as_int >= 15.0:
