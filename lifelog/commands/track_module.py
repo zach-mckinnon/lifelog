@@ -182,7 +182,7 @@ def list_trackers(
     """
     List trackers with optional filtering by title or category.
     """
-    trackers = track_repository.query_trackers(
+    trackers = track_repository.get_all_trackers(
         title_contains=title_contains,
         category=category
     )
@@ -411,7 +411,7 @@ def validate_type(title: str, value: str):
     goals = definition.get("goals", [])
     if goals:
         for goal in goals:
-            goal_kind = goal.kind
+            goal_kind = goal.name
 
             # Validate based on goal type
             if goal_kind == "range" and isinstance(value, (int, float)):
