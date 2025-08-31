@@ -227,7 +227,7 @@ def list_trackers(
         table.add_row(tracker_id, title, category_str,
                       goal_str, progress_display)
 
-        console.print(table)
+    console.print(table)
 
 
 @app.command("delete")

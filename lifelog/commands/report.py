@@ -524,10 +524,14 @@ def show_clinical_insights(
             "[red]AI API key or model missing. Set them in config.toml under [ai].[/red]")
         use_ai = False
 
+    # Gather all required data
+    data = gather_all_data()
+    # For now, always run without AI
     result = generate_clinical_insights(
-        use_ai=use_ai and bool(api_key),
-        ai_key=api_key,
-        ai_model=model
+        data["trackers"],
+        data["tasks"],
+        data["goals"],
+        data["time_logs"]
     )
 
     print("\n[bold blue]Clinical/Behavioral Insight Report[/bold blue]")

@@ -67,8 +67,8 @@ logger = logging.getLogger(__name__)
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
 app.add_typer(start_day.app, name="start-day",
               help="Guided, motivational start-of-day routine")
-app.add_typer(hero.app, name="hero",
-              help="🏰 Hero: profile, badges, skills & shop")
+# app.add_typer(hero.app, name="hero",
+#               help="🏰 Hero: profile, badges, skills & shop")
 app.add_typer(track_module.app, name="track",
               help="Track recurring self-measurements and goals.")
 app.add_typer(time_module.app, name="time",
