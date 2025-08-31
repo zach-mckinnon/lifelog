@@ -259,7 +259,20 @@ def stop_active_time_entry(
     if not active:
         raise RuntimeError("No active time entry to stop.")
 
-    start_dt = datetime.fromisoformat(active.start)
+    # Parse stored start (assuming active.start is ISO string)
+    if isinstance(active.start, str):
+        start_dt = datetime.fromisoformat(active.start)
+    elif isinstance(active.start, datetime):
+        start_dt = active.start
+    else:
+        raise RuntimeError(
+            f"Cannot parse start time of active entry: {active.start}")
+
+    # Check that end >= start
+    if end_dt < start_dt:
+        raise ValueError(
+            f"End time {end_dt.isoformat()} is before start time {start_dt.isoformat()}")
+
     end_iso = end_dt.isoformat()
     duration = max(0.0, (end_dt - start_dt).total_seconds() / 60.0)
     updates: Dict[str, Any] = {"end": end_iso, "duration_minutes": duration}
@@ -400,9 +413,11 @@ def stop_active_time_entry(
         raise RuntimeError("No active time entry to stop.")
 
     # Parse stored start (assuming active.start is ISO string)
-    try:
+    if isinstance(active.start, str):
         start_dt = datetime.fromisoformat(active.start)
-    except Exception:
+    elif isinstance(active.start, datetime):
+        start_dt = active.start
+    else:
         raise RuntimeError(
             f"Cannot parse start time of active entry: {active.start}")
 
