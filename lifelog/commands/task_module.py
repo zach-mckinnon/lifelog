@@ -987,209 +987,209 @@ def focus_cli(
             console.print(f"[red]Error stopping time entry on exit: {e}[/red]")
 
 
-@app.command()
-def burndown():
-    """
-    📉 Remaining Task Burndown Over the Next N Days.
-    Shows:
-      - Actual Tasks Open
-      - Ideal Burn Line
-      - Overdue Count
-      - Completions per Day
-    """
+# @app.command()
+# def burndown():
+#     """
+#     📉 Remaining Task Burndown Over the Next N Days.
+#     Shows:
+#       - Actual Tasks Open
+#       - Ideal Burn Line
+#       - Overdue Count
+#       - Completions per Day
+#     """
 
-    try:
-        # Attempt to get tasks with error handling
-        try:
-            tasks = task_repository.get_all_tasks()
-        except Exception as e:
-            console.print(f"[red]Error fetching tasks: {e}[/red]")
-            console.print("[yellow]Using empty task list[/yellow]")
-            tasks = []
+#     try:
+#         # Attempt to get tasks with error handling
+#         try:
+#             tasks = task_repository.get_all_tasks()
+#         except Exception as e:
+#             console.print(f"[red]Error fetching tasks: {e}[/red]")
+#             console.print("[yellow]Using empty task list[/yellow]")
+#             tasks = []
 
-        now = now_local()
-        start_date = now - timedelta(days=2)
-        end_date = now + timedelta(days=3)
+#         now = now_local()
+#         start_date = now - timedelta(days=2)
+#         end_date = now + timedelta(days=3)
 
-        # Generate date range with error handling
-        try:
-            all_dates = []
-            date_objs = []
-            current_date = start_date
-            while current_date <= end_date:
-                all_dates.append(current_date.strftime('%Y-%m-%d'))
-                date_objs.append(current_date)
-                current_date += timedelta(days=1)
-        except Exception as e:
-            console.print(f"[red]Error generating date range: {e}[/red]")
-            return
+#         # Generate date range with error handling
+#         try:
+#             all_dates = []
+#             date_objs = []
+#             current_date = start_date
+#             while current_date <= end_date:
+#                 all_dates.append(current_date.strftime('%Y-%m-%d'))
+#                 date_objs.append(current_date)
+#                 current_date += timedelta(days=1)
+#         except Exception as e:
+#             console.print(f"[red]Error generating date range: {e}[/red]")
+#             return
 
-        # Initialize metrics arrays safely
-        open_counts = []
-        overdue_counts = []
-        completed_per_day = []
-        added_per_day = []
+#         # Initialize metrics arrays safely
+#         open_counts = []
+#         overdue_counts = []
+#         completed_per_day = []
+#         added_per_day = []
 
-        # Calculate open tasks count safely
-        try:
-            open_now = sum(1 for t in tasks if t and getattr(
-                t, 'status', None) != "done")
-            total_days = len(all_dates) if all_dates else 1
-            if total_days > 1 and open_now > 0:
-                ideal_per_day = open_now / (total_days - 1)
-            else:
-                ideal_per_day = 0
-        except Exception as e:
-            console.print(f"[red]Error calculating task metrics: {e}[/red]")
-            return
+#         # Calculate open tasks count safely
+#         try:
+#             open_now = sum(1 for t in tasks if t and getattr(
+#                 t, 'status', None) != "done")
+#             total_days = len(all_dates) if all_dates else 1
+#             if total_days > 1 and open_now > 0:
+#                 ideal_per_day = open_now / (total_days - 1)
+#             else:
+#                 ideal_per_day = 0
+#         except Exception as e:
+#             console.print(f"[red]Error calculating task metrics: {e}[/red]")
+#             return
 
-        # Process tasks for each date safely
-        for i, dstr in enumerate(all_dates):
-            try:
-                date_obj = date_objs[i]
-                not_done_count = 0
-                overdue_count = 0
-                completed_today = 0
-                added_today = 0
+#         # Process tasks for each date safely
+#         for i, dstr in enumerate(all_dates):
+#             try:
+#                 date_obj = date_objs[i]
+#                 not_done_count = 0
+#                 overdue_count = 0
+#                 completed_today = 0
+#                 added_today = 0
 
-                for task in tasks:
-                    if not task:
-                        continue
+#                 for task in tasks:
+#                     if not task:
+#                         continue
 
-                    # Safely get task attributes
-                    status = getattr(task, 'status', '')
-                    due = getattr(task, 'due', None)
-                    completed = getattr(task, 'completed_at', None)
-                    created = getattr(task, 'created_at', None)
+#                     # Safely get task attributes
+#                     status = getattr(task, 'status', '')
+#                     due = getattr(task, 'due', None)
+#                     completed = getattr(task, 'completed_at', None)
+#                     created = getattr(task, 'created_at', None)
 
-                    # Process due date
-                    if due and status != "done":
-                        try:
-                            # Handle both datetime objects and ISO strings
-                            if isinstance(due, datetime):
-                                due_date = due
-                            else:
-                                due_date = datetime.fromisoformat(due)
-                            if due_date.date() <= date_obj.date():
-                                not_done_count += 1
-                            if due_date.date() < now.date() and date_obj.date() >= now.date():
-                                overdue_count += 1
-                        except (ValueError, TypeError) as e:
-                            console.print(
-                                f"[yellow]Warning: Unable to parse date for task. Some task stats may be incomplete. Details: {str(e)}[/yellow]")
+#                     # Process due date
+#                     if due and status != "done":
+#                         try:
+#                             # Handle both datetime objects and ISO strings
+#                             if isinstance(due, datetime):
+#                                 due_date = due
+#                             else:
+#                                 due_date = datetime.fromisoformat(due)
+#                             if due_date.date() <= date_obj.date():
+#                                 not_done_count += 1
+#                             if due_date.date() < now.date() and date_obj.date() >= now.date():
+#                                 overdue_count += 1
+#                         except (ValueError, TypeError) as e:
+#                             console.print(
+#                                 f"[yellow]Warning: Unable to parse date for task. Some task stats may be incomplete. Details: {str(e)}[/yellow]")
 
-                    # Process completed tasks
-                    if completed:
-                        try:
-                            # Handle both datetime objects and ISO strings
-                            if isinstance(completed, datetime):
-                                completed_date = completed.date()
-                            else:
-                                completed_date = datetime.fromisoformat(
-                                    completed).date()
-                            if completed_date == date_obj.date():
-                                completed_today += 1
-                        except (ValueError, TypeError) as e:
-                            console.print(
-                                f"[yellow]Warning: Unable to parse date for task. Some task stats may be incomplete. Details: {str(e)}[/yellow]")
+#                     # Process completed tasks
+#                     if completed:
+#                         try:
+#                             # Handle both datetime objects and ISO strings
+#                             if isinstance(completed, datetime):
+#                                 completed_date = completed.date()
+#                             else:
+#                                 completed_date = datetime.fromisoformat(
+#                                     completed).date()
+#                             if completed_date == date_obj.date():
+#                                 completed_today += 1
+#                         except (ValueError, TypeError) as e:
+#                             console.print(
+#                                 f"[yellow]Warning: Unable to parse date for task. Some task stats may be incomplete. Details: {str(e)}[/yellow]")
 
-                    # Process created tasks
-                    if created:
-                        try:
-                            # Handle both datetime objects and ISO strings
-                            if isinstance(created, datetime):
-                                created_date = created.date()
-                            else:
-                                created_date = datetime.fromisoformat(
-                                    created).date()
-                            if created_date == date_obj.date():
-                                added_today += 1
-                        except (ValueError, TypeError) as e:
-                            console.print(
-                                f"[yellow]Warning: Unable to parse date for task. Some task stats may be incomplete. Details: {str(e)}[/yellow]")
+#                     # Process created tasks
+#                     if created:
+#                         try:
+#                             # Handle both datetime objects and ISO strings
+#                             if isinstance(created, datetime):
+#                                 created_date = created.date()
+#                             else:
+#                                 created_date = datetime.fromisoformat(
+#                                     created).date()
+#                             if created_date == date_obj.date():
+#                                 added_today += 1
+#                         except (ValueError, TypeError) as e:
+#                             console.print(
+#                                 f"[yellow]Warning: Unable to parse date for task. Some task stats may be incomplete. Details: {str(e)}[/yellow]")
 
-                open_counts.append(not_done_count)
-                overdue_counts.append(overdue_count)
-                completed_per_day.append(completed_today)
-                added_per_day.append(added_today)
+#                 open_counts.append(not_done_count)
+#                 overdue_counts.append(overdue_count)
+#                 completed_per_day.append(completed_today)
+#                 added_per_day.append(added_today)
 
-            except Exception as e:
-                console.print(f"[red]Error processing date {dstr}: {e}[/red]")
-                # Push placeholder values to maintain array sizes
-                open_counts.append(0)
-                overdue_counts.append(0)
-                completed_per_day.append(0)
-                added_per_day.append(0)
+#             except Exception as e:
+#                 console.print(f"[red]Error processing date {dstr}: {e}[/red]")
+#                 # Push placeholder values to maintain array sizes
+#                 open_counts.append(0)
+#                 overdue_counts.append(0)
+#                 completed_per_day.append(0)
+#                 added_per_day.append(0)
 
-        # Generate ideal line safely
-        try:
-            ideal_line = [max(0, int(round(open_now - ideal_per_day * i)))
-                          for i in range(total_days)]
-        except Exception as e:
-            console.print(f"[red]Error generating ideal line: {e}[/red]")
-            ideal_line = []
+#         # Generate ideal line safely
+#         try:
+#             ideal_line = [max(0, int(round(open_now - ideal_per_day * i)))
+#                           for i in range(total_days)]
+#         except Exception as e:
+#             console.print(f"[red]Error generating ideal line: {e}[/red]")
+#             ideal_line = []
 
-        # Format dates for plotting
-        try:
-            plot_dates = [datetime.strptime(d, "%Y-%m-%d").strftime("%m/%d")
-                          for d in all_dates]
-        except Exception as e:
-            console.print(f"[red]Error formatting dates: {e}[/red]")
-            plot_dates = []
+#         # Format dates for plotting
+#         try:
+#             plot_dates = [datetime.strptime(d, "%Y-%m-%d").strftime("%m/%d")
+#                           for d in all_dates]
+#         except Exception as e:
+#             console.print(f"[red]Error formatting dates: {e}[/red]")
+#             plot_dates = []
 
-        # Generate plot with comprehensive error handling
-        try:
-            plt.clf()
-            plt.theme("matrix")
-            plt.title("Task Burndown")
+#         # Generate plot with comprehensive error handling
+#         try:
+#             plt.clf()
+#             plt.theme("matrix")
+#             plt.title("Task Burndown")
 
-            if plot_dates and open_counts:
-                plt.plot(plot_dates, open_counts,
-                         marker="*", label="Tasks Left")
-            if plot_dates and ideal_line:
-                plt.plot(plot_dates, ideal_line,
-                         marker=".", label="Ideal Burn")
-            if plot_dates and overdue_counts:
-                plt.plot(plot_dates, overdue_counts, marker="!",
-                         label="Overdue", color="red")
-            if plot_dates and completed_per_day:
-                plt.scatter(plot_dates, completed_per_day, marker="o",
-                            label="Completed/Day", color="green")
-            if plot_dates and added_per_day:
-                plt.scatter(plot_dates, added_per_day, marker="+",
-                            label="Added/Day", color="yellow")
+#             if plot_dates and open_counts:
+#                 plt.plot(plot_dates, open_counts,
+#                          marker="*", label="Tasks Left")
+#             if plot_dates and ideal_line:
+#                 plt.plot(plot_dates, ideal_line,
+#                          marker=".", label="Ideal Burn")
+#             if plot_dates and overdue_counts:
+#                 plt.plot(plot_dates, overdue_counts, marker="!",
+#                          label="Overdue", color="red")
+#             if plot_dates and completed_per_day:
+#                 plt.scatter(plot_dates, completed_per_day, marker="o",
+#                             label="Completed/Day", color="green")
+#             if plot_dates and added_per_day:
+#                 plt.scatter(plot_dates, added_per_day, marker="+",
+#                             label="Added/Day", color="yellow")
 
-            plt.xlabel("Date")
-            plt.ylabel("Count")
-            plt.legend()
-            plt.show()
-        except Exception as e:
-            console.print(f"[red]Error generating plot: {e}[/red]")
-            console.print("[yellow]Showing summary instead[/yellow]")
+#             plt.xlabel("Date")
+#             plt.ylabel("Count")
+#             plt.legend()
+#             plt.show()
+#         except Exception as e:
+#             console.print(f"[red]Error generating plot: {e}[/red]")
+#             console.print("[yellow]Showing summary instead[/yellow]")
 
-        # Display summary metrics safely
-        try:
-            console.print(
-                f"[bold]Open now:[/] {open_counts[-1] if open_counts else 'N/A'}   "
-                f"[bold]Overdue now:[/] {overdue_counts[-1] if overdue_counts else 'N/A'}"
-            )
-            console.print(
-                f"[bold]Completed in window:[/] {sum(completed_per_day)}   "
-                f"[bold]Added in window:[/] {sum(added_per_day)}"
-            )
-            if total_days > 1:
-                avg_completion = sum(completed_per_day) / (total_days-1)
-                console.print(
-                    f"[bold]Avg completed/day:[/] {avg_completion:.2f}")
-        except Exception as e:
-            console.print(f"[red]Error displaying summary: {e}[/red]")
+#         # Display summary metrics safely
+#         try:
+#             console.print(
+#                 f"[bold]Open now:[/] {open_counts[-1] if open_counts else 'N/A'}   "
+#                 f"[bold]Overdue now:[/] {overdue_counts[-1] if overdue_counts else 'N/A'}"
+#             )
+#             console.print(
+#                 f"[bold]Completed in window:[/] {sum(completed_per_day)}   "
+#                 f"[bold]Added in window:[/] {sum(added_per_day)}"
+#             )
+#             if total_days > 1:
+#                 avg_completion = sum(completed_per_day) / (total_days-1)
+#                 console.print(
+#                     f"[bold]Avg completed/day:[/] {avg_completion:.2f}")
+#         except Exception as e:
+#             console.print(f"[red]Error displaying summary: {e}[/red]")
 
-    except Exception as e:
-        console.print(
-            f"[bold red]Unexpected error in burndown command:[/bold red]")
-        console.print(f"[red]{e}[/red]")
-        console.print(
-            "[yellow]Please check your task data and try again[/yellow]")
+#     except Exception as e:
+#         console.print(
+#             f"[bold red]Unexpected error in burndown command:[/bold red]")
+#         console.print(f"[red]{e}[/red]")
+#         console.print(
+#             "[yellow]Please check your task data and try again[/yellow]")
 
 
 def build_calendar_panel(now: datetime, tasks: list) -> Panel:
