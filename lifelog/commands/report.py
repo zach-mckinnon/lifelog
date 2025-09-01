@@ -176,6 +176,9 @@ def print_dataframe(df):
 
 
 def _report_range(tracker, goal, details, df):
+    if df.empty:
+        return _empty_report("No data available for range analysis")
+    
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     latest_value = df['value'].iloc[-1]
     min_val = details["min_amount"]
@@ -207,6 +210,9 @@ def _report_range(tracker, goal, details, df):
 
 
 def _report_sum(tracker, goal, details, df):
+    if df.empty:
+        return _empty_report("No data available for sum analysis")
+        
     total = df['value'].sum()
     target = details['amount']
 
@@ -340,6 +346,9 @@ def _report_duration(tracker, goal, details, df):
 
 
 def _report_milestone(tracker, goal, details, df):
+    if df.empty:
+        return _empty_report("No data available for milestone analysis")
+        
     current = df['value'].sum()
     target = details['target']
     unit = details.get('unit', '')
@@ -373,6 +382,9 @@ def _report_milestone(tracker, goal, details, df):
 
 
 def _report_percentage(tracker, goal, details, df):
+    if df.empty:
+        return _empty_report("No data available for percentage analysis")
+        
     latest_pct = df['value'].iloc[-1]
     target_pct = details['target_percentage']
 
@@ -395,6 +407,9 @@ def _report_percentage(tracker, goal, details, df):
 
 
 def _report_reduction(tracker, goal, details, df):
+    if df.empty:
+        return _empty_report("No data available for reduction analysis")
+        
     latest = df['value'].iloc[-1]
     target = details['amount']
     unit = details.get('unit', '')

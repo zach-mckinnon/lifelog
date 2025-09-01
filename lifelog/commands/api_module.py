@@ -117,37 +117,69 @@ def api_pair_new():
     - Client mode → prompts for code and saves token
     """
     log_utils.setup_logging()
-    config = cf.load_config()
+    
+    try:
+        config = cf.load_config()
+    except Exception as e:
+        console.print(f"[red]Failed to load config: {e}[/red]")
+        raise typer.Exit(1)
+        
     mode = config.get("deployment", {}).get("mode")
 
     if mode == "server":
         device_name = typer.prompt("Name this server device")
-        r = requests.post("http://localhost:5000/api/pair/start",
-                          json={"device_name": device_name}, timeout=5)
-        r.raise_for_status()
-        data = r.json()
-        console.print(f"[green]Pairing code:[/green] {data['pairing_code']}")
-        console.print(f"[yellow]Expires in {data['expires_in']}s[/yellow]")
-        console.print(
-            "Give this code to your client device to complete pairing.")
+        try:
+            r = requests.post("http://localhost:5000/api/pair/start",
+                              json={"device_name": device_name}, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            console.print(f"[green]Pairing code:[/green] {data['pairing_code']}")
+            console.print(f"[yellow]Expires in {data['expires_in']}s[/yellow]")
+            console.print(
+                "Give this code to your client device to complete pairing.")
+        except requests.RequestException as e:
+            console.print(f"[red]Failed to start pairing: {e}[/red]")
+            console.print("[yellow]Make sure the API server is running.[/yellow]")
+            raise typer.Exit(1)
+        except KeyError as e:
+            console.print(f"[red]Invalid response from server: missing {e}[/red]")
+            raise typer.Exit(1)
 
     elif mode == "client":
         server_url = config.get("deployment", {}).get("server_url")
+        if not server_url:
+            console.print("[red]No server URL configured for client mode.[/red]")
+            raise typer.Exit(1)
+            
         device_name = typer.prompt("Name this client device")
         code = typer.prompt("Enter the pairing code")
-        r = requests.post(f"{server_url}/api/pair/complete",
-                          json={"pairing_code": code, "device_name": device_name}, timeout=5)
-        r.raise_for_status()
-        token = r.json().get("device_token")
-        if token:
-            config["api"] = {"device_token": token}
-            cf.save_config(config)
-            console.print("[green]✓ Device paired successfully![/green]")
-        else:
-            console.print("[red]Pairing failed—no token received.[/red]")
+        
+        try:
+            r = requests.post(f"{server_url}/api/pair/complete",
+                              json={"pairing_code": code, "device_name": device_name}, 
+                              timeout=10)
+            r.raise_for_status()
+            response_data = r.json()
+            token = response_data.get("device_token")
+            
+            if token:
+                config["api"] = {"device_token": token}
+                if not cf.save_config(config):
+                    console.print("[red]Failed to save device token to config.[/red]")
+                    raise typer.Exit(1)
+                console.print("[green]✓ Device paired successfully![/green]")
+            else:
+                console.print("[red]Pairing failed—no token received.[/red]")
+                raise typer.Exit(1)
+        except requests.RequestException as e:
+            console.print(f"[red]Failed to complete pairing: {e}[/red]")
+            console.print("[yellow]Check server URL and network connection.[/yellow]")
+            raise typer.Exit(1)
 
     else:
-        console.print("[red]Unknown mode—cannot pair[/red]")
+        console.print(f"[red]Unknown deployment mode '{mode}'—cannot pair[/red]")
+        console.print("[yellow]Run 'llog setup' to configure deployment mode.[/yellow]")
+        raise typer.Exit(1)
 
 
 @app.command("get-server-url")

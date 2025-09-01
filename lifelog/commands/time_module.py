@@ -24,6 +24,7 @@ from lifelog.utils.shared_utils import (
     now_utc,
     parse_date_string,
     parse_args,
+    parse_offset_to_timedelta,  # Add shared duration parsing utility
 )
 
 app = typer.Typer(help="Track time spent in different life categories.")
@@ -70,12 +71,12 @@ def start(
     # Determine start time
     start_dt = parse_date_string(past, now=now) if past else now
 
-    # Build TimeLog instance; tags and notes to None if empty
+    # Build TimeLog data; convert datetime to ISO string for consistency
     tag_str = ",".join(tags) if tags else None
     note_str = " ".join(notes) if notes else None
     data = {
         "title": title,
-        "start": start_dt,
+        "start": start_dt.isoformat() if isinstance(start_dt, datetime) else start_dt,
         "category": category,
         "project": project,
         "tags": tag_str,
@@ -242,19 +243,13 @@ def distracted(
     Log a distracted block (does not stop the current session).
     """
     now = now_utc()
-    # Parse duration like '5m', '10m', '1h'
-    mins = None
+    # Parse duration using shared utility
     try:
-        if duration.endswith('m'):
-            mins = int(duration[:-1])
-        elif duration.endswith('h'):
-            mins = int(float(duration[:-1]) * 60)
-        elif duration.isdigit():
-            mins = int(duration)
-        else:
-            raise ValueError
+        duration_td = parse_offset_to_timedelta(duration)
+        mins = int(duration_td.total_seconds() / 60)
     except ValueError:
         console.print(f"[bold red]Invalid duration: {duration}[/bold red]")
+        console.print("[dim]Examples: '5m', '1h', '30'[/dim]")
         raise typer.Exit(code=1)
 
     active = time_repository.get_active_time_entry()

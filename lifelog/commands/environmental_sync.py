@@ -198,20 +198,32 @@ def latest(section: str = typer.Argument(..., help="Section (weather, air_qualit
 
 def fetch_weather_data(lat, lon):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
-    response = requests.get(url)
-    return response.json()
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to fetch weather data: {e}")
 
 
 def fetch_air_quality_data(lat, lon):
     url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&hourly=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,ozone"
-    response = requests.get(url)
-    return response.json()
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to fetch air quality data: {e}")
 
 
 def fetch_moon_data(lat, lon, api_key):
     url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&exclude=hourly,daily,minutely,alerts&appid={api_key}"
-    response = requests.get(url)
-    return response.json()
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to fetch moon data: {e}")
 
 
 def fetch_satellite_radiation_data(lat, lon):

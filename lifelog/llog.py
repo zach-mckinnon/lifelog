@@ -67,6 +67,8 @@ logger = logging.getLogger(__name__)
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
 app.add_typer(start_day.app, name="start-day",
               help="Guided, motivational start-of-day routine")
+
+# TODO: Implement the gamification module later as optional.
 # app.add_typer(hero.app, name="hero",
 #               help="🏰 Hero: profile, badges, skills & shop")
 app.add_typer(track_module.app, name="track",
@@ -82,49 +84,49 @@ app.add_typer(environmental_sync.app, name="environment sync",
 app.add_typer(api_module.app, name="api",
               help="API server control & device pairing")
 
+# TODO: Fix UI for small screens and implement later.
+# @app.command("ui")
+# def ui(
+#     no_help: Annotated[bool, typer.Option(
+#         "--no-help", is_flag=True, help="Disable the help bar.")] = False
+# ):
+#     """
+#     Launch the full-screen Lifelog TUI.
+#     - Ensures initialization.
+#     - Runs auto-sync if needed (logs warnings on failure).
+#     - Wraps the curses UI; logs and prints any errors launching TUI.
+#     """
+#     # → Ensure logging is set up before any logs
+#     log_utils.setup_logging()
 
-@app.command("ui")
-def ui(
-    no_help: Annotated[bool, typer.Option(
-        "--no-help", is_flag=True, help="Disable the help bar.")] = False
-):
-    """
-    Launch the full-screen Lifelog TUI.
-    - Ensures initialization.
-    - Runs auto-sync if needed (logs warnings on failure).
-    - Wraps the curses UI; logs and prints any errors launching TUI.
-    """
-    # → Ensure logging is set up before any logs
-    log_utils.setup_logging()
+#     try:
+#         ensure_app_initialized()
+#     except Exception as e:
+#         logger.error(
+#             f"Initialization failed before launching UI: {e}", exc_info=True)
+#         console.print(f"[red]Initialization error: {e}[/red]")
+#         raise typer.Exit(1)
 
-    try:
-        ensure_app_initialized()
-    except Exception as e:
-        logger.error(
-            f"Initialization failed before launching UI: {e}", exc_info=True)
-        console.print(f"[red]Initialization error: {e}[/red]")
-        raise typer.Exit(1)
+#     show_status = not no_help
 
-    show_status = not no_help
+#     # Auto-sync before launching UI
+#     if should_sync():
+#         try:
+#             auto_sync()
+#         except Exception as e:
+#             # Log the full stack; show a brief warning to user
+#             logger.warning("Auto-sync failed before TUI launch", exc_info=True)
+#             console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
+#             # Pause briefly so user sees the message before full-screen UI
+#             time.sleep(1.5)
 
-    # Auto-sync before launching UI
-    if should_sync():
-        try:
-            auto_sync()
-        except Exception as e:
-            # Log the full stack; show a brief warning to user
-            logger.warning("Auto-sync failed before TUI launch", exc_info=True)
-            console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
-            # Pause briefly so user sees the message before full-screen UI
-            time.sleep(1.5)
-
-    # Launch the curses-based UI
-    try:
-        curses.wrapper(ui_main, show_status)
-    except Exception as e:
-        logger.error(f"Error in TUI main: {e}", exc_info=True)
-        console.print(f"[red]TUI failed to launch: {e}[/red]")
-        raise typer.Exit(1)
+#     # Launch the curses-based UI
+#     try:
+#         curses.wrapper(ui_main, show_status)
+#     except Exception as e:
+#         logger.error(f"Error in TUI main: {e}", exc_info=True)
+#         console.print(f"[red]TUI failed to launch: {e}[/red]")
+#         raise typer.Exit(1)
 
 
 @app.command("setup")
