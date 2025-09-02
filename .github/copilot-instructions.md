@@ -109,7 +109,6 @@ llog docker logs  # View container logs
 ```toml
 [categories]  # Task/time categories with descriptions
 [category_importance]  # Weighting for priority calculation
-[ai]  # OpenAI/Gemini API keys for insights
 [api]  # Encrypted sync credentials
 [cron.*]  # Scheduled operations
 ```

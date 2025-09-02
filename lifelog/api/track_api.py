@@ -69,6 +69,8 @@ def create_tracker():
     except ValueError as ve:
         error(str(ve), 400)
     except Exception:
+        # TODO: Add more specific exception handling for better debugging on Raspberry Pi
+        # Current bare Exception catch makes debugging difficult
         logger.exception("Failed to create tracker")
         error('Failed to create tracker', 500)
 

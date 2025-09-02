@@ -636,6 +636,8 @@ def main_callback(ctx: typer.Context):
         except Exception as e:
             logger.warning(f"Auto-sync failed: {e}", exc_info=True)
 
+    # TODO: Optimize notification checking for Raspberry Pi performance  
+    # Database calls in main callback can slow startup
     profile = _ensure_profile()
     unread = get_unread_notifications(profile.id)
     if unread:

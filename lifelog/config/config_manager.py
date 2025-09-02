@@ -234,7 +234,7 @@ def find_docker_compose_cmd() -> Optional[list]:
         # Check newer 'docker compose'
         if shutil.which("docker"):
             result = subprocess.run(
-                ["docker", "compose", "version"], capture_output=True)
+                ["docker", "compose", "version"], capture_output=True, timeout=15)
             if result.returncode == 0:
                 return ["docker", "compose"]
         return None
@@ -460,36 +460,6 @@ def list_config_section(section: str) -> Dict[str, Any]:
         return {}
 
 
-def get_ai_credentials() -> Optional[Dict[str, str]]:
-    """
-    Retrieve and decrypt AI credentials from [ai] section.
-    - Expects keys: 'enabled' (bool), 'provider' (str), 'api_key' (encrypted str).
-    - Returns dict {'provider': ..., 'api_key': ...} or None if disabled or on error.
-    """
-    try:
-        config = load_config()
-    except Exception as e:
-        logger.error(
-            f"Error loading config for AI credentials: {e}", exc_info=True)
-        return None
-
-    ai_config = config.get("ai", {})
-    if not ai_config.get("enabled", False):
-        return None
-
-    provider = ai_config.get("provider")
-    encrypted_key = ai_config.get("api_key")
-    if not provider or not encrypted_key:
-        logger.warning(
-            "AI config enabled but missing 'provider' or 'api_key'.")
-        return None
-
-    try:
-        api_key = decrypt_data(config, encrypted_key)
-        return {"provider": provider, "api_key": api_key}
-    except Exception as e:
-        logger.error(f"Error decrypting AI credentials: {e}", exc_info=True)
-        return None
 
 
 def get_config_section(section: str) -> Dict[str, Any]:

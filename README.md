@@ -3,7 +3,7 @@
 **Lifelog** is your personal command-line home for all the essentials:
 
 - Tasks, habits, health, time, mood, and environment
-- Advanced, actionable reporting & AI-powered insights
+- Advanced, actionable reporting & analytics
 - Multi-device syncing (your data, your way)
 - Designed for neurodivergent folks who love the keyboard and want _real_ self-knowledge
 
@@ -13,7 +13,7 @@
 
 - **Tame Your Life, On Your Terms:**  
   Track what matters—work, routines, sleep, mood, energy, symptoms, environmental factors—across all your devices.
-- **Powerful Reporting & AI:**  
+- **Powerful Reporting & Analytics:**  
   Go beyond "to-do lists"—get _meaningful insights_ and _clinical behavioral patterns_ to drive real change and motivation.
 - **Data Belongs to You:**  
   Local-first, privacy-respecting. Open source. No forced cloud. Sync only what you want, how you want.
@@ -38,7 +38,6 @@
 - **Advanced Reporting & Insights:**
   - Correlation and trend analysis across all data types
   - Clinical behavioral metrics (streaks, routine adherence, mood trends, and more)
-  - AI-powered feedback (optional)
   - Visualizations: charts, pie graphs, heatmaps—right in your terminal!
 - **Hooks & Extensibility:**
   - Plug in custom scripts (e.g., push notifications, automation, etc.)
@@ -119,10 +118,10 @@ For secure remote access, use an SSH tunnel or VPN (see advanced section below).
 llog report summary
 ```
 
-**Get AI-driven feedback and prescriptive advice:**
+**Get detailed analytics and correlations:**
 
 ```bash
-llog report insight
+llog report correlation
 ```
 
 ---
@@ -159,7 +158,7 @@ Fully modular—extend with your own plugins, scripts, or UI tweaks.
 
 - You control your data and your privacy
 - No cloud. No ads. No forced sync. Just your data, on your terms
-- All logging, AI keys, and data are stored in your own user folder, not sent to anyone unless you configure it
+- All logging and data are stored in your own user folder, not sent to anyone unless you configure it
 - **Advanced users:** For "real" encryption or multi-user use, please see Security Considerations and review the codebase for your needs
 
 ---

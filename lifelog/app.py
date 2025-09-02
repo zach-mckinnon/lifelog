@@ -8,6 +8,10 @@ from lifelog.api.errors import register_error_handlers
 from lifelog.config.config_manager import get_deployment_mode
 from lifelog.utils.db import initialize_schema
 
+# TODO: Add Flask configuration optimizations for Raspberry Pi
+# - Disable debug mode in production
+# - Set appropriate timeouts  
+# - Configure logging levels
 app = Flask(__name__)
 initialize_schema()
 
@@ -36,4 +40,6 @@ def api_status():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # TODO: Add production-ready server settings for Raspberry Pi deployment
+    # Current settings are development-only and may not be optimal for Pi
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

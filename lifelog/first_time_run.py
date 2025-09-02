@@ -46,7 +46,6 @@ def run_wizard(config):
     show_welcome()
     setup_location(config)
     setup_scheduled_tasks(config)
-    setup_ai(config)
     setup_deployment(config)
     show_tutorial()
 
@@ -231,9 +230,11 @@ def setup_location(config):
         style="blue"
     ))
 
-    # Existing detection logic
+    # TODO: Optimize for Raspberry Pi - reduce network timeouts and add retry logic
+    # Current 3-second timeout may be too long for slow connections
     try:
-        response = requests.get('https://ipinfo.io/json', timeout=3)
+        # TODO: Make timeout configurable for low-power devices
+        response = requests.get('https://ipinfo.io/json', timeout=10)
         data = response.json()
         if zip_code := data.get('postal'):
             loc = data.get("loc", "0,0").split(",")
@@ -277,62 +278,6 @@ def mask_key(key: str) -> str:
     return f"{key[:2]}{'*'*(len(key)-6)}{key[-4:]}"
 
 
-def setup_ai(config):
-    """Guide user through AI setup with encrypted credentials"""
-    console.print(Panel(
-        "[bold]🤖 AI Enhancement[/bold]\n"
-        "Enable smart features like insights and suggestions",
-        style="magenta"
-    ))
-
-    if not typer.confirm("Would you like to enable AI features?", default=True):
-        console.print("[yellow]AI setup skipped.[/yellow]")
-        return
-
-    setup_encryption(config)
-
-    console.print("\n[bold]Available AI Providers:[/bold]")
-    console.print("1. [cyan]OpenAI[/cyan] (ChatGPT)")
-    console.print("2. [yellow]Google[/yellow] (Gemini)")
-    console.print("3. [green]Anthropic[/green] (Claude)")
-
-    choice = typer.prompt("Select provider (1-3)", type=int)
-    providers = {1: "openai", 2: "google", 3: "anthropic"}
-    provider_name = providers.get(choice, "openai")
-
-    # Key input loop
-    while True:
-        api_key = typer.prompt("Enter your API key", hide_input=True).strip()
-
-        if not api_key:
-            console.print("[red]Your key is blank![/red]")
-            if typer.confirm("Do you want to try again?", default=True):
-                continue
-            else:
-                console.print("[yellow]AI setup skipped.[/yellow]")
-                return
-
-        # Show that something was entered, but never reveal the full key
-        masked = mask_key(api_key)
-        console.print(
-            f"[cyan]Key entered:[/cyan] {masked} ([bold]length:[/bold] {len(api_key)} chars)")
-
-        # Confirm with user before saving
-        if typer.confirm("Does this look correct? (Your actual key will remain hidden)", default=True):
-            break
-        else:
-            console.print(
-                "[yellow]Let's try entering your API key again.[/yellow]")
-
-    # Encrypt and store
-    encrypted_key = encrypt_data(config, api_key)
-    config["ai"] = {
-        "provider": provider_name,
-        "api_key": encrypted_key,
-        "enabled": True
-    }
-    console.print(
-        f"\n[green]✓ AI credentials for {provider_name} encrypted and stored[/green]")
 
 
 def setup_api(config):

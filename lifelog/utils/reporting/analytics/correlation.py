@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import csv
 import json
 from rich.console import Console
-from lifelog.utils.reporting.insight_engine import generate_insights
+# Insight engine functionality removed
 from lifelog.utils.reporting.analytics.report_utils import render_scatter_plot
 from lifelog.utils.shared_utils import now_utc
 
@@ -32,8 +32,9 @@ def report_correlation(since: str = "30d", top_n: int = 5, export: str = None):
     console.print(
         f"[bold]Correlation Analysis:[/] since {cutoff.date().isoformat()} (showing top {top_n})")
 
-    insights = generate_insights()
-    top_insights = insights[:top_n]
+    # Insight functionality removed - return empty list
+    insights = []
+    top_insights = []
 
    # 3. Display the top correlated pairs of metrics
     console.print("\n[bold]Top Correlated Pairs:[/]\n")

@@ -245,7 +245,7 @@ def docker_cmd(
 
     console.print(f"[blue]Running: {' '.join(docker_args)}[/blue]")
     try:
-        subprocess.run(docker_args, cwd=str(DOCKER_DIR), check=True)
+        subprocess.run(docker_args, cwd=str(DOCKER_DIR), check=True, timeout=300)
     except subprocess.CalledProcessError as e:
         logger.error(f"Docker command failed: {e}", exc_info=True)
         console.print(f"[red]Docker command failed: {e}[/red]")

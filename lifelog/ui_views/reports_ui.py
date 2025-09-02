@@ -3,8 +3,6 @@ from datetime import datetime, timedelta
 from lifelog.utils.db import task_repository
 from lifelog.commands.report import (
     daily_tracker,
-    show_clinical_insights,
-    show_insights,
     summary_time,
     summary_trackers
 )
@@ -46,15 +44,7 @@ def run_daily_tracker(stdscr):
     _drop_to_console(daily_tracker, metric)
 
 
-def run_insights(stdscr):
-    _drop_to_console(show_insights)
-
-
-def run_clinical_insights(stdscr):
-    try:
-        show_clinical_insights(stdscr=stdscr)
-    except Exception as e:
-        log_and_popup_error(stdscr, "Error in UI clinical insights", e)
+# Insight functionality removed
 
 
 def draw_report(pane, h, w):
@@ -84,10 +74,8 @@ def draw_report(pane, h, w):
         "1. Tracker Summary   - Overview of all trackers",
         "2. Time Summary      - Overview of all time logs",
         "3. Daily Tracker     - Detail for a single metric",
-        "4. Insights          - AI-driven insights",
-        "5. Clinical Insights - Clinical/Behavioral patterns (NEW)",
         "",
-        "Use 1-5 to select. ESC/q to return."
+        "Use 1-3 to select. ESC/q to return."
     ]
     for idx, line in enumerate(options):
         y = 2 + idx

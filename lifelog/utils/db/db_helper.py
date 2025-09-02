@@ -44,8 +44,9 @@ SYNC_QUEUE_PATH = Path.home() / ".lifelog" / "sync_queue.db"
 @contextmanager
 def get_connection():
     """
-    Yields an sqlite3.Connection that:
+    Yields an sqlite3.Connection optimized for Raspberry Pi:
       • has PRAGMA foreign_keys=ON
+      • Optimized PRAGMA settings for Pi performance
       • will COMMIT on normal exit,
       • ROLLBACK on exception,
       • and ALWAYS CLOSE.
@@ -53,9 +54,18 @@ def get_connection():
     from lifelog.utils.db import _resolve_db_path
     db_path = _resolve_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    
+    # Connect with timeout to prevent hanging on slow Pi storage
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    
+    # Optimize SQLite settings for Raspberry Pi performance
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")  # Better for concurrent access
+    conn.execute("PRAGMA synchronous = NORMAL")  # Balance performance vs safety
+    conn.execute("PRAGMA cache_size = 10000")  # 10MB cache (reasonable for Pi)
+    conn.execute("PRAGMA temp_store = MEMORY")  # Use RAM for temp tables
+    conn.execute("PRAGMA mmap_size = 268435456")  # 256MB mmap (if available)
 
     try:
         yield conn
@@ -100,15 +110,30 @@ def should_sync() -> bool:
 def direct_db_execute(query: str, params: Tuple[Any, ...] = ()) -> sqlite3.Cursor:
     """
     Execute SQL on local DB immediately (only in local/server mode).
+    Uses proper connection management for Raspberry Pi reliability.
     """
     if not is_direct_db_mode():
         raise RuntimeError("Direct DB access not allowed in client mode")
-    conn = sqlite3.connect(str(LOCAL_DB_PATH))
-    cursor = conn.cursor()
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
-    return cursor
+    
+    try:
+        # Use context manager for proper connection handling
+        with sqlite3.connect(str(LOCAL_DB_PATH), timeout=30.0) as conn:
+            # Configure SQLite for better Pi performance
+            conn.execute("PRAGMA journal_mode=WAL")  # Better for concurrent access
+            conn.execute("PRAGMA synchronous=NORMAL")  # Balance between performance and safety
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor
+    except sqlite3.OperationalError as e:
+        logger.error(f"Database operation failed (may be locked or corrupted): {e}")
+        raise
+    except sqlite3.Error as e:
+        logger.error(f"Database error in direct_db_execute: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in direct_db_execute: {e}")
+        raise
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Data Normalization

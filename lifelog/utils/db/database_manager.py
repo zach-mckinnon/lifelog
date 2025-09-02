@@ -1,10 +1,13 @@
 import os
 import uuid
+import logging
 from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
 from lifelog.utils.db import get_connection
+
+logger = logging.getLogger(__name__)
 
 
 # _ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
@@ -38,15 +41,22 @@ def is_initialized() -> bool:
         return False
 
     try:
-        # Open a connection
+        # Use proper connection management for Pi reliability
         from lifelog.utils.db import get_connection
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cur.fetchall()
-            conn.close()
+            # Connection automatically closed by context manager
         return len(tables) > 0
-    except sqlite3.Error:
+    except sqlite3.OperationalError as e:
+        logger.error(f"Database locked or unavailable during initialization check: {e}")
+        return False
+    except sqlite3.Error as e:
+        logger.error(f"Database error during initialization check: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error checking database initialization: {e}")
         return False
 
 

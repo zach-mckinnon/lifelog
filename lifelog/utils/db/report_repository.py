@@ -1,16 +1,25 @@
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
-import pandas as pd
+# Lazy loading for pandas - memory optimization for Pi
+_pd = None
+
+def get_pandas():
+    """Lazy load pandas only when needed"""
+    global _pd
+    if _pd is None:
+        import pandas as pd
+        _pd = pd
+    return _pd
 
 from lifelog.utils.db import track_repository, time_repository
-from lifelog.utils.reporting.insight_engine import generate_insights
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def get_tracker_summary(since_days: int = 7) -> pd.DataFrame:
+def get_tracker_summary(since_days: int = 7):
+    pd = get_pandas()  # Lazy load pandas
     from lifelog.utils.shared_utils import now_utc
     since = now_utc() - timedelta(days=since_days)
     try:
@@ -96,12 +105,8 @@ def get_daily_tracker_averages(metric_name: str, since_days: int = 7) -> pd.Data
 
 
 def get_correlation_insights() -> List[Dict[str, Any]]:
-    try:
-        return generate_insights()
-    except Exception as e:
-        logger.error(
-            "get_correlation_insights: insight engine failed: %s", e, exc_info=True)
-        return []
+    """Returns empty list since AI insights have been removed."""
+    return []
 
 
 def export_data(df: pd.DataFrame, filepath: str):

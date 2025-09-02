@@ -11,7 +11,7 @@ import csv
 import json
 from rich.console import Console
 from lifelog.utils.db import track_repository
-from lifelog.utils.reporting.insight_engine import daily_averages, load_tracker_data, load_time_data
+# Insight engine functionality removed
 import lifelog.config.config_manager as cf
 from lifelog.utils.reporting.analytics.report_utils import render_pie_chart
 from rich.table import Table

@@ -131,11 +131,14 @@ def _apply_user_cron_jobs(lines: str) -> bool:
     stripping out any old Lifelog entries first.
     """
     try:
+        # TODO: Add timeout and error handling for Raspberry Pi subprocess calls
+        # Subprocess calls can hang on slow systems
         # 1) read existing crontab (may be empty)
         p = subprocess.run(
             ["crontab", "-l"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            text=True
+            text=True,
+            timeout=30  # Add timeout for Raspberry Pi
         )
         old = p.stdout.splitlines() if p.returncode == 0 else []
 
@@ -159,8 +162,9 @@ def _apply_user_cron_jobs(lines: str) -> bool:
         header = "# Lifelog scheduled jobs"
         newtab = "\n".join(filtered + [header] + user_lines) + "\n"
 
-        # 5) install
-        subprocess.run(["crontab", "-"], input=newtab, text=True, check=True)
+        # 5) install  
+        # TODO: Add timeout to prevent hanging on slow Raspberry Pi systems
+        subprocess.run(["crontab", "-"], input=newtab, text=True, check=True, timeout=30)
         logger.info("Installed Lifelog jobs into user crontab")
         return True
 
@@ -277,7 +281,7 @@ def apply_windows_tasks() -> bool:
             subprocess.run(
                 ["schtasks", "/Delete", "/TN", task_name, "/F"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=False
+                check=False, timeout=30
             )
         except Exception as e:
             logger.warning(
@@ -295,7 +299,7 @@ def apply_windows_tasks() -> bool:
                 "/ST", time_str,
                 "/RI", "1440",
                 "/F"
-            ], check=True)
+            ], check=True, timeout=30)
             logger.info(
                 f"Windows scheduled task created/updated: {task_name} at {time_str}")
         except subprocess.CalledProcessError as e:

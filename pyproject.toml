@@ -6,6 +6,8 @@ authors = [{ name = "Zach McKinnon" }]
 readme = "README.md"
 license = { text = "MIT" }
 dependencies = [
+    # TODO: Consider making heavy dependencies optional for Raspberry Pi Zero 2W
+    # numpy, scipy, pandas can be memory intensive on low-power devices
     # Universal
     "typer",
     "rich",
@@ -30,7 +32,9 @@ dependencies = [
     "windows-curses; sys_platform == 'win32'",
     "pywin32; sys_platform == 'win32'",
 ]
-requires-python = ">=3.8"
+# Updated Python requirement for better Raspberry Pi compatibility
+# Python 3.9+ has better ARM support and performance optimizations
+requires-python = ">=3.9"
 
 [project.scripts]
 llog = "lifelog.llog:lifelog_app"

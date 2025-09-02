@@ -12,6 +12,8 @@ from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notif
 # -------------------------------------------------------------------
 # ─── Single, contextual status‐bar ───────────────────────────────────
 
+# TODO: Consider removing threading for Raspberry Pi performance optimization
+# Threading may add unnecessary overhead on single-core systems
 import threading
 
 

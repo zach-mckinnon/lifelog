@@ -59,7 +59,8 @@ class TaskStatus(Enum):
 
 @dataclass
 class Task(BaseModel):
-    id: int = None
+    # TODO: Fix data type inconsistency - id should be Optional[int] not int = None
+    id: Optional[int] = None
     title: str = ""
     project: Optional[str] = None
     category: Optional[str] = None
@@ -76,7 +77,8 @@ class Task(BaseModel):
     recur_base: Optional[datetime] = None
     tags: Optional[str] = None
     notes: Optional[str] = None
-    uid: str = None
+    # TODO: Fix data type inconsistency - uid should be Optional[str] not str = None  
+    uid: Optional[str] = None
     updated_at: Optional[datetime] = None
     deleted: int = 0
 

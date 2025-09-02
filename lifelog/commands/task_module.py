@@ -12,13 +12,31 @@ import platform
 from shlex import quote
 import shutil
 import subprocess
-import termios
-import tty
+# Platform compatibility: conditional imports for cross-platform support
+# Handles systems without termios (Windows, some ARM configurations)
+try:
+    import termios
+    import tty
+    HAS_TERMIOS = True
+except ImportError:
+    # Fallback: keyboard input will use basic input() method
+    termios = None
+    tty = None
+    HAS_TERMIOS = False
 import typer
 import json
 from datetime import datetime, timedelta
 from typing import List, Optional
-import plotext as plt
+# Lazy loading for plotext - reduces memory usage on Pi
+_plt = None
+
+def get_plotext():
+    """Lazy load plotext only when needed for charts"""
+    global _plt
+    if _plt is None:
+        import plotext as plt
+        _plt = plt
+    return _plt
 import sys
 import time
 import select
@@ -34,14 +52,6 @@ from rich.text import Text
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 import calendar
 
-
-# For Unix-like:
-try:
-    import tty
-    import termios
-except ImportError:
-    tty = None
-    termios = None
 
 # For Windows:
 try:
@@ -1448,7 +1458,7 @@ def create_due_alert(task: Task, offset_str: str):
             at_time = alert_local.strftime("%H:%M %m/%d/%Y")
             # e.g. echo "<notifier>" | at 15:30 06/20/2025
             full = f"echo {quote(notifier)} | at {at_time}"
-            subprocess.run(["bash", "-lc", full], check=True)
+            subprocess.run(["bash", "-lc", full], check=True, timeout=30)
             console.print(
                 f"[green]✅ Reminder scheduled via at at {alert_local.strftime('%Y-%m-%d %H:%M')}[/green]"
             )
@@ -1483,7 +1493,7 @@ def create_due_alert(task: Task, offset_str: str):
         name = f"Lifelog_task_due_{task.id}"
         # delete any existing
         subprocess.run(["schtasks", "/Delete", "/TN", name, "/F"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
         # format
         date_str = alert_local.strftime("%m/%d/%Y")
         time_str = alert_local.strftime("%H:%M")
@@ -1497,7 +1507,7 @@ def create_due_alert(task: Task, offset_str: str):
             "/RL", "HIGHEST",
             "/F"
         ]
-        subprocess.run(sch, check=True)
+        subprocess.run(sch, check=True, timeout=30)
         console.print(
             f"[green]✅ Reminder scheduled via Windows Task Scheduler at {alert_local.strftime('%Y-%m-%d %H:%M')}[/green]"
         )
@@ -1525,7 +1535,7 @@ def clear_due_alert(task):
         name = f"Lifelog_task_due_{task.id}"
         try:
             subprocess.run(
-                ["schtasks", "/Delete", "/TN", name, "/F"], check=False)
+                ["schtasks", "/Delete", "/TN", name, "/F"], check=False, timeout=30)
             console.print(
                 f"[green]✅ Reminder cleared for task {task.id}[/green]")
         except Exception as e:

@@ -12,7 +12,16 @@ from dateutil.relativedelta import relativedelta
 
 import re
 from typing import List
-import pandas as pd
+# Lazy loading for memory-heavy libraries - improves Pi startup time
+_pd = None
+
+def get_pandas():
+    """Lazy load pandas only when needed to reduce memory usage on Pi"""
+    global _pd
+    if _pd is None:
+        import pandas as pd
+        _pd = pd
+    return _pd
 from rich.console import Console
 import typer
 import lifelog.config.config_manager as cf
@@ -469,6 +478,7 @@ def user_friendly_empty_message(module="insights"):
 
 
 def filter_entries_for_current_period(entries, period: str):
+    pd = get_pandas()  # Lazy load pandas
     now = now_utc()
     df = pd.DataFrame(entries)
     if df.empty:

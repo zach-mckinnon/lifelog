@@ -3,14 +3,22 @@ import toml
 import json
 from typing import Dict, Any
 from datetime import datetime
-import pandas as pd
+# Lazy loading for pandas - memory optimization for Pi
+_pd = None
+
+def get_pandas():
+    """Lazy load pandas only when needed for reports"""
+    global _pd
+    if _pd is None:
+        import pandas as pd
+        _pd = pd
+    return _pd
 from enum import Enum
 import typer
 
 from rich.table import Table
 from rich.console import Console
 
-from lifelog.utils.reporting.clinical_insight_engine import generate_clinical_insights
 from lifelog.utils.db import environment_repository, task_repository
 from lifelog.utils.db import report_repository
 from lifelog.utils.db import track_repository, time_repository
@@ -47,6 +55,7 @@ def generate_goal_report(tracker: Tracker) -> Dict[str, Any]:
     entries = track_repository.get_entries_for_tracker(tracker.id)
 
     # Convert list of TrackerEntry to DataFrame via dicts
+    pd = get_pandas()  # Lazy load pandas
     if entries:
         entry_dicts = [e.to_dict() for e in entries]
         df = pd.DataFrame(entry_dicts)
@@ -155,11 +164,6 @@ def daily_tracker(metric_name: str, since_days: int = 7):
     print_dataframe(df)
 
 
-@app.command("insights")
-def show_insights():
-    insights = report_repository.get_correlation_insights()
-    for i, ins in enumerate(insights, 1):
-        print(f"{i}. {ins['note']} (Pearson: {ins['correlation']['pearson']})")
 
 
 def print_dataframe(df):
@@ -179,6 +183,7 @@ def _report_range(tracker, goal, details, df):
     if df.empty:
         return _empty_report("No data available for range analysis")
     
+    pd = get_pandas()  # Lazy load pandas
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     latest_value = df['value'].iloc[-1]
     min_val = details["min_amount"]
@@ -282,6 +287,7 @@ def _report_bool(tracker, goal, df):
 
 
 def _report_streak(tracker, goal, details, df):
+    pd = get_pandas()  # Lazy load pandas
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['date'] = df['timestamp'].dt.date
 
@@ -458,41 +464,8 @@ def _report_replacement(tracker, goal, details, df):
         "status": "✅ Strong replacement habit!" if ratio >= 75 else "🔄 Still replacing..."
     }
 
-# --- Clinical/AI Insights Command ---
 
 
-def setup_ai_credentials():
-    cfg_path = "config.toml"
-    try:
-        cfg = toml.load(cfg_path)
-    except Exception:
-        cfg = {}
-
-    ai = cfg.get("ai", {})
-    changed = False
-
-    if not ai.get("chatgpt_api_key"):
-        ai["chatgpt_api_key"] = input(
-            "Enter your ChatGPT/OpenAI API key (or leave blank): ").strip()
-        changed = True
-    if not ai.get("gemini_api_key"):
-        ai["gemini_api_key"] = input(
-            "Enter your Gemini API key (or leave blank): ").strip()
-        changed = True
-    if not ai.get("preferred_ai_model"):
-        model = input(
-            "Preferred AI model for insights? (chatgpt/gemini): ").strip().lower()
-        if model in ("chatgpt", "gemini"):
-            ai["preferred_ai_model"] = model
-            changed = True
-
-    if changed:
-        cfg["ai"] = ai
-        with open(cfg_path, "w") as f:
-            toml.dump(cfg, f)
-        print("AI configuration updated.")
-    else:
-        print("AI configuration unchanged.")
 
 
 def gather_all_data():
@@ -511,52 +484,6 @@ def gather_all_data():
     }
 
 
-def format_insight_prompt(user_data):
-    prompt = (
-        "You are a clinical behavioral analyst AI. Analyze the user's tracked data and deliver meaningful, valuable, and actionable insights."
-        "\n\nDATA TO ANALYZE (JSON):\n"
-        f"{json.dumps(user_data, indent=2)}"
-        "\n\nInstructions: "
-        "1. Identify trends, problems, and strengths in productivity, habits, and well-being.\n"
-        "2. Surface any patterns between time use, tasks, and environment.\n"
-        "3. Highlight unusual behaviors, suggest possible explanations, and offer practical advice for improvement.\n"
-        "4. Use bullet points and concise explanations, suitable for a self-tracking user.\n"
-        "Do NOT repeat the raw data."
-    )
-    return prompt
+# AI insight functionality removed
 
 
-@app.command("clinical-insights")
-def show_clinical_insights(
-    use_ai: bool = True,
-    model: str = None
-):
-    """
-    Run clinical/behavioral insight engine (optionally via AI, with model selection).
-    """
-
-    # Get model/key from config (unless overridden)
-    config_model, api_key = cf.get_ai_credentials()
-    model = model or config_model
-
-    if use_ai and (not api_key or not model):
-        print(
-            "[red]AI API key or model missing. Set them in config.toml under [ai].[/red]")
-        use_ai = False
-
-    # Gather all required data
-    data = gather_all_data()
-    # For now, always run without AI
-    result = generate_clinical_insights(
-        data["trackers"],
-        data["tasks"],
-        data["goals"],
-        data["time_logs"]
-    )
-
-    print("\n[bold blue]Clinical/Behavioral Insight Report[/bold blue]")
-    if isinstance(result, dict):
-        for section, value in result.items():
-            print(f"[bold]{section}[/bold]:\n{value}\n")
-    else:
-        print(result)
