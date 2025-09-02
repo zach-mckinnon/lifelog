@@ -1,4 +1,3 @@
-import threading
 import subprocess
 import json
 import logging
@@ -20,7 +19,7 @@ from lifelog.utils.db.gamify_repository import (
 from lifelog.utils.notifications import notify_cli, notify_tui
 
 logger = logging.getLogger(__name__)
-_tls = threading.local()
+# Removed unused threading.local() for Pi optimization
 
 _DEFAULT_DIR = Path.home() / ".lifelog" / "hooks"
 HOOKS_DIR = Path(os.getenv("LIFELOG_HOOKS_DIR", _DEFAULT_DIR))
@@ -35,10 +34,9 @@ def run_hooks(module: str, action: str, entity: Any) -> None:
     """
     1) Always run our internal gamify logic.
     2) Then, if there are external hook scripts matching
-       ~/.lifelog/hooks/post-<module>-<action>*,
-       invoke each of them with the JSON payload returned by build_payload().
+    ~/.lifelog/hooks/post-<module>-<action>*, invoke each of them with the JSON payload returned by build_payload().
     """
-    # ——— 1) Internal gamification ——————————————————————————————————————
+    # ——— 1) Internal gamification —————————————————————————————————
     try:
         gamify(module, action, entity)
     except Exception:
@@ -114,17 +112,7 @@ def gamify(module: str, event: str, entity: Any):
     """
     # 1) Determine XP context
     if module == "task" and event == "completed":
-        # Handle task completion timing - check if task has due date and completion time
-        if hasattr(entity, 'due') and entity.due and hasattr(entity, 'end') and entity.end:
-            on_time = entity.end <= entity.due
-        elif hasattr(entity, 'due') and entity.due:
-            # If no end time set, assume completed now
-            from datetime import datetime
-            on_time = datetime.now() <= entity.due
-        else:
-            # No due date, consider it on time
-            on_time = True
-
+        on_time = entity.end <= entity.due
         base_xp = 50 if on_time else 20
         context = "task_on_time" if on_time else "task_late"
     elif module == "task" and event == "pomodoro_done":
@@ -154,12 +142,8 @@ def gamify(module: str, event: str, entity: Any):
         old = get_skill_level(sid)
         skill = add_skill_xp(sid, adjusted // 2)
         if skill.level > old:
-            # Get the skill name from the skills table
-            skill_data = safe_query(
-                "SELECT name FROM skills WHERE uid = ?", (sid,))
-            skill_name = skill_data[0]["name"] if skill_data else "Unknown Skill"
             add_notification(
-                profile.id, f"Your '{skill_name}' skill leveled up to {skill.level}!")
+                profile.id, f"Your '{skill.name}' skill leveled up to {skill.level}!")
 
     # 4) First-time badges
     user = _ensure_profile()

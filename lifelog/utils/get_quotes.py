@@ -98,7 +98,10 @@ def fetch_on_this_day():
     today = now_utc()
     url = f"https://today.zenquotes.io/api/{today.month}/{today.day}"
     try:
-        response = requests.get(url)
+        # Use configurable timeout for Pi networks
+        import os
+        timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '10'))
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         data = response.json()
         return data.get("data", {})
@@ -111,7 +114,10 @@ def fetch_daily_zen_quote():
     """Fetches the quote of the day from ZenQuotes."""
     api_url = "https://zenquotes.io/api/random"
     try:
-        response = requests.get(api_url)
+        # Use configurable timeout for Pi networks
+        import os
+        timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '10'))
+        response = requests.get(api_url, timeout=timeout)
         response.raise_for_status()
         data = response.json()
         if data and isinstance(data, list) and len(data) > 0:

@@ -4,7 +4,16 @@ from typing import Dict, Any
 from rich.console import Console
 from rich.panel import Panel
 from datetime import datetime
-import pandas as pd
+# Lazy loading for pandas - memory optimization for Pi
+_pd = None
+
+def get_pandas():
+    """Lazy load pandas only when needed for goal calculations"""
+    global _pd
+    if _pd is None:
+        import pandas as pd
+        _pd = pd
+    return _pd
 from lifelog.utils.db import track_repository
 from lifelog.utils.shared_utils import filter_entries_for_current_period
 from lifelog.utils.db.models import Tracker, Goal
@@ -199,6 +208,8 @@ def calculate_goal_progress(tracker: Tracker) -> Dict[str, Any]:
     kind = goal.kind
     period = getattr(goal, "period", None)
 
+    # Lazy load pandas when needed for data processing
+    pd = get_pandas()
     # Build DataFrame from entries
     df_all = pd.DataFrame([e.to_dict() for e in entries])
     # Filter by period if needed

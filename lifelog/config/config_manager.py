@@ -28,7 +28,6 @@ if "USER_CONFIG" not in globals():
     USER_CONFIG = BASE_DIR / "config.toml"
 
 if "DEFAULT_CONFIG" not in globals():
-    # the shipped defaults, read from your package resources
     DEFAULT_CONFIG = files("lifelog.config") \
         .joinpath("config.toml") \
         .read_text(encoding="utf-8")
@@ -41,24 +40,19 @@ def load_config() -> dict:
     - Returns a dict parsed from TOML; on error, logs and returns empty dict.
     """
     try:
-        # Ensure config directory exists
         BASE_DIR.mkdir(parents=True, exist_ok=True)
-        # If no user config file, write default contents
         if not USER_CONFIG.exists():
             try:
                 USER_CONFIG.write_text(DEFAULT_CONFIG, encoding="utf-8")
             except Exception as e:
                 logger.error(
                     f"Failed to write default config to {USER_CONFIG}: {e}", exc_info=True)
-                # Continue; attempt to read file may still fail below
-        # Read file contents
         try:
             text = USER_CONFIG.read_text(encoding="utf-8")
         except Exception as e:
             logger.error(
                 f"Failed to read config file {USER_CONFIG}: {e}", exc_info=True)
             return {}
-        # Parse TOML
         try:
             return toml.loads(text)
         except Exception as e:
@@ -66,7 +60,6 @@ def load_config() -> dict:
                 f"Failed to parse TOML from {USER_CONFIG}: {e}", exc_info=True)
             return {}
     except Exception as e:
-        # Catch any unexpected errors
         logger.error(f"Unexpected error in load_config: {e}", exc_info=True)
         return {}
 
@@ -81,7 +74,6 @@ def save_config(doc: dict):
     except Exception as e:
         logger.error(
             f"Failed to ensure config directory {BASE_DIR}: {e}", exc_info=True)
-        # Still attempt to write file; likely to fail but let that be logged next
     try:
         toml_str = toml.dumps(doc)
     except Exception as e:
@@ -176,7 +168,6 @@ def is_direct_db_mode() -> bool:
     Return True if running in 'local' or 'server' mode (i.e., direct DB access).
     """
     try:
-        # Note: get_deployment_mode is safe-wrapped
         return is_local_mode() or is_server_mode()
     except Exception as e:
         logger.error(f"Error checking direct DB mode: {e}", exc_info=True)
@@ -231,10 +222,9 @@ def find_docker_compose_cmd() -> Optional[list]:
     try:
         if shutil.which("docker-compose"):
             return ["docker-compose"]
-        # Check newer 'docker compose'
         if shutil.which("docker"):
             result = subprocess.run(
-                ["docker", "compose", "version"], capture_output=True)
+                ["docker", "compose", "version"], capture_output=True, timeout=15)
             if result.returncode == 0:
                 return ["docker", "compose"]
         return None
@@ -458,38 +448,6 @@ def list_config_section(section: str) -> Dict[str, Any]:
         logger.error(
             f"Error listing config section [{section}]: {e}", exc_info=True)
         return {}
-
-
-def get_ai_credentials() -> Optional[Dict[str, str]]:
-    """
-    Retrieve and decrypt AI credentials from [ai] section.
-    - Expects keys: 'enabled' (bool), 'provider' (str), 'api_key' (encrypted str).
-    - Returns dict {'provider': ..., 'api_key': ...} or None if disabled or on error.
-    """
-    try:
-        config = load_config()
-    except Exception as e:
-        logger.error(
-            f"Error loading config for AI credentials: {e}", exc_info=True)
-        return None
-
-    ai_config = config.get("ai", {})
-    if not ai_config.get("enabled", False):
-        return None
-
-    provider = ai_config.get("provider")
-    encrypted_key = ai_config.get("api_key")
-    if not provider or not encrypted_key:
-        logger.warning(
-            "AI config enabled but missing 'provider' or 'api_key'.")
-        return None
-
-    try:
-        api_key = decrypt_data(config, encrypted_key)
-        return {"provider": provider, "api_key": api_key}
-    except Exception as e:
-        logger.error(f"Error decrypting AI credentials: {e}", exc_info=True)
-        return None
 
 
 def get_config_section(section: str) -> Dict[str, Any]:

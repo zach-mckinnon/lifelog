@@ -15,8 +15,9 @@ from lifelog.utils.db import (
     process_sync_queue,
 )
 from lifelog.utils.db import add_record, update_record
-from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields, _parse_datetime_robust
-from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc, parse_datetime_robust, ensure_utc_for_storage, convert_local_input_to_utc
+from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
+from lifelog.utils.core_utils import now_utc, to_utc
+from lifelog.utils.error_handler import handle_db_errors, validate_time_entry_data
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,8 @@ def _pull_changed_time_logs_from_host() -> None:
                          remote.get("uid"), e, exc_info=True)
     # 5) update last_synced
     try:
-        set_last_synced("time_history", datetime.now().isoformat())
+        from lifelog.utils.core_utils import now_utc
+        set_last_synced("time_history", now_utc().isoformat())
     except Exception as e:
         logger.error(
             "Failed to set last_synced for time_history: %s", e, exc_info=True)
@@ -191,15 +193,19 @@ def get_active_time_entry() -> Optional[TimeLog]:
         return None
 
 
+@handle_db_errors("start_time_entry")
 def start_time_entry(data: Dict[str, Any]) -> TimeLog:
-    # Normalize start time - ensure it's stored as UTC
+    """Start a new time entry with validation and error handling."""
+    from lifelog.utils.core_utils import now_utc
+    
+    # Validate data
+    data = validate_time_entry_data(data)
+    
+    # normalize start
     start_val = data.get("start")
-    if start_val:
-        # Convert user input (local time) to UTC for storage
-        utc_start = convert_local_input_to_utc(start_val)
-        data["start"] = utc_start.isoformat()
-    else:
-        # Default to current UTC time
+    if isinstance(start_val, datetime):
+        data["start"] = start_val.isoformat()
+    elif not start_val:
         data["start"] = now_utc().isoformat()
 
     # assign uid
@@ -214,7 +220,7 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
 
     # Optional: set updated_at/deleted defaults here if schema expects them on insert.
     # If you want to record creation time:
-    now_iso = datetime.now().isoformat()
+    now_iso = now_utc().isoformat()
     if 'updated_at' in fields:
         # If updated_at should default to creation time
         data['updated_at'] = data.get('updated_at') or now_iso
@@ -246,6 +252,77 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
     return new_log
 
 
+def stop_active_time_entry(
+    end_time: Union[datetime, str],
+    tags: Optional[str] = None,
+    notes: Optional[str] = None
+) -> TimeLog:
+    # normalize end_time
+    if isinstance(end_time, str):
+        end_dt = datetime.fromisoformat(end_time)
+        # Ensure timezone-aware: if naive, assume UTC
+        if end_dt.tzinfo is None:
+            from datetime import timezone
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+    else:
+        end_dt = end_time
+        # Ensure timezone-aware: if naive, assume UTC
+        if end_dt.tzinfo is None:
+            from datetime import timezone
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+    active = get_active_time_entry()
+    if not active:
+        raise RuntimeError("No active time entry to stop.")
+
+    # Parse stored start (assuming active.start is ISO string)
+    if isinstance(active.start, str):
+        start_dt = datetime.fromisoformat(active.start)
+        # Ensure timezone-aware: if naive, assume UTC
+        if start_dt.tzinfo is None:
+            from datetime import timezone
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+    elif isinstance(active.start, datetime):
+        start_dt = active.start
+        # Ensure timezone-aware: if naive, assume UTC
+        if start_dt.tzinfo is None:
+            from datetime import timezone
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+    else:
+        raise RuntimeError(
+            f"Cannot parse start time of active entry: {active.start}")
+
+    # Check that end >= start
+    if end_dt < start_dt:
+        raise ValueError(
+            f"End time {end_dt.isoformat()} is before start time {start_dt.isoformat()}")
+
+    end_iso = end_dt.isoformat()
+    duration = max(0.0, (end_dt - start_dt).total_seconds() / 60.0)
+    updates: Dict[str, Any] = {"end": end_iso, "duration_minutes": duration}
+    if tags is not None:
+        updates["tags"] = tags
+    if notes is not None:
+        updates["notes"] = notes
+
+    # local update
+    update_record("time_history", active.id, updates)
+
+    # fetch updated
+    updated = get_time_log_by_uid(active.uid)
+    if updated is None:
+        raise RuntimeError(
+            f"Failed to retrieve stopped entry uid={active.uid}")
+
+    # sync if needed
+    if not is_direct_db_mode() and should_sync():
+        payload = {**vars(updated)}
+        queue_sync_operation("time_history", "update", payload)
+        process_sync_queue()
+
+    return updated
+
+
 # Add a new time entry: set updated_at and deleted=0
 def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     # Normalize datetimes
@@ -265,7 +342,8 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     # Assign UID
     data.setdefault("uid", str(uuid.uuid4()))
     # Set updated_at and deleted
-    now_iso = datetime.now().isoformat()
+    from lifelog.utils.core_utils import now_utc
+    now_iso = now_utc().isoformat()
     data['updated_at'] = now_iso
     data['deleted'] = 0
     # Insert locally
@@ -294,13 +372,6 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
 
 # Update time entry: set updated_at
 def update_time_entry(entry_id: int, **updates) -> Optional[TimeLog]:
-    # First get the uid for later retrieval
-    existing = safe_query(
-        "SELECT uid, start FROM time_history WHERE id = ?", (entry_id,))
-    if not existing:
-        return None
-    uid_val = existing[0]["uid"]
-
     # Normalize datetimes in updates
     from datetime import datetime
     norm_updates = {}
@@ -309,24 +380,24 @@ def update_time_entry(entry_id: int, **updates) -> Optional[TimeLog]:
             norm_updates[k] = v.isoformat()
         else:
             norm_updates[k] = v
-    # Set updated_at
-    norm_updates['updated_at'] = datetime.now().isoformat()
-
     # Possibly check if updating 'end': ensure end >= start, if both known
     if 'end' in norm_updates:
-        try:
-            start_dt = datetime.fromisoformat(existing[0]["start"])
-            end_dt = datetime.fromisoformat(norm_updates['end'])
-            if end_dt < start_dt:
-                raise ValueError(
-                    f"End time {end_dt.isoformat()} is before start {start_dt.isoformat()}")
-        except Exception as e:
-            raise ValueError(f"Error validating end time: {e}") from e
-
+        # fetch existing start to compare
+        existing = safe_query(
+            "SELECT start FROM time_history WHERE id = ?", (entry_id,))
+        if existing:
+            try:
+                start_dt = datetime.fromisoformat(existing[0]["start"])
+                end_dt = datetime.fromisoformat(norm_updates['end'])
+                if end_dt < start_dt:
+                    raise ValueError(
+                        f"End time {end_dt.isoformat()} is before start {start_dt.isoformat()}")
+            except Exception as e:
+                raise
     # Update locally
     update_record("time_history", entry_id, norm_updates)
     # Fetch updated
-    updated = get_time_log_by_uid(uid_val)  # by uid fetched earlier
+    updated = get_time_log_by_uid(...)  # by uid fetched earlier
     if updated is None:
         return None
     # Sync if needed, converting any datetime fields
@@ -351,14 +422,14 @@ def stop_active_time_entry(
     tags: Optional[str] = None,
     notes: Optional[str] = None
 ) -> TimeLog:
-    # Normalize end_time - convert to UTC for storage
+    # Normalize end_time into a datetime
     if isinstance(end_time, str):
         try:
-            end_dt = convert_local_input_to_utc(end_time)
+            end_dt = datetime.fromisoformat(end_time)
         except Exception as e:
             raise ValueError(f"Invalid end_time format: {end_time}") from e
     elif isinstance(end_time, datetime):
-        end_dt = to_utc(end_time)  # Ensure UTC for storage
+        end_dt = end_time
     else:
         raise ValueError("end_time must be a datetime or ISO string")
 
@@ -366,16 +437,12 @@ def stop_active_time_entry(
     if not active:
         raise RuntimeError("No active time entry to stop.")
 
-    # Parse stored start (handle both datetime objects and ISO strings)
-    try:
-        if isinstance(active.start, datetime):
-            start_dt = active.start
-        elif isinstance(active.start, str):
-            start_dt = _parse_datetime_robust(active.start)
-        else:
-            raise ValueError(
-                f"Unexpected start time type: {type(active.start)}")
-    except Exception:
+    # Parse stored start (assuming active.start is ISO string)
+    if isinstance(active.start, str):
+        start_dt = datetime.fromisoformat(active.start)
+    elif isinstance(active.start, datetime):
+        start_dt = active.start
+    else:
         raise RuntimeError(
             f"Cannot parse start time of active entry: {active.start}")
 

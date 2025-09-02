@@ -19,23 +19,18 @@ def _filter_and_validate_task_data(data: dict, partial: bool = False) -> tuple[d
     Note: callers should call error(msg, 400) if error_message is non-None.
     """
     from datetime import datetime
-    # Allowed fields from dataclass (excluding 'id')
     allowed_fields = set(get_task_fields())
     extra_keys = set(data) - allowed_fields
     if extra_keys:
         return None, f'Unknown field(s): {", ".join(sorted(extra_keys))}'
 
     cleaned: dict = {}
-    # Define allowed values
     allowed_status = {status.value for status in TaskStatus}
     allowed_recur_units = {"days", "weeks", "months"}
 
     for key, raw_val in data.items():
-        # Skip keys with value None if partial update
         if raw_val is None:
             continue
-
-        # Field-specific validation/conversion
         if key == 'title':
             if not isinstance(raw_val, str) or not raw_val.strip():
                 return None, 'Field "title" must be non-empty string'
@@ -94,7 +89,7 @@ def _filter_and_validate_task_data(data: dict, partial: bool = False) -> tuple[d
             for p in parts:
                 if not p.isdigit() or not (0 <= int(p) <= 6):
                     return None, 'Field "recur_days_of_week" entries must be integers 0–6'
-            cleaned[key] = raw_val  # or normalized string
+            cleaned[key] = raw_val
 
         elif key in ('project', 'category', 'tags', 'notes'):
             if not isinstance(raw_val, str):
@@ -107,26 +102,19 @@ def _filter_and_validate_task_data(data: dict, partial: bool = False) -> tuple[d
             cleaned[key] = raw_val.strip()
 
         else:
-            # Should not happen since filtered allowed_fields
             return None, f'Unhandled field "{key}"'
 
-    # If not partial and some required fields missing
     if not partial:
         if 'title' not in cleaned:
             return None, 'Field "title" is required'
-        # If created missing, set now
         if 'created' not in cleaned:
             cleaned['created'] = datetime.now()
 
-    # Attempt to build Task to catch errors
     try:
         task_obj = Task(**cleaned)
     except Exception as e:
         return None, f'Error constructing Task: {e}'
-    # Return Python-native dict for repository
     return task_obj.asdict(), None
-
-# 1) Replace _get_task_or_404(task_id) with:
 
 
 def _get_task_by_uid_or_404(uid: str):
@@ -134,8 +122,6 @@ def _get_task_by_uid_or_404(uid: str):
     if not tasks:
         error('Task not found', 404)
     return tasks[0]
-
-# 2) POST /tasks   (create) stays almost the same, but returns the UID:
 
 
 @tasks_bp.route('/', methods=['POST'])
@@ -151,9 +137,6 @@ def create_task():
     new_task = task_repository.add_task(cleaned)
     return jsonify(new_task.to_dict()), 201
 
-
-# 3) REMOVE or DEPRECATE @tasks_bp.route('/<int:task_id>') for GET/PUT/DELETE
-#    and replace with UID-based routes only:
 
 @tasks_bp.route('/uid/<string:uid>', methods=['GET'])
 @require_device_token
@@ -194,9 +177,6 @@ def delete_task_by_uid_api(uid):
     task_repository.delete_task_by_uid(uid)
     return jsonify({'status': 'success'}), 200
 
-# 4) If you want to keep numeric-ID endpoints for backward-compat:
-#    simply look up the UID, then delegate:
-
 
 @tasks_bp.route('/<int:task_id>', methods=['GET', 'PUT', 'DELETE'])
 @require_device_token
@@ -205,4 +185,4 @@ def task_id_fallback(task_id):
     t = task_repository.get_task_by_id(task_id)
     if not t:
         error('Task not found', 404)
-    return jsonify(t.to_dict()), 200  # or redirect internally to the UID logic
+    return jsonify(t.to_dict()), 200

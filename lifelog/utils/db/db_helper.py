@@ -15,7 +15,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from lifelog.config.config_manager import load_config
-from lifelog.utils.shared_utils import to_utc
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """
+    Convert a datetime to UTC-aware datetime.
+    - If dt is naïve, interpret it as UTC.
+    - If dt is aware, convert from its tzinfo to UTC.
+    Returns a datetime with tzinfo=datetime.timezone.utc.
+    """
+    if dt.tzinfo is None:
+        # Interpret naïve dt as UTC to avoid circular import
+        dt = dt.replace(tzinfo=timezone.utc)
+    # Convert to UTC
+    return dt.astimezone(timezone.utc)
 
 
 # Database paths
@@ -44,18 +57,27 @@ SYNC_QUEUE_PATH = Path.home() / ".lifelog" / "sync_queue.db"
 @contextmanager
 def get_connection():
     """
-    Yields an sqlite3.Connection that:
+    Yields an sqlite3.Connection optimized for Raspberry Pi:
       • has PRAGMA foreign_keys=ON
+      • Dynamically optimized PRAGMA settings based on Pi hardware
       • will COMMIT on normal exit,
       • ROLLBACK on exception,
       • and ALWAYS CLOSE.
     """
     from lifelog.utils.db import _resolve_db_path
+    from lifelog.utils.pi_optimizer import pi_optimizer
+    
     db_path = _resolve_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    
+    # Connect with hardware-optimized timeout
+    settings = pi_optimizer.get_optimized_settings()
+    timeout = settings["performance"]["connection_timeout"]
+    conn = sqlite3.connect(db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    
+    # Apply hardware-optimized SQLite settings
+    pi_optimizer.optimize_connection_settings(conn)
 
     try:
         yield conn
@@ -100,15 +122,30 @@ def should_sync() -> bool:
 def direct_db_execute(query: str, params: Tuple[Any, ...] = ()) -> sqlite3.Cursor:
     """
     Execute SQL on local DB immediately (only in local/server mode).
+    Uses proper connection management for Raspberry Pi reliability.
     """
     if not is_direct_db_mode():
         raise RuntimeError("Direct DB access not allowed in client mode")
-    conn = sqlite3.connect(str(LOCAL_DB_PATH))
-    cursor = conn.cursor()
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
-    return cursor
+    
+    try:
+        # Use context manager for proper connection handling
+        with sqlite3.connect(str(LOCAL_DB_PATH), timeout=30.0) as conn:
+            # Configure SQLite for better Pi performance
+            conn.execute("PRAGMA journal_mode=WAL")  # Better for concurrent access
+            conn.execute("PRAGMA synchronous=NORMAL")  # Balance between performance and safety
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor
+    except sqlite3.OperationalError as e:
+        logger.error(f"Database operation failed (may be locked or corrupted): {e}")
+        raise
+    except sqlite3.Error as e:
+        logger.error(f"Database error in direct_db_execute: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in direct_db_execute: {e}")
+        raise
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Data Normalization
@@ -123,7 +160,7 @@ def normalize_for_db(d: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(v, Enum):
             d[k] = v.value
         elif isinstance(v, datetime):
-            d[k] = to_utc(v).isoformat()
+            d[k] = _to_utc(v).isoformat()
     return d
 
 # ───────────────────────────────────────────────────────────────────────────────

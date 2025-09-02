@@ -1,165 +1,76 @@
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
-import pandas as pd
+# Lazy loading for pandas - memory optimization for Pi
+_pd = None
 
-from lifelog.utils.db import track_repository, time_repository, task_repository
-from lifelog.utils.reporting.insight_engine import generate_insights
-from lifelog.utils.shared_utils import now_utc
+def get_pandas():
+    """Lazy load pandas only when needed"""
+    global _pd
+    if _pd is None:
+        import pandas as pd
+        _pd = pd
+    return _pd
+
+from lifelog.utils.db import track_repository, time_repository
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def get_tracker_summary(since_days: int = 7, fallback_local: bool = True) -> pd.DataFrame:
-    """Get tracker data summary with automatic fallback to local data."""
+def get_tracker_summary(since_days: int = 7):
+    pd = get_pandas()  # Lazy load pandas
+    from lifelog.utils.core_utils import now_utc
     since = now_utc() - timedelta(days=since_days)
-
     try:
-        # Try to get data with sync first
         trackers = track_repository.get_all_trackers_with_entries()
     except Exception as e:
         logger.error(
             "get_tracker_summary: failed to load trackers: %s", e, exc_info=True)
-        if fallback_local:
-            try:
-                # Fallback to local-only data
-                from lifelog.utils.db.db_helper import safe_query
-                tracker_rows = safe_query(
-                    "SELECT * FROM trackers WHERE deleted = 0", ())
-                trackers = []
-                for row in tracker_rows:
-                    tracker_dict = dict(row)
-                    entries = track_repository.get_entries_for_tracker(
-                        tracker_dict['id'])
-                    tracker_dict['entries'] = entries
-                    trackers.append(tracker_dict)
-            except Exception as e2:
-                logger.error(
-                    "get_tracker_summary: local fallback failed: %s", e2, exc_info=True)
-                return pd.DataFrame()
-        else:
-            return pd.DataFrame()
-
-    if not trackers:
         return pd.DataFrame()
 
     rows = []
     for tracker in trackers:
-        tracker_id = tracker.get('id') if isinstance(
-            tracker, dict) else getattr(tracker, 'id', None)
-        tracker_title = tracker.get('title') if isinstance(
-            tracker, dict) else getattr(tracker, 'title', 'Unknown')
-        tracker_category = tracker.get('category') if isinstance(
-            tracker, dict) else getattr(tracker, 'category', None)
-
-        entries = tracker.get('entries', []) if isinstance(
-            tracker, dict) else getattr(tracker, 'entries', [])
-
-        for entry in entries:
+        for entry in tracker.entries or []:
+            ts = entry.timestamp
+            ts_iso = ts.isoformat() if isinstance(ts, datetime) else ts
             try:
-                # Handle both TrackerEntry objects and dicts
-                if hasattr(entry, 'timestamp'):
-                    ts = entry.timestamp
-                    value = entry.value
-                    notes = getattr(entry, 'notes', None)
-                else:
-                    ts = entry.get('timestamp')
-                    value = entry.get('value')
-                    notes = entry.get('notes')
-
-                # Parse timestamp
-                if isinstance(ts, str):
-                    ts_dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                else:
-                    ts_dt = ts
-
-                if ts_dt >= since:
+                if datetime.fromisoformat(ts_iso) >= since:
                     rows.append({
-                        'tracker_id': tracker_id,
-                        'tracker_title': tracker_title,
-                        'category': tracker_category or 'uncategorized',
-                        'timestamp': ts_dt,
-                        'value': value,
-                        'notes': notes,
-                        'date': ts_dt.date()
+                        "tracker": tracker.title,
+                        "timestamp": ts_iso,
+                        "value": entry.value
                     })
             except Exception as e:
                 logger.warning(
-                    "get_tracker_summary: skipping invalid entry: %s", e)
-                continue
+                    "get_tracker_summary: skipping invalid timestamp %r: %s", ts_iso, e)
 
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
+    return pd.DataFrame(rows)
 
 
-def get_time_summary(since_days: int = 7, fallback_local: bool = True) -> pd.DataFrame:
-    """Get time tracking summary with automatic fallback to local data."""
+def get_time_summary(since_days: int = 7):
+    pd = get_pandas()  # Lazy load pandas
+    from lifelog.utils.core_utils import now_utc
     since = now_utc() - timedelta(days=since_days)
-
     try:
         logs = time_repository.get_all_time_logs(since)
     except Exception as e:
         logger.error(
             "get_time_summary: failed to load time logs: %s", e, exc_info=True)
-        if fallback_local:
-            try:
-                # Fallback to local-only data
-                from lifelog.utils.db.db_helper import safe_query
-                query = """
-                    SELECT * FROM time_history 
-                    WHERE deleted = 0 AND start >= ? 
-                    ORDER BY start DESC
-                """
-                rows = safe_query(query, (since.isoformat(),))
-                logs = [dict(row) for row in rows]
-            except Exception as e2:
-                logger.error(
-                    "get_time_summary: local fallback failed: %s", e2, exc_info=True)
-                return pd.DataFrame()
-        else:
-            return pd.DataFrame()
-
-    if not logs:
         return pd.DataFrame()
 
-    # Ensure we have the right data structure
-    rows = []
-    for log in logs:
-        try:
-            if hasattr(log, '__dict__'):
-                log_dict = log.__dict__
-            else:
-                log_dict = log
+    df = pd.DataFrame(logs)
+    if df.empty:
+        return df
 
-            start_time = log_dict.get('start')
-            if isinstance(start_time, str):
-                start_dt = datetime.fromisoformat(
-                    start_time.replace('Z', '+00:00'))
-            else:
-                start_dt = start_time
-
-            if start_dt >= since:
-                rows.append({
-                    'category': log_dict.get('category', 'uncategorized'),
-                    'title': log_dict.get('title', 'Unknown'),
-                    'duration_minutes': log_dict.get('duration_minutes', 0),
-                    'start': start_dt,
-                    'date': start_dt.date()
-                })
-        except Exception as e:
-            logger.warning(
-                "get_time_summary: skipping invalid log entry: %s", e)
-            continue
-
-    if not rows:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(rows)
+    df['start'] = pd.to_datetime(df['start'], errors='coerce')
+    df = df[df['start'] >= since]
     return df.groupby('category', dropna=False)['duration_minutes'].sum().reset_index()
 
 
-def get_daily_tracker_averages(metric_name: str, since_days: int = 7) -> pd.DataFrame:
-    from lifelog.utils.shared_utils import now_utc
+def get_daily_tracker_averages(metric_name: str, since_days: int = 7):
+    pd = get_pandas()  # Lazy load pandas
+    from lifelog.utils.core_utils import now_utc
     since = now_utc() - timedelta(days=since_days)
     try:
         tracker = track_repository.get_tracker_by_title(metric_name)
@@ -181,16 +92,9 @@ def get_daily_tracker_averages(metric_name: str, since_days: int = 7) -> pd.Data
 
     for entry in raw_entries:
         try:
-            # Handle TrackerEntry object vs dict
-            if hasattr(entry, 'timestamp'):
-                ts = datetime.fromisoformat(entry.timestamp)
-                value = entry.value
-            else:
-                ts = datetime.fromisoformat(entry["timestamp"])
-                value = entry["value"]
-
+            ts = datetime.fromisoformat(entry["timestamp"])
             if ts >= since:
-                entries.append({"date": ts.date(), "value": value})
+                entries.append({"date": ts.date(), "value": entry["value"]})
         except Exception as e:
             logger.warning(
                 "get_daily_tracker_averages: skipping invalid entry %r: %s", entry, e)
@@ -203,15 +107,11 @@ def get_daily_tracker_averages(metric_name: str, since_days: int = 7) -> pd.Data
 
 
 def get_correlation_insights() -> List[Dict[str, Any]]:
-    try:
-        return generate_insights()
-    except Exception as e:
-        logger.error(
-            "get_correlation_insights: insight engine failed: %s", e, exc_info=True)
-        return []
+    """Returns empty list since AI insights have been removed."""
+    return []
 
 
-def export_data(df: pd.DataFrame, filepath: str):
+def export_data(df, filepath: str):
     if df.empty:
         print("[yellow]⚠️ No data to export.[/yellow]")
         return

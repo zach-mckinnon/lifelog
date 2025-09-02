@@ -1,10 +1,13 @@
 import os
 import uuid
+import logging
 from lifelog.config.config_manager import BASE_DIR
 import sqlite3
 from pathlib import Path
 
 from lifelog.utils.db import get_connection
+
+logger = logging.getLogger(__name__)
 
 
 # _ENV_DB = os.getenv("LIFELOG_DB_PATH", "").strip()
@@ -38,15 +41,22 @@ def is_initialized() -> bool:
         return False
 
     try:
-        # Open a connection
+        # Use proper connection management for Pi reliability
         from lifelog.utils.db import get_connection
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cur.fetchall()
-            conn.close()
+            # Connection automatically closed by context manager
         return len(tables) > 0
-    except sqlite3.Error:
+    except sqlite3.OperationalError as e:
+        logger.error(f"Database locked or unavailable during initialization check: {e}")
+        return False
+    except sqlite3.Error as e:
+        logger.error(f"Database error during initialization check: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error checking database initialization: {e}")
         return False
 
 
@@ -399,11 +409,37 @@ def initialize_schema():
             # Indexes
             # ───────────────────────────────────────────────────────────────────────
             cursor.executescript("""
+            -- Existing indexes
             CREATE INDEX IF NOT EXISTS idx_tracker_entries_tracker_id ON tracker_entries(tracker_id);
             CREATE INDEX IF NOT EXISTS idx_time_history_task_id ON time_history(task_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due);
             CREATE INDEX IF NOT EXISTS idx_goals_tracker_id ON goals(tracker_id);
+            
+            -- Performance-critical indexes for Pi Zero 2W
+            CREATE INDEX IF NOT EXISTS idx_time_history_start ON time_history(start);
+            CREATE INDEX IF NOT EXISTS idx_time_history_end ON time_history(end);
+            CREATE INDEX IF NOT EXISTS idx_time_history_category ON time_history(category);
+            CREATE INDEX IF NOT EXISTS idx_time_history_uid ON time_history(uid);
+            CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
+            CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created);
+            CREATE INDEX IF NOT EXISTS idx_tasks_uid ON tasks(uid);
+            CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_timestamp ON tracker_entries(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_uid ON tracker_entries(uid);
+            CREATE INDEX IF NOT EXISTS idx_trackers_category ON trackers(category);
+            CREATE INDEX IF NOT EXISTS idx_trackers_uid ON trackers(uid);
+            
+            -- Composite indexes for common query patterns
+            CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due);
+            CREATE INDEX IF NOT EXISTS idx_time_history_category_start ON time_history(category, start);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_tracker_timestamp ON tracker_entries(tracker_id, timestamp);
+            
+            -- Sync performance indexes
+            CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_time_history_updated_at ON time_history(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_trackers_updated_at ON trackers(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_updated_at ON tracker_entries(updated_at);
             """)
 
             # Migration: Add notes column to tracker_entries if it doesn't exist
@@ -457,12 +493,10 @@ def update_record(table, record_id, updates):
 def get_all_api_devices():
     with get_connection() as conn:
         cursor = conn.cursor()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT device_name, device_token, paired_at
-        FROM api_devices
-        ORDER BY paired_at DESC
-    """)
-    devices = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+        cursor.execute("""
+            SELECT device_name, device_token, paired_at
+            FROM api_devices
+            ORDER BY paired_at DESC
+        """)
+        devices = [dict(row) for row in cursor.fetchall()]
     return devices

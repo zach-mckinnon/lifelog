@@ -11,17 +11,15 @@ import csv
 import json
 from rich.console import Console
 from lifelog.utils.db import track_repository
-from lifelog.utils.reporting.insight_engine import daily_averages, load_tracker_data, load_time_data
 import lifelog.config.config_manager as cf
 from lifelog.utils.reporting.analytics.report_utils import render_pie_chart
 from rich.table import Table
 
 from lifelog.utils.shared_utils import now_utc
+from lifelog.utils.reporting.insight_engine import daily_averages, load_time_data, load_tracker_data
 
 console = Console()
 cfg = cf.load_config()
-
-# Summary of tracker totals
 
 
 def summary_metric(since: str = "7d", export: str = None):
@@ -46,18 +44,15 @@ def summary_metric(since: str = "7d", export: str = None):
         console.print("[yellow]⚠️ No tracker data to summarize yet.[/yellow]")
         return
 
-    # Chart
     render_pie_chart(data)
 
     if export:
         _export(data, since, export)
 
-# Summary of time tracking
-
 
 def summary_time(since: str = "7d", export: str = None):
     """
-    ⏱  Summary of time tracked per category.
+    Summary of time tracked per category.
     """
     from lifelog.config.config_manager import get_time_file
     cutoff = _parse_since(since)
@@ -82,7 +77,7 @@ def summary_time(since: str = "7d", export: str = None):
 
 def summary_daily(since: str = "7d", export: str = None):
     """
-    📅  Daily summary: tasks completed, average mood, total time.
+    Daily summary: tasks completed, average mood, total time.
     """
     now = now_utc()
     cutoff = _parse_since(since)
@@ -94,15 +89,12 @@ def summary_daily(since: str = "7d", export: str = None):
     daily_moods = daily_averages(metric_data).get(
         "mood", {})  # {day: mood avg}
 
-    # Placeholder for task completion (if available)
-    # Assuming you have a method or file to load task completion logs per day
     try:
         with open("/path/to/your/task_log.json", "r") as f:
             task_logs = json.load(f)
     except:
         task_logs = []
 
-    # Aggregate data per day
     days = (today - cutoff.date()).days + 1
     summary = []
 
@@ -130,7 +122,6 @@ def summary_daily(since: str = "7d", export: str = None):
             "minutes": round(minutes, 1)
         })
 
-    # Render table
     table = Table(
         title=f"📅 Daily Summary (since {cutoff.date().isoformat()})", show_lines=True)
     table.add_column("Date", style="cyan")
@@ -148,11 +139,8 @@ def summary_daily(since: str = "7d", export: str = None):
 
     console.print(table)
 
-    # Optional export
     if export:
         _export({r["day"]: r for r in summary}, since, export)
-
-# Helpers
 
 
 def _parse_since(s: str) -> datetime:

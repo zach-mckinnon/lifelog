@@ -3,29 +3,6 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union, get_args, get_origin
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
-from dateutil import parser as date_parser
-
-
-def _parse_datetime_robust(dt_str: str) -> datetime:
-    """
-    Robust datetime parsing for models - handles timezone-aware strings.
-    """
-    if not dt_str:
-        raise ValueError("Empty datetime string")
-    try:
-        return datetime.fromisoformat(dt_str)
-    except ValueError:
-        try:
-            return date_parser.isoparse(dt_str)
-        except Exception:
-            try:
-                # Manual fallback for common problematic format: "2025-08-09 19:14:23.995550+00:00"
-                # Replace space with T for ISO format
-                iso_format = dt_str.replace(' ', 'T')
-                return datetime.fromisoformat(iso_format)
-            except Exception as e:
-                raise ValueError(
-                    f"Cannot parse datetime string '{dt_str}': {e}")
 
 
 class BaseModel:
@@ -99,7 +76,7 @@ class Task(BaseModel):
     recur_base: Optional[datetime] = None
     tags: Optional[str] = None
     notes: Optional[str] = None
-    uid: str = None
+    uid: Optional[str] = None
     updated_at: Optional[datetime] = None
     deleted: int = 0
 
@@ -122,7 +99,12 @@ def task_from_row(row: Dict[str, Any]) -> Task:
         # datetime fields: created, due, start, end, recur_base, updated_at
         if typ is datetime or typ == Optional[datetime]:
             try:
-                data[k] = _parse_datetime_robust(v)
+                dt = datetime.fromisoformat(v)
+                # Ensure timezone-aware: if naive, assume UTC
+                if dt.tzinfo is None:
+                    from datetime import timezone
+                    dt = dt.replace(tzinfo=timezone.utc)
+                data[k] = dt
             except Exception:
                 data[k] = None
             continue
@@ -155,7 +137,7 @@ class TimeLog(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     distracted_minutes: Optional[float] = 0
-    uid: str = None
+    uid: Optional[str] = None
     updated_at: Optional[datetime] = None
     deleted: int = 0
 
@@ -170,7 +152,12 @@ def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
             continue
         if name in ("start", "end") and val:
             try:
-                kwargs[name] = _parse_datetime_robust(val)
+                dt = datetime.fromisoformat(val)
+                # Ensure timezone-aware: if naive, assume UTC
+                if dt.tzinfo is None:
+                    from datetime import timezone
+                    dt = dt.replace(tzinfo=timezone.utc)
+                kwargs[name] = dt
             except Exception:
                 kwargs[name] = None
             continue
@@ -179,7 +166,12 @@ def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
             continue
         if name == 'updated_at':
             try:
-                kwargs[name] = _parse_datetime_robust(val)
+                dt = datetime.fromisoformat(val)
+                # Ensure timezone-aware: if naive, assume UTC
+                if dt.tzinfo is None:
+                    from datetime import timezone
+                    dt = dt.replace(tzinfo=timezone.utc)
+                kwargs[name] = dt
             except Exception:
                 kwargs[name] = None
             continue
@@ -197,13 +189,12 @@ class Tracker(BaseModel):
     title: str
     type: str
     category: Optional[str]
-    created: Optional[datetime]
+    created: str
     tags: Optional[str] = None
     notes: Optional[str] = None
-    entries: Optional[List['TrackerEntry']] = None
-    goals: Optional[List['Goal']] = None
-    uid: str = None
-    updated_at: Optional[datetime] = None
+    goals: Optional[list] = None
+    uid: Optional[str] = None
+    updated_at: Optional[str] = None
     deleted: int = 0
 
 
@@ -213,39 +204,22 @@ def tracker_from_row(row: Dict[str, Any]) -> Tracker:
         title=row.get("title", ""),
         type=row.get("type", ""),
         category=row.get("category"),
-        created=None if row.get(
-            "created") is None else _parse_datetime_robust(row.get("created")),
+        created=row.get("created"),
         tags=row.get("tags"),
         notes=row.get("notes"),
-        entries=None,
-        goals=None,
         uid=row.get("uid"),
-        updated_at=None if row.get(
-            "updated_at") is None else _parse_datetime_robust(row.get("updated_at")),
-        deleted=int(row.get("deleted", 0))
+        updated_at=row.get("updated_at"),
+        deleted=row.get("deleted", 0)
     )
 
 
 @dataclass
 class TrackerEntry(BaseModel):
-    id: Optional[int] = None
-    tracker_id: int = None
-    timestamp: str = None
-    value: float = None
-    notes: Optional[str] = None
-    uid: str = None
-
-
-def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
-    return TrackerEntry(
-        id=row.get("id"),
-        tracker_id=row.get("tracker_id"),
-        timestamp=row.get("timestamp"),
-        value=float(row.get("value", 0.0)) if row.get(
-            "value") is not None else None,
-        notes=row.get("notes"),
-        uid=row.get("uid")
-    )
+    id: int
+    tracker_id: int
+    timestamp: str
+    value: float
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -261,7 +235,7 @@ class GoalSum(GoalBase):
     amount: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -269,20 +243,20 @@ class GoalCount(GoalBase):
     amount: int
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
 class GoalBool(GoalBase):
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
 class GoalStreak(GoalBase):
     target_streak: int
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -290,7 +264,7 @@ class GoalDuration(GoalBase):
     amount: float
     unit: str = "minutes"
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -298,7 +272,7 @@ class GoalMilestone(GoalBase):
     target: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -306,7 +280,7 @@ class GoalReduction(GoalBase):
     amount: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -316,7 +290,7 @@ class GoalRange(GoalBase):
     unit: Optional[str] = None
     mode: str = "goal"  # could also be "tracker"
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -324,7 +298,7 @@ class GoalPercentage(GoalBase):
     target_percentage: float
     current_percentage: float = 0
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -332,19 +306,15 @@ class GoalReplacement(GoalBase):
     old_behavior: str
     new_behavior: str
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
 class GoalAverage(GoalBase):
-    # Expected minimum (for outlier detection)
-    min_expected: Optional[float] = None
-    # Expected maximum (for outlier detection)
-    max_expected: Optional[float] = None
-    outlier_threshold: float = 1.5  # Standard deviations for outlier detection
-    period: str = "week"  # day/week/month - default to week for meaningful averages
+    amount: float
     unit: Optional[str] = None
-    uid: str = None
+    period: str = "day"
+    uid: Optional[str] = None
 
 
 Goal = Union[
@@ -421,9 +391,27 @@ def get_goal_fields() -> List[str]:
 #          tags: Optional[str] = None
 #          notes: Optional[str] = None
 #          goals: Optional[list] = None
-#          uid: str = None
+#          uid: Optional[str] = None
 #
 #    In many tables, you may not store 'tags' or 'notes'; they can default to None.
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Tracker(BaseModel):
+    id: Optional[int]
+    title: str
+    type: str
+    category: Optional[str]
+    created: str
+    tags: Optional[str] = None
+    notes: Optional[str] = None
+    goals: Optional[list] = None
+    uid: Optional[str] = None
+    updated_at: Optional[str] = None
+    deleted: int = 0
+
+
 # ───────────────────────────────────────────────────────────────────────────────
 # 4) entry_from_row(row: Dict[str,Any]) → TrackerEntry
 #
@@ -443,21 +431,41 @@ def get_goal_fields() -> List[str]:
 #          tracker_id: int
 #          timestamp: str
 #          value: float
-#          uid: str = None
+#          uid: Optional[str] = None
 #
 #    We simply pull the four stored columns; uid isn’t stored locally, so it stays None.
 # ───────────────────────────────────────────────────────────────────────────────
+@dataclass
+class EnvironmentData(BaseModel):
+    uid: Optional[str] = None
+    id: Optional[int] = None
+    timestamp: Optional[datetime] = None
+    weather: Optional[str] = None
+    air_quality: Optional[str] = None
+    moon: Optional[str] = None
+    satellite: Optional[str] = None
 
 
 @dataclass
-class EnvironmentData(BaseModel):
-    uid: str = None
-    id: int = None
-    timestamp: datetime = None
-    weather: str = None
-    air_quality: str = None
-    moon: str = None
-    satellite: str = None
+class TrackerEntry(BaseModel):
+    id: int
+    tracker_id: int
+    timestamp: str
+    value: float
+    uid: Optional[str] = None
+
+
+def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
+    """
+    Convert a sqlite3‐row (or dict) into a TrackerEntry object.
+    """
+    return TrackerEntry(
+        id=row.get("id"),
+        tracker_id=row.get("tracker_id"),
+        timestamp=row.get("timestamp"),
+        value=row.get("value"),
+        uid=row.get("uid"),
+    )
 
 
 def goal_from_row(row):
@@ -493,11 +501,7 @@ def goal_from_row(row):
     elif kind == "replacement":
         return GoalReplacement(**base, old_behavior=row["old_behavior"], new_behavior=row["new_behavior"])
     elif kind == "average":
-        return GoalAverage(**base,
-                           min_expected=row.get("min_expected"),
-                           max_expected=row.get("max_expected"),
-                           outlier_threshold=row.get("outlier_threshold", 1.5),
-                           unit=row.get("unit"))
+        return GoalAverage(**base, amount=row.get("amount", 0), unit=row.get("unit"))
     else:
         raise ValueError(f"Unknown goal kind: {kind}")
 

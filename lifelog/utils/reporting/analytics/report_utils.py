@@ -17,7 +17,7 @@ console = Console()
 
 
 def render_line_chart(dates, values, label=""):
-    """Renders a line chart using termplotlib with enhanced styling."""
+    """Renders a line chart using termplotlib with improved styling."""
     fig = tpl.figure()
     fig.plot(
         list(range(len(values))),
@@ -32,7 +32,7 @@ def render_line_chart(dates, values, label=""):
 
 
 def render_scatter_plot(x, y, xlabel="", ylabel=""):
-    """Renders a scatter plot using termplotlib with enhanced styling."""
+    """Renders a scatter plot using termplotlib with improved styling."""
     fig = tpl.figure()
     fig.scatter(
         x,

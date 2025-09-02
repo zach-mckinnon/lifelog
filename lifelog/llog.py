@@ -53,22 +53,20 @@ from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notif
 
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
-    help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
+    help="Lifelog CLI: Track your habits, health, time, and tasks.")
 
 console = Console()
 logger = logging.getLogger(__name__)
-
-# -------------------------------------------------------------------
-# Core Initialization System
-# -------------------------------------------------------------------
 
 
 # Ensure the app is initialized
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
 app.add_typer(start_day.app, name="start-day",
               help="Guided, motivational start-of-day routine")
-app.add_typer(hero.app, name="hero",
-              help="🏰 Hero: profile, badges, skills & shop")
+
+# TODO: Implement the gamification module later as optional.
+# app.add_typer(hero.app, name="hero",
+#               help="🏰 Hero: profile, badges, skills & shop")
 app.add_typer(track_module.app, name="track",
               help="Track recurring self-measurements and goals.")
 app.add_typer(time_module.app, name="time",
@@ -82,60 +80,58 @@ app.add_typer(environmental_sync.app, name="environment sync",
 app.add_typer(api_module.app, name="api",
               help="API server control & device pairing")
 
+# TODO: Fix UI for small screens and implement later.
+# @app.command("ui")
+# def ui(
+#     no_help: Annotated[bool, typer.Option(
+#         "--no-help", is_flag=True, help="Disable the help bar.")] = False
+# ):
+#     """
+#     Launch the full-screen Lifelog TUI.
+#     - Ensures initialization.
+#     - Runs auto-sync if needed (logs warnings on failure).
+#     - Wraps the curses UI; logs and prints any errors launching TUI.
+#     """
+#     # → Ensure logging is set up before any logs
+#     log_utils.setup_logging()
 
-@app.command("ui")
-def ui(
-    no_help: Annotated[bool, typer.Option(
-        "--no-help", is_flag=True, help="Disable the help bar.")] = False
-):
-    """
-    Launch the full-screen Lifelog TUI.
-    - Ensures initialization.
-    - Runs auto-sync if needed (logs warnings on failure).
-    - Wraps the curses UI; logs and prints any errors launching TUI.
-    """
-    # → Ensure logging is set up before any logs
-    log_utils.setup_logging()
+#     try:
+#         ensure_app_initialized()
+#     except Exception as e:
+#         logger.error(
+#             f"Initialization failed before launching UI: {e}", exc_info=True)
+#         console.print(f"[red]Initialization error: {e}[/red]")
+#         raise typer.Exit(1)
 
-    try:
-        ensure_app_initialized()
-    except Exception as e:
-        logger.error(
-            f"Initialization failed before launching UI: {e}", exc_info=True)
-        console.print(f"[red]Initialization error: {e}[/red]")
-        raise typer.Exit(1)
+#     show_status = not no_help
 
-    show_status = not no_help
+#     # Auto-sync before launching UI
+#     if should_sync():
+#         try:
+#             auto_sync()
+#         except Exception as e:
+#             # Log the full stack; show a brief warning to user
+#             logger.warning("Auto-sync failed before TUI launch", exc_info=True)
+#             console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
+#             # Pause briefly so user sees the message before full-screen UI
+#             time.sleep(1.5)
 
-    # Auto-sync before launching UI
-    if should_sync():
-        try:
-            auto_sync()
-        except Exception as e:
-            # Log the full stack; show a brief warning to user
-            logger.warning("Auto-sync failed before TUI launch", exc_info=True)
-            console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
-            # Pause briefly so user sees the message before full-screen UI
-            time.sleep(1.5)
-
-    # Launch the curses-based UI
-    try:
-        curses.wrapper(ui_main, show_status)
-    except Exception as e:
-        logger.error(f"Error in TUI main: {e}", exc_info=True)
-        console.print(f"[red]TUI failed to launch: {e}[/red]")
-        raise typer.Exit(1)
+#     # Launch the curses-based UI
+#     try:
+#         curses.wrapper(ui_main, show_status)
+#     except Exception as e:
+#         logger.error(f"Error in TUI main: {e}", exc_info=True)
+#         console.print(f"[red]TUI failed to launch: {e}[/red]")
+#         raise typer.Exit(1)
 
 
 @app.command("setup")
 def setup_command():
     """Run initial setup wizard"""
-    # 1️⃣ Set up logging and ensure base dir
     log_utils.setup_logging()
     cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 2️⃣ Initialize DB schema + seed badges/skills if this is the first time
-    from lifelog.utils.db.database_manager import is_initialized, initialize_schema, run_migrations
+    from lifelog.utils.db.database_manager import is_initialized, initialize_schema
     from lifelog.utils.gamification_seed import run_seed
 
     if not is_initialized():
@@ -143,14 +139,7 @@ def setup_command():
         console.print("[dim]• Database schema initialized[/dim]")
         run_seed()
         console.print("[dim]• Initial data seeded[/dim]")
-    else:
-        # Run migrations on existing databases (silent unless migrations actually run)
-        migrations = run_migrations(silent=True)
-        if migrations:
-            console.print(
-                f"[dim]• Database updated: {', '.join(migrations)}[/dim]")
 
-    # 3️⃣ Load (or create) the config file
     try:
         config = cf.load_config()
     except Exception as e:
@@ -158,7 +147,6 @@ def setup_command():
         console.print(f"[red]Error loading config: {e}[/red]")
         raise typer.Exit(1)
 
-    # 4️⃣ Run the wizard if not already done
     first_done = config.get("meta", {}).get("first_run_complete", False)
     if not first_done:
         config = run_wizard(config)
@@ -536,7 +524,6 @@ def greet_user():
     Greet user with daily quote (if not in curses UI).
     """
     log_utils.setup_logging()
-    # Skip banner in UI mode
     if "curses" in sys.modules:
         return
     try:
@@ -625,7 +612,6 @@ def main_callback(ctx: typer.Context):
     try:
         initialize_application()
     except typer.Exit:
-        # let typer handle exit cleanly (e.g. when first-run detects setup needed)
         raise
     except Exception as e:
         logger.error(
@@ -633,18 +619,22 @@ def main_callback(ctx: typer.Context):
         console.print(f"[red]Initialization error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Only show pending notifications, without any init banners
-    if should_sync():
+    if ctx.info_name and ctx.params.get("help") is not True and should_sync():
         try:
             auto_sync()
         except Exception as e:
             logger.warning(f"Auto-sync failed: {e}", exc_info=True)
 
-    profile = _ensure_profile()
-    unread = get_unread_notifications(profile.id)
-    if unread:
-        console.print("[bold yellow]You have new notifications![/bold yellow]")
-        console.print("Run `llog hero notify` to view them.")
+    if ctx.info_name and ctx.params.get("help") is not True:
+        try:
+            profile = _ensure_profile()
+            unread = get_unread_notifications(profile.id)
+            if unread:
+                console.print(
+                    "[bold yellow]You have new notifications![/bold yellow]")
+                console.print("Run `llog hero notify` to view them.")
+        except Exception as e:
+            logger.warning(f"Notification check failed: {e}")
 
 
 lifelog_app = app

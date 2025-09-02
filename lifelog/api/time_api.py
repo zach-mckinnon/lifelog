@@ -86,8 +86,6 @@ def create_time_entry():
         repo_data['task_id'] = task.id
 
     try:
-        # start_time_entry handles creating active entries;
-        # if 'end' is provided, it treats it as a historical entry
         new_entry = time_repository.start_time_entry(repo_data)
         return jsonify(new_entry.to_dict()), 201
     except Exception as e:
@@ -143,16 +141,13 @@ def update_time_entry_by_uid(uid):
     _get_entry_or_404(uid)
 
     data = parse_json()
-    # strip any accidental numeric id
     data.pop('id', None)
     data.pop('uid', None)
 
-    # validate ISO fields
     for fld in ('start', 'end'):
         if fld in data and data[fld] is not None:
             validate_iso(fld, data[fld])
 
-    # optional link to task by UID
     if 'task_uid' in data:
         tu = data.pop('task_uid')
         if tu is not None:
@@ -162,8 +157,6 @@ def update_time_entry_by_uid(uid):
             if not task:
                 error('Parent task not found', 404)
             data['task_id'] = task.id
-
-    # no numeric id allowed:
     if 'task_id' in data:
         error('Direct "task_id" not supported; use "task_uid"', 400)
 
@@ -185,7 +178,6 @@ def delete_time_entry_by_uid(uid):
 
     try:
         time_repository.delete_time_log_by_uid(uid)
-        # verify deletion
         if time_repository.get_time_log_by_uid(uid):
             error('Delete failed', 500)
         return jsonify({'status': 'success'}), 200

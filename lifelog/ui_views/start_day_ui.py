@@ -152,7 +152,7 @@ def start_day_tui(stdscr):
             run_makeup_tui(stdscr, task, distracted)
 
         # Mark complete
-        run_hooks("task", "completed", task)
+        # run_hooks("task", "completed", task)
         safe_show(stdscr, [f"✔️ Completed '{task.title}'"], title="Task Done")
 
         # After-task trackers & mood
@@ -160,16 +160,12 @@ def start_day_tui(stdscr):
         _log_initial_trackers_tui(stdscr)
         mood = safe_input(stdscr, "How did you feel?", default="")
         if mood:
-            # Try to find a "mood" tracker, skip if not found
-            mood_tracker = track_repository.get_tracker_by_title("mood")
-            if mood_tracker:
-                entry = track_repository.add_tracker_entry(
-                    tracker_id=mood_tracker.id,
-                    timestamp=now_utc(),
-                    value=mood,
-                    notes=None  # Start day mood doesn't support notes
-                )
-                run_hooks("tracker", "logged", entry)
+            entry = track_repository.add_tracker_entry(
+                tracker_id=None,
+                timestamp=now_utc(),
+                value=mood
+            )
+            # run_hooks("tracker", "logged", entry)
 
         # Hydration & lunch reminders
         elapsed = datetime.now(timezone.utc) - session_start
@@ -211,7 +207,7 @@ def run_pomodoro_tui(stdscr, task, total_minutes: int) -> int:
             title="Focus Time"
         )
         completed = countdown_timer_ui(stdscr, focus * 60, title="Focus")
-        run_hooks("task", "pomodoro_done", task)
+        # run_hooks("task", "pomodoro_done", task)
 
         if completed:
             extra = tui_input_int(stdscr, "Distracted minutes?", 0)
@@ -243,7 +239,7 @@ def run_makeup_tui(stdscr, task, total_distracted: int, focus_len: int = 25):
         )
         completed = countdown_timer_ui(
             stdscr, min(rem, focus_len) * 60, title="Makeup")
-        run_hooks("task", "pomodoro_done", task)
+        # run_hooks("task", "pomodoro_done", task)
 
         if not completed:
             actual = tui_input_int(
@@ -330,7 +326,6 @@ def _log_initial_trackers_tui(stdscr):
                 entry = track_repository.add_tracker_entry(
                     tracker_id=tr.id,
                     timestamp=now_utc(),
-                    value=val,
-                    notes=None  # Start day tracker log doesn't support notes
+                    value=val
                 )
-                run_hooks("tracker", "logged", entry)
+                # run_hooks("tracker", "logged", entry)

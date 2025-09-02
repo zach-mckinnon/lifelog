@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "A terminal-based health, habit, task, life tracker."
 authors = [{ name = "Zach McKinnon" }]
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 dependencies = [
-    # Universal
+    # TODO: Consider making heavy dependencies optional for Raspberry Pi Zero 2W
     "typer",
     "rich",
     "pyfiglet",
@@ -25,12 +25,15 @@ dependencies = [
     "pyyaml", 
     "gunicorn",
     "pendulum>=2.0",
+    "psutil>=5.0",  # For Pi optimization and system monitoring
 
     # Windows only
     "windows-curses; sys_platform == 'win32'",
     "pywin32; sys_platform == 'win32'",
 ]
-requires-python = ">=3.8"
+# Updated Python requirement for better Raspberry Pi compatibility
+# Python 3.9+ has better ARM support and performance optimizations
+requires-python = ">=3.9"
 
 [project.optional-dependencies]
 # Lightweight version for ARM devices with limited resources

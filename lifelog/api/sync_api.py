@@ -102,7 +102,6 @@ def _sync_time(operation: str, payload: dict):
     if operation == 'create':
         if payload.get('start') is None:
             return error_response('Missing "start" for create')
-        # assume repository will validate further
         try:
             time_repository.add_time_entry(payload)
         except ValueError as ve:
@@ -180,7 +179,6 @@ def _sync_goals(operation: str, payload: dict):
         if not tracker_uid:
             return error_response('Missing "tracker_uid" for goal create')
         try:
-            # look up numeric tracker_id first
             tracker = track_repository.get_tracker_by_uid(tracker_uid)
             if not tracker:
                 return error_response('Parent tracker not found', 404)

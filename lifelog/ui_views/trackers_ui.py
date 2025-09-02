@@ -95,16 +95,16 @@ def add_tracker_tui(stdscr):
     if not data or not data.get("title"):
         return
 
-    now = now_utc()  # Keep as datetime object
+    now = now_utc().isoformat()
     tracker = Tracker(
         id=None,
         title=data["title"],
         type=data["type"],
         category=data["category"],
-        created=now,  # Pass datetime object
+        created=now,
         tags=data["tags"],
         notes=data["notes"],
-        goals=None
+        goals=[]
     )
 
     # Ask about adding a goal (optional)
@@ -142,7 +142,6 @@ def log_entry_tui(stdscr):
 
     # Parse and validate
     value = entry_data["value"]
-    notes = entry_data.get("notes", "").strip() or None
     timestamp = entry_data.get("timestamp") or now_utc().isoformat()
     if tracker.type == "int":
         value = int(value)
@@ -152,13 +151,14 @@ def log_entry_tui(stdscr):
         value = value.lower() in ("1", "true", "yes", "y")
     # else, str
 
-    entry = track_repository.add_tracker_entry(
+    entry = TrackerEntry(
+        id=None,
         tracker_id=tracker.id,
         timestamp=timestamp,
         value=value,
-        notes=notes
     )
-    run_hooks("tracker", "logged", entry)
+    entry = track_repository.add_tracker_entry(entry)
+    # run_hooks("tracker", "logged", entry)
     npyscreen.notify_confirm(f"Entry logged for '{tracker.title}'.")
 
 
@@ -305,13 +305,14 @@ def log_tracker_entry_tui(stdscr, sel):
         value = value_str
 
     timestamp = now_utc().isoformat()
-    _ent = track_repository.add_tracker_entry(
+    entry = TrackerEntry(
+        id=None,
         tracker_id=tracker.id,
         timestamp=timestamp,
         value=value,
-        notes=None  # Quick log doesn't support notes
     )
-    run_hooks("tracker", "logged", _ent)
+    _ent = track_repository.add_tracker_entry(entry)
+    # run_hooks("tracker", "logged", _ent)
     popup_show(stdscr, [f"Entry logged for '{tracker.title}'."])
 
 
@@ -329,24 +330,7 @@ def view_tracker_tui(stdscr, sel):
         f"Notes:    {t.notes or '-'}",
         f"Goals:    {len(goals)}",
         f"Entries:  {len(entries)}",
-        "",
-        "Recent Entries:",
     ]
-
-    # Show last 5 entries with notes
-    recent_entries = sorted(
-        entries, key=lambda e: e.timestamp, reverse=True)[:5]
-    for entry in recent_entries:
-        timestamp = entry.timestamp.split(
-            'T')[0] if 'T' in entry.timestamp else entry.timestamp[:10]
-        entry_line = f"  {timestamp}: {entry.value}"
-        if entry.notes:
-            entry_line += f" - {entry.notes}"
-        lines.append(entry_line)
-
-    if not recent_entries:
-        lines.append("  No entries yet")
-
     popup_show(stdscr, lines, title=" Tracker Details ")
 
 
@@ -569,7 +553,7 @@ def view_goals_list_tui(stdscr, tracker_sel):
             lines.append(display)
         lines.append("")  # blank
         lines.append("Enter: view goal  ↑/↓: select  q: quit")
-        popup_show(stdscr, lines, title=f"Goals for {t.title}")
+        popup_show(stdscr, lines, title=f"Goals for {t.title}", wait=False)
         c = stdscr.getch()
         if c in (ord('q'), 27):
             break

@@ -18,7 +18,6 @@ def get_option(options: dict, key: str, default=None):
     Returns the value if exists, otherwise returns default.
     """
     return options.get(key, default)
-# ─── Core Task Options ───────────────────────────────────────────────────────────
 
 
 category_option = typer.Option(
@@ -60,8 +59,6 @@ recur_option = typer.Option(
     help="Task recurrence schedule (e.g., daily, weekly, monthly, every:7d). Automatically regenerates recurring tasks.",
     show_default=False,
 )
-
-# ─── Shared Utilities ───────────────────────────────────────────────────────────
 
 tags_option = typer.Option(
     [],

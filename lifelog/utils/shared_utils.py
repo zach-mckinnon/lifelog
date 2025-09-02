@@ -5,6 +5,10 @@ This module provides functionality to generate various reports based on the user
 It includes features for generating daily, weekly, and monthly reports, as well as custom date range reports.
 '''
 
+from rich.console import Console
+from lifelog.utils.db.models import Task
+import lifelog.config.config_manager as cf
+import typer
 from datetime import datetime, timedelta, timezone
 from dateutil import tz, parser as date_parser
 import logging
@@ -12,11 +16,79 @@ from dateutil.relativedelta import relativedelta
 
 import re
 from typing import List
-import pandas as pd
-from rich.console import Console
-import typer
-import lifelog.config.config_manager as cf
-from lifelog.utils.db.models import Task
+# Lazy loading for memory-heavy libraries on resource-constrained devices
+_pd = None
+_numpy = None
+_scipy = None
+
+
+class LazyLibraryLoader:
+    """Thread-safe lazy loader for heavy libraries on Pi."""
+
+    def __init__(self):
+        self._pd = None
+        self._numpy = None
+        self._scipy = None
+        self._lock = None
+
+    def get_pandas(self):
+        """Lazy load pandas with Pi-specific optimizations."""
+        if self._pd is None:
+            try:
+                from lifelog.utils.pi_optimizer import is_raspberry_pi
+
+                import pandas as pd
+                if is_raspberry_pi():
+                    pd.set_option('mode.chained_assignment',
+                                  None)  # Reduce warnings
+                    pd.set_option('display.max_rows', 50)  # Limit display rows
+                    # Limit display columns
+                    pd.set_option('display.max_columns', 10)
+
+                self._pd = pd
+            except ImportError:
+                self._pd = None
+        return self._pd
+
+    def get_numpy(self):
+        """Lazy load numpy."""
+        if self._numpy is None:
+            try:
+                import numpy as np
+                self._numpy = np
+            except ImportError:
+                self._numpy = None
+        return self._numpy
+
+    def get_scipy(self):
+        """Lazy load scipy."""
+        if self._scipy is None:
+            try:
+                import scipy
+                self._scipy = scipy
+            except ImportError:
+                self._scipy = None
+        return self._scipy
+
+
+# Global lazy loader instance
+_lazy_loader = LazyLibraryLoader()
+
+
+def get_pandas():
+    """Get pandas with Pi optimizations - backward compatibility."""
+    return _lazy_loader.get_pandas()
+
+
+def get_numpy():
+    """Get numpy with lazy loading."""
+    return _lazy_loader.get_numpy()
+
+
+def get_scipy():
+    """Get scipy with lazy loading."""
+    return _lazy_loader.get_scipy()
+
 
 console = Console()
 
@@ -136,12 +208,11 @@ def calculate_priority(task: Task) -> float:
     if isinstance(task, dict):
         importance = task.get("importance", 3)
         due_val = task.get("due", None)
-    else:  # assume Task instance
+    else:
         importance = getattr(task, "importance", 3) or 3
         due_val = getattr(task, "due", None)
     urgency = 0.0
     if due_val:
-        # due_val is likely a datetime already (repository parsed ISO into datetime)
         if isinstance(due_val, str):
             try:
                 due_date = datetime.fromisoformat(due_val)
@@ -303,7 +374,6 @@ def to_utc(dt: datetime) -> datetime:
     Returns a datetime with tzinfo=datetime.timezone.utc.
     """
     if dt.tzinfo is None:
-        # Interpret naïve dt as user-local
         user_tz = get_user_timezone()
         dt = dt.replace(tzinfo=user_tz)
     # Convert to UTC
@@ -347,7 +417,6 @@ def to_local(dt: datetime) -> datetime:
     Returns a datetime with tzinfo set to user’s tz.
     """
     if dt.tzinfo is None:
-        # Interpret naïve as UTC
         dt = dt.replace(tzinfo=timezone.utc)
     user_tz = get_user_timezone()
     return dt.astimezone(user_tz)
@@ -357,7 +426,6 @@ def now_local() -> datetime:
     """
     Return current time in user’s local timezone (aware datetime).
     """
-    # Generate now in UTC, then convert
     return now_utc().astimezone(get_user_timezone())
 
 
@@ -368,7 +436,6 @@ def local_to_utc_iso(dt_local: datetime) -> str:
     - Returns ISO string with 'Z' (or +00:00).
     """
     dt_utc = to_utc(dt_local)
-    # Use .isoformat(); for UTC you can append 'Z' if desired, but isoformat includes '+00:00'
     return dt_utc.isoformat()
 
 
@@ -379,11 +446,9 @@ def utc_iso_to_local(iso_str: str) -> datetime:
     - Returns a datetime with tzinfo=user local.
     """
     try:
-        # datetime.fromisoformat can parse offsets: e.g. "2025-06-13T17:00:00+00:00"
         dt = datetime.fromisoformat(iso_str)
     except Exception as e:
         raise ValueError(f"Invalid ISO datetime string '{iso_str}': {e}")
-    # If parsed dt is naïve, assume UTC
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return to_local(dt)
@@ -394,12 +459,9 @@ def format_datetime_for_user(dt: datetime) -> str:
     Convert any datetime (naïve=assumed UTC, or aware) to the user's local tz,
     then format as MM/DD/YY HH:MM (24-hour).
     """
-    # 1) If naïve, assume it's UTC
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    # 2) Convert to user-local tz
     local_dt = to_local(dt)
-    # 3) Format
     return local_dt.strftime("%m/%d/%y %H:%M")
 
 
@@ -428,14 +490,10 @@ def parse_offset_to_timedelta(offset_str: str) -> timedelta:
             return timedelta(minutes=val)
         elif unit == 'w':
             return timedelta(weeks=val)
-    # Maybe allow 'Xm' or 'Xmin'?
     m2 = re.fullmatch(r'(\d+)(min|mins|minute|minutes)', s)
     if m2:
         val = int(m2.group(1))
         return timedelta(minutes=val)
-    # Possibly allow 'Xh' already covered. If more complex needed, you could
-    # try parse_date_string(s, future=True) - now, but that can be confusing
-    # if parse_date_string interprets e.g. "tomorrow" as absolute date.
     raise ValueError(f"Unrecognized offset format: '{offset_str}'")
 
 
@@ -504,7 +562,6 @@ def create_recur_schedule(recur_str: str) -> dict:
         "unit": unit_full
     }
 
-    # Step 3 (optional): Days of week for weekly interval
     if unit_full == "week":
         days_lookup = {"m": 0, "t": 1, "w": 2,
                        "th": 3, "f": 4, "s": 5, "su": 6}
@@ -515,7 +572,6 @@ def create_recur_schedule(recur_str: str) -> dict:
             days_input = typer.prompt(
                 "Days of week (separate with /)").lower().strip()
             if not days_input:
-                # default to today's weekday
                 recur_dict["days_of_week"] = [now_utc().weekday()]
                 break
             day_parts = days_input.split("/")
@@ -549,6 +605,7 @@ def user_friendly_empty_message(module="insights"):
 
 
 def filter_entries_for_current_period(entries, period: str):
+    pd = get_pandas()
     now = now_utc()
     df = pd.DataFrame(entries)
     if df.empty:
@@ -564,7 +621,6 @@ def filter_entries_for_current_period(entries, period: str):
     elif period == "month":
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     else:
-        # If unknown period, return all entries
         return df
 
     return df[df['timestamp'] >= start]
@@ -578,7 +634,6 @@ def validate_task_inputs(title: str, importance: int = None, priority: float = N
 
 
 def category_autocomplete(ctx: typer.Context, incomplete: str):
-    # Show all available plus the incomplete if not in list
     options = get_available_categories()
     return [c for c in options if c.startswith(incomplete)]
 
@@ -606,12 +661,15 @@ def add_category_to_config(category: str, description: str = ""):
     if category not in cats:
         cats[category] = description
 
-        # Prompt for importance multiplier
-        multiplier = typer.prompt(
-            f"Enter importance multiplier for '{category}' (1.0 = normal)",
-            default=1.0,
-            type=float
-        )
+        try:
+            multiplier = typer.prompt(
+                f"Enter importance multiplier for '{category}' (1.0 = normal)",
+                default=1.0,
+                type=float
+            )
+        except (EOFError, KeyboardInterrupt):
+            multiplier = 1.0
+            console.print(f"[dim]Using default multiplier: {multiplier}[/dim]")
         cat_importances[category] = multiplier
 
         config["categories"] = cats

@@ -42,7 +42,7 @@ def show_help_popup(stdscr, current_tab):
         lines = [
             "Reports Tab:",
             "1: Trackers Summary    2: Time Summary    3: Daily Tracker",
-            "4: Insights            C: Clinical Insights    B: Task Burndown",
+            "B: Task Burndown",
             "",
             "←/→: Switch Tab   ?: Help   Q: Quit"
         ]

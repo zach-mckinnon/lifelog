@@ -145,9 +145,8 @@ def log_trackers_cli():
                     tracker_id=tr.id,
                     timestamp=now_utc(),
                     value=val,
-                    notes=None  # Start day command doesn't support notes
                 )
-                run_hooks("tracker", "logged", entry)
+                # run_hooks("tracker", "logged", entry)
                 console.print(f"[green]Logged {tr.title} → {val}[/green]")
 
 
@@ -166,29 +165,24 @@ def hydrate_and_lunch_reminder(start_time, asked):
 def start_day(overload_threshold: int = 480):
     console.rule("[bold blue]🌞 Start Your Day 🌞[/bold blue]")
 
-    # 1) Motivation & Weather
     console.print("Let's get this day going!")
     console.print(Panel(get_motivational_quote(),
                   title="Motivation", style="green"))
     show_today_weather_cli()
 
-    # 2) Choose tasks
     tasks = select_tasks_cli()
     if not tasks:
         console.print("[yellow]No tasks selected—bye![/yellow]")
         return
 
-    # 3) Allocate time
     plan, total = ask_time_for_tasks_cli(tasks)
     if total > overload_threshold:
         console.print(
             f"[bold yellow]⚠ You planned {total}min (> {overload_threshold})—reduce to avoid burnout.[/bold yellow]")
 
-    # 4) Initial trackers
     console.rule("[bold]Log Initial Trackers[/bold]")
     log_trackers_cli()
 
-    # 5) Begin Guided Pomodoro for each task
     session_start = datetime.now(timezone.utc)
     reminders = {"water": False, "lunch": False}
 
@@ -197,19 +191,15 @@ def start_day(overload_threshold: int = 480):
         console.rule(
             f"[magenta]Task {idx}/{len(plan)}: {task.title}[/magenta]")
 
-        # Prep checklist
         console.print(
             "[bold]📝 Take 5 min to make a checklist of what you want to complete this session.[/bold]")
         prompt_continue(
             "Press Enter when your checklist is done (or after 5 min)…")
-        # Optionally you could call pomodoro_timer(5) here.
 
-        # Confirm start
         console.print(
             f"[bold blue]Ready to start {minutes} min of focused work on '{task.title}'?[/bold blue]")
         prompt_continue("Press Enter to begin…")
 
-        # Run Pomodoro sessions
         focus, brk = modify_pomodoro_lengths(
             25 if minutes <= 120 else 45, 5 if minutes <= 120 else 10)
         sessions = (minutes + focus - 1) // focus
@@ -219,7 +209,6 @@ def start_day(overload_threshold: int = 480):
             console.print(
                 f"▶️ [bold]Session {s+1}/{sessions}: Focus {focus} min[/bold]")
             pomodoro_timer(focus)
-            run_hooks("task", "pomodoro_done", task)
 
             extra = prompt_for_int("Distracted minutes?", 0)
             distracted += extra
@@ -228,7 +217,6 @@ def start_day(overload_threshold: int = 480):
                 console.print(f"☕ [bold]Break {brk} min[/bold]")
                 pomodoro_timer(brk)
 
-        # Makeup
         if distracted:
             console.print(f"[red]🔄 Need {distracted} min makeup focus[/red]")
             makeups = (distracted + focus - 1) // focus
@@ -236,38 +224,27 @@ def start_day(overload_threshold: int = 480):
                 length = min(focus, distracted)
                 console.print(f"▶️ Makeup {m+1}/{makeups}: {length} min")
                 pomodoro_timer(length)
-                run_hooks("task", "pomodoro_done", task)
                 distracted -= length
 
-        # Mark complete & record notes
-        run_hooks("task", "completed", task)
         console.print(f"[green]✔️ Completed '{task.title}'[/green]")
 
-        # Log trackers & feelings
         console.rule("[bold]Log Trackers & Mood[/bold]")
         log_trackers_cli()
         feeling = typer.prompt(
             "How did you feel? (e.g. great, tired)", default="")
         if feeling:
-            # Try to find a "mood" tracker, skip if not found
-            mood_tracker = track_repository.get_tracker_by_title("mood")
-            if mood_tracker:
-                entry = track_repository.add_tracker_entry(
-                    tracker_id=mood_tracker.id,
-                    timestamp=now_utc(),
-                    value=feeling,
-                    notes=None  # Start day mood doesn't support notes
-                )
-                run_hooks("tracker", "logged", entry)
+            entry = track_repository.add_tracker_entry(
+                tracker_id=None,
+                timestamp=now_utc(),
+                value=feeling,
+            )
 
-        # Periodic reminders
         hydrate_and_lunch_reminder(session_start, reminders)
 
         if idx < len(plan):
             console.print(f"[cyan]Next up: {plan[idx]['task'].title}[/cyan]")
             prompt_continue()
 
-    # 6) End-of-day report
     console.rule("[bold green]🎉 Day Complete![/bold green]")
     report = get_feedback_saying("end_of_day")
     console.print(Panel(report, title="Congratulations!", style="green"))

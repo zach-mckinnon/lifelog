@@ -38,34 +38,29 @@ def start_api(
     - In server mode → Gunicorn
     - Otherwise → flask run (with FLASK_APP set)
     """
-    # 1️⃣ Ensure logging + initialization
     log_utils.setup_logging()
     from lifelog.llog import initialize_application
     initialize_application()
 
-    # 2️⃣ If already up, bail out
     if is_server_up(host, port):
         console.print(
             f"[yellow]Already running at http://{host}:{port}[/yellow]")
         raise typer.Exit()
 
-    # 3️⃣ Optional auto-sync
     if should_sync():
         try:
             auto_sync()
         except Exception as e:
             console.print(f"[yellow]⚠️ Auto-sync failed: {e}[/yellow]")
 
-    # 4️⃣ Decide Gunicorn vs Flask
     config = cf.load_config()
     mode = config.get("deployment", {}).get("mode", "local")
     use_gunicorn = prod or (mode == "server")
 
-    # 5️⃣ Prepare log file
     log_dir = cf.BASE_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "api_server.log"
-    log_file = open(log_path, "a", buffering=1)  # line-buffered
+    log_file = open(log_path, "a", buffering=1)
 
     if use_gunicorn:
         console.print("[cyan]Starting production server (Gunicorn)…[/cyan]")
@@ -117,37 +112,78 @@ def api_pair_new():
     - Client mode → prompts for code and saves token
     """
     log_utils.setup_logging()
-    config = cf.load_config()
+
+    try:
+        config = cf.load_config()
+    except Exception as e:
+        console.print(f"[red]Failed to load config: {e}[/red]")
+        raise typer.Exit(1)
+
     mode = config.get("deployment", {}).get("mode")
 
     if mode == "server":
         device_name = typer.prompt("Name this server device")
-        r = requests.post("http://localhost:5000/api/pair/start",
-                          json={"device_name": device_name}, timeout=5)
-        r.raise_for_status()
-        data = r.json()
-        console.print(f"[green]Pairing code:[/green] {data['pairing_code']}")
-        console.print(f"[yellow]Expires in {data['expires_in']}s[/yellow]")
-        console.print(
-            "Give this code to your client device to complete pairing.")
+        try:
+            r = requests.post("http://localhost:5000/api/pair/start",
+                              json={"device_name": device_name}, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            console.print(
+                f"[green]Pairing code:[/green] {data['pairing_code']}")
+            console.print(f"[yellow]Expires in {data['expires_in']}s[/yellow]")
+            console.print(
+                "Give this code to your client device to complete pairing.")
+        except requests.RequestException as e:
+            console.print(f"[red]Failed to start pairing: {e}[/red]")
+            console.print(
+                "[yellow]Make sure the API server is running.[/yellow]")
+            raise typer.Exit(1)
+        except KeyError as e:
+            console.print(
+                f"[red]Invalid response from server: missing {e}[/red]")
+            raise typer.Exit(1)
 
     elif mode == "client":
         server_url = config.get("deployment", {}).get("server_url")
+        if not server_url:
+            console.print(
+                "[red]No server URL configured for client mode.[/red]")
+            raise typer.Exit(1)
+
         device_name = typer.prompt("Name this client device")
         code = typer.prompt("Enter the pairing code")
-        r = requests.post(f"{server_url}/api/pair/complete",
-                          json={"pairing_code": code, "device_name": device_name}, timeout=5)
-        r.raise_for_status()
-        token = r.json().get("device_token")
-        if token:
-            config["api"] = {"device_token": token}
-            cf.save_config(config)
-            console.print("[green]✓ Device paired successfully![/green]")
-        else:
-            console.print("[red]Pairing failed—no token received.[/red]")
+
+        try:
+            r = requests.post(f"{server_url}/api/pair/complete",
+                              json={"pairing_code": code,
+                                    "device_name": device_name},
+                              timeout=10)
+            r.raise_for_status()
+            response_data = r.json()
+            token = response_data.get("device_token")
+
+            if token:
+                config["api"] = {"device_token": token}
+                if not cf.save_config(config):
+                    console.print(
+                        "[red]Failed to save device token to config.[/red]")
+                    raise typer.Exit(1)
+                console.print("[green]✓ Device paired successfully![/green]")
+            else:
+                console.print("[red]Pairing failed—no token received.[/red]")
+                raise typer.Exit(1)
+        except requests.RequestException as e:
+            console.print(f"[red]Failed to complete pairing: {e}[/red]")
+            console.print(
+                "[yellow]Check server URL and network connection.[/yellow]")
+            raise typer.Exit(1)
 
     else:
-        console.print("[red]Unknown mode—cannot pair[/red]")
+        console.print(
+            f"[red]Unknown deployment mode '{mode}'—cannot pair[/red]")
+        console.print(
+            "[yellow]Run 'llog setup' to configure deployment mode.[/yellow]")
+        raise typer.Exit(1)
 
 
 @app.command("get-server-url")
@@ -194,7 +230,6 @@ def docker_cmd(
         )
         raise typer.Exit(1)
 
-    # Build docker command
     docker_args = docker_cmd + ["--project-directory", str(DOCKER_DIR)]
     if action == "up":
         docker_args += ["up", "-d", "--build"]
@@ -213,7 +248,8 @@ def docker_cmd(
 
     console.print(f"[blue]Running: {' '.join(docker_args)}[/blue]")
     try:
-        subprocess.run(docker_args, cwd=str(DOCKER_DIR), check=True)
+        subprocess.run(docker_args, cwd=str(
+            DOCKER_DIR), check=True, timeout=300)
     except subprocess.CalledProcessError as e:
         logger.error(f"Docker command failed: {e}", exc_info=True)
         console.print(f"[red]Docker command failed: {e}[/red]")
@@ -232,7 +268,7 @@ def is_server_up(host: str, port: int) -> bool:
             f"http://{check_host}:{port}/api/status", timeout=1)
         return resp.status_code == 200
     except requests.RequestException as e:
-        logger.debug(f"is_server_up failed: {e}")     # drop exc_info
+        logger.debug(f"is_server_up failed: {e}")
         return False
 
 
