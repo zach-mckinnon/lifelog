@@ -78,7 +78,7 @@ llog setup
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone <https://github.com/zach-mckinnon/lifelog/>
 cd lifelog
 
 # Install in development mode with all dependencies
