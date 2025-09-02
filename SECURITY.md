@@ -5,6 +5,7 @@
 ### GitHub Repository Settings
 
 #### 1. Branch Protection Rules
+
 ```
 Settings → Branches → Add Rule
 
@@ -24,13 +25,16 @@ Rules to enable:
 ```
 
 #### 2. Required Status Checks
+
 Set up these automated checks:
+
 - **Build Test**: Ensures `python -m build` succeeds
 - **Installation Test**: Verifies `pip install -e .` works
 - **Basic Functionality**: Tests core commands work
 - **Security Scan**: Dependency vulnerability checks
 
 ### 3. Repository Security Settings
+
 ```
 Settings → Security & Analysis:
 
@@ -45,6 +49,7 @@ Settings → Security & Analysis:
 ## 🔍 Automated Security Checks
 
 ### GitHub Actions Security Workflow
+
 Create `.github/workflows/security.yml`:
 
 ```yaml
@@ -52,60 +57,63 @@ name: Security Checks
 
 on:
   pull_request:
-    branches: [ main, public ]
+    branches: [main, public]
   push:
-    branches: [ main, public ]
+    branches: [main, public]
 
 jobs:
   security:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install safety bandit semgrep
-        
-    - name: Check for known vulnerabilities
-      run: safety check --json
-      
-    - name: Run security linter
-      run: bandit -r lifelog/ -f json
-      
-    - name: Verify no secrets in code
-      run: |
-        ! grep -r "password\|token\|secret\|key" --include="*.py" lifelog/ || exit 1
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety bandit semgrep
+
+      - name: Check for known vulnerabilities
+        run: safety check --json
+
+      - name: Run security linter
+        run: bandit -r lifelog/ -f json
+
+      - name: Verify no secrets in code
+        run: |
+          ! grep -r "password\|token\|secret\|key" --include="*.py" lifelog/ || exit 1
 ```
 
 ## 👥 Code Review Requirements
 
 ### CODEOWNERS File
+
 Create `.github/CODEOWNERS`:
+
 ```
 # Global ownership
-* @yourusername
+* @zach-mckinnon
 
 # Core system files require extra review
-lifelog/utils/db/ @yourusername @trusted-contributor
-lifelog/api/ @yourusername @trusted-contributor
-pyproject.toml @yourusername
-CLAUDE.md @yourusername
+lifelog/utils/db/ @zach-mckinnon @trusted-contributor
+lifelog/api/ @zach-mckinnon @trusted-contributor
+pyproject.toml @zach-mckinnon
 
 # Documentation can have lighter review
-*.md @yourusername @doc-maintainer
+*.md @zach-mckinnon @doc-maintainer
 ```
 
 ### Review Checklist for Contributors
+
 Add to `CONTRIBUTING.md`:
 
-#### Before Submitting PR:
+#### Before Submitting PR
+
 - [ ] No hardcoded passwords, tokens, or secrets
 - [ ] No personal file paths or system-specific code
 - [ ] All new dependencies justified and minimal
@@ -113,7 +121,8 @@ Add to `CONTRIBUTING.md`:
 - [ ] Code follows existing patterns
 - [ ] Security implications considered
 
-#### For Reviewers:
+#### For Reviewers
+
 - [ ] Code quality and style consistency
 - [ ] Security implications reviewed
 - [ ] No secrets or credentials exposed
@@ -124,7 +133,9 @@ Add to `CONTRIBUTING.md`:
 ## 🚨 Security Guidelines for Contributors
 
 ### What to Avoid
+
 ❌ **Never commit:**
+
 - Passwords, API keys, tokens
 - Personal file paths (`/Users/john/...`)
 - Database files or backups
@@ -132,6 +143,7 @@ Add to `CONTRIBUTING.md`:
 - Hardcoded credentials of any kind
 
 ❌ **Code patterns to avoid:**
+
 - `eval()`, `exec()`, or similar dynamic execution
 - Unsafe file operations without validation
 - Network operations without timeout/validation
@@ -139,7 +151,9 @@ Add to `CONTRIBUTING.md`:
 - Path traversal vulnerabilities
 
 ### Safe Coding Practices
+
 ✅ **Always do:**
+
 - Use configuration files for settings
 - Validate all user inputs
 - Use parameterized database queries
@@ -148,6 +162,7 @@ Add to `CONTRIBUTING.md`:
 - Use secure defaults
 
 ✅ **Database security:**
+
 - Use SQLite with proper permissions
 - Parameterized queries only
 - No dynamic SQL construction
@@ -156,7 +171,9 @@ Add to `CONTRIBUTING.md`:
 ## 🔧 Dependency Security
 
 ### Approved Dependencies
+
 Core dependencies are vetted and approved:
+
 - `typer`, `rich` - CLI framework
 - `flask` - API server
 - `sqlite3` - Database (built-in)
@@ -165,7 +182,9 @@ Core dependencies are vetted and approved:
 - `psutil` - System monitoring
 
 ### Adding New Dependencies
+
 Before adding new dependencies:
+
 1. Check if really necessary
 2. Verify it's actively maintained
 3. Check for known vulnerabilities
@@ -173,6 +192,7 @@ Before adding new dependencies:
 5. Get approval from maintainers
 
 ### Dependency Updates
+
 - Dependabot handles security updates automatically
 - Major version updates require review
 - Test on Pi hardware before merging
@@ -180,6 +200,7 @@ Before adding new dependencies:
 ## 🏗️ Development Environment Security
 
 ### Local Development
+
 ```bash
 # Use virtual environments
 python -m venv venv
@@ -194,6 +215,7 @@ echo "local_config.toml" >> .gitignore
 ```
 
 ### Testing Security
+
 ```bash
 # Check for secrets before committing
 grep -r "password\|token\|secret" --include="*.py" lifelog/
@@ -209,12 +231,14 @@ chmod 600 ~/.lifelog/lifelog.db
 ## 🎯 Incident Response
 
 ### If Security Issue Found
+
 1. **Don't** discuss publicly in issues
 2. **Do** email maintainer directly
 3. **Include** steps to reproduce
 4. **Wait** for acknowledgment before disclosure
 
 ### For Maintainers
+
 1. Acknowledge within 48 hours
 2. Assess severity and impact
 3. Develop fix privately
@@ -225,6 +249,7 @@ chmod 600 ~/.lifelog/lifelog.db
 ## 📋 Security Checklist for Releases
 
 Before each release:
+
 - [ ] Run security scanners (bandit, safety)
 - [ ] Review dependency updates
 - [ ] Check for hardcoded secrets
@@ -234,14 +259,16 @@ Before each release:
 
 ## 🤝 Trusted Contributor Program
 
-### Requirements to become trusted contributor:
+### Requirements to become trusted contributor
+
 - Multiple successful PRs merged
 - Understanding of codebase architecture
 - Demonstrated security awareness
 - Active community participation
 - Maintainer nomination
 
-### Trusted contributor privileges:
+### Trusted contributor privileges
+
 - Can approve certain PRs
 - Access to pre-release testing
 - Input on security decisions
