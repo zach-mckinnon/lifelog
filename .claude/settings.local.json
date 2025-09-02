@@ -47,8 +47,7 @@
       "Bash(git push:*)",
       "Bash(git rm:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(gh auth:*)"
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
