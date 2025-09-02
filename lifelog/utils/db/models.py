@@ -59,7 +59,6 @@ class TaskStatus(Enum):
 
 @dataclass
 class Task(BaseModel):
-    # TODO: Fix data type inconsistency - id should be Optional[int] not int = None
     id: Optional[int] = None
     title: str = ""
     project: Optional[str] = None
@@ -77,7 +76,6 @@ class Task(BaseModel):
     recur_base: Optional[datetime] = None
     tags: Optional[str] = None
     notes: Optional[str] = None
-    # TODO: Fix data type inconsistency - uid should be Optional[str] not str = None  
     uid: Optional[str] = None
     updated_at: Optional[datetime] = None
     deleted: int = 0
@@ -123,9 +121,9 @@ def task_from_row(row: Dict[str, Any]) -> Task:
 
 @dataclass
 class TimeLog(BaseModel):
-    id: int = None
+    id: Optional[int] = None
     title: str = ""
-    start: datetime = None
+    start: Optional[datetime] = None
     end: Optional[datetime] = None
     duration_minutes: Optional[float] = None
     task_id: Optional[int] = None
@@ -134,7 +132,7 @@ class TimeLog(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     distracted_minutes: Optional[float] = 0
-    uid: str = None
+    uid: Optional[str] = None
     updated_at: Optional[datetime] = None
     deleted: int = 0
 
@@ -180,7 +178,7 @@ class Tracker(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     goals: Optional[list] = None
-    uid: str = None
+    uid: Optional[str] = None
     updated_at: Optional[str] = None
     deleted: int = 0
 
@@ -206,7 +204,7 @@ class TrackerEntry(BaseModel):
     tracker_id: int
     timestamp: str
     value: float
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -222,7 +220,7 @@ class GoalSum(GoalBase):
     amount: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -230,20 +228,20 @@ class GoalCount(GoalBase):
     amount: int
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
 class GoalBool(GoalBase):
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
 class GoalStreak(GoalBase):
     target_streak: int
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -251,7 +249,7 @@ class GoalDuration(GoalBase):
     amount: float
     unit: str = "minutes"
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -259,7 +257,7 @@ class GoalMilestone(GoalBase):
     target: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -267,7 +265,7 @@ class GoalReduction(GoalBase):
     amount: float
     unit: Optional[str] = None
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -277,7 +275,7 @@ class GoalRange(GoalBase):
     unit: Optional[str] = None
     mode: str = "goal"  # could also be "tracker"
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -285,7 +283,7 @@ class GoalPercentage(GoalBase):
     target_percentage: float
     current_percentage: float = 0
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -293,7 +291,7 @@ class GoalReplacement(GoalBase):
     old_behavior: str
     new_behavior: str
     period: str = "day"  # day/week/month
-    uid: str = None
+    uid: Optional[str] = None
 
 
 @dataclass
@@ -301,7 +299,7 @@ class GoalAverage(GoalBase):
     amount: float
     unit: Optional[str] = None
     period: str = "day"
-    uid: str = None
+    uid: Optional[str] = None
 
 
 Goal = Union[
@@ -378,7 +376,7 @@ def get_goal_fields() -> List[str]:
 #          tags: Optional[str] = None
 #          notes: Optional[str] = None
 #          goals: Optional[list] = None
-#          uid: str = None
+#          uid: Optional[str] = None
 #
 #    In many tables, you may not store 'tags' or 'notes'; they can default to None.
 # ───────────────────────────────────────────────────────────────────────────────
@@ -394,7 +392,7 @@ class Tracker(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     goals: Optional[list] = None
-    uid: str = None
+    uid: Optional[str] = None
     updated_at: Optional[str] = None
     deleted: int = 0
 
@@ -418,19 +416,19 @@ class Tracker(BaseModel):
 #          tracker_id: int
 #          timestamp: str
 #          value: float
-#          uid: str = None
+#          uid: Optional[str] = None
 #
 #    We simply pull the four stored columns; uid isn’t stored locally, so it stays None.
 # ───────────────────────────────────────────────────────────────────────────────
 @dataclass
 class EnvironmentData(BaseModel):
-    uid: str = None
-    id: int = None
-    timestamp: datetime = None
-    weather: str = None
-    air_quality: str = None
-    moon: str = None
-    satellite: str = None
+    uid: Optional[str] = None
+    id: Optional[int] = None
+    timestamp: Optional[datetime] = None
+    weather: Optional[str] = None
+    air_quality: Optional[str] = None
+    moon: Optional[str] = None
+    satellite: Optional[str] = None
 
 
 @dataclass
@@ -439,7 +437,7 @@ class TrackerEntry(BaseModel):
     tracker_id: int
     timestamp: str
     value: float
-    uid: str = None
+    uid: Optional[str] = None
 
 
 def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:

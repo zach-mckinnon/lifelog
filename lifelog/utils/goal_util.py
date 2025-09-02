@@ -188,6 +188,8 @@ def calculate_goal_progress(tracker: Tracker) -> Dict[str, Any]:
     kind = goal.kind
     period = getattr(goal, "period", None)
 
+    # Lazy load pandas when needed for data processing
+    pd = get_pandas()
     # Build DataFrame from entries
     df_all = pd.DataFrame([e.to_dict() for e in entries])
     # Filter by period if needed

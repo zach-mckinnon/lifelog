@@ -1,4 +1,3 @@
-import threading
 import subprocess
 import json
 import logging
@@ -20,7 +19,7 @@ from lifelog.utils.db.gamify_repository import (
 from lifelog.utils.notifications import notify_cli, notify_tui
 
 logger = logging.getLogger(__name__)
-_tls = threading.local()
+# Removed unused threading.local() for Pi optimization
 
 _DEFAULT_DIR = Path.home() / ".lifelog" / "hooks"
 HOOKS_DIR = Path(os.getenv("LIFELOG_HOOKS_DIR", _DEFAULT_DIR))

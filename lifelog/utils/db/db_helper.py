@@ -15,7 +15,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from lifelog.config.config_manager import load_config
-from lifelog.utils.shared_utils import to_utc
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """
+    Convert a datetime to UTC-aware datetime.
+    - If dt is naïve, interpret it as UTC.
+    - If dt is aware, convert from its tzinfo to UTC.
+    Returns a datetime with tzinfo=datetime.timezone.utc.
+    """
+    if dt.tzinfo is None:
+        # Interpret naïve dt as UTC to avoid circular import
+        dt = dt.replace(tzinfo=timezone.utc)
+    # Convert to UTC
+    return dt.astimezone(timezone.utc)
 
 
 # Database paths
@@ -148,7 +161,7 @@ def normalize_for_db(d: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(v, Enum):
             d[k] = v.value
         elif isinstance(v, datetime):
-            d[k] = to_utc(v).isoformat()
+            d[k] = _to_utc(v).isoformat()
     return d
 
 # ───────────────────────────────────────────────────────────────────────────────

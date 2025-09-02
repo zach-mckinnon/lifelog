@@ -15,7 +15,7 @@ from lifelog.utils.db import (
     queue_sync_operation,
 )
 from lifelog.utils.db import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced, safe_execute, safe_query
-from lifelog.utils.shared_utils import calculate_priority
+from lifelog.utils.core_utils import calculate_priority
 logger = logging.getLogger(__name__)
 
 

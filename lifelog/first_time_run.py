@@ -230,35 +230,46 @@ def setup_location(config):
         style="blue"
     ))
 
-    # TODO: Optimize for Raspberry Pi - reduce network timeouts and add retry logic
-    # Current 3-second timeout may be too long for slow connections
-    try:
-        # TODO: Make timeout configurable for low-power devices
-        response = requests.get('https://ipinfo.io/json', timeout=10)
-        data = response.json()
-        if zip_code := data.get('postal'):
-            loc = data.get("loc", "0,0").split(",")
-            lat, lon = float(loc[0]), float(loc[1])
+    # Optimized network operations for Raspberry Pi with retry logic
+    import os
+    import time
+    network_timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
+    max_retries = int(os.getenv('LIFELOG_NETWORK_RETRIES', '2'))
+    
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.get('https://ipinfo.io/json', timeout=network_timeout)
+            data = response.json()
+            if zip_code := data.get('postal'):
+                loc = data.get("loc", "0,0").split(",")
+                lat, lon = float(loc[0]), float(loc[1])
 
-            console.print(f"[dim]• Detected ZIP code: {zip_code}[/dim]")
-            if typer.confirm("Use detected location?", default=True):
-                config["location"] = {
-                    "zip": zip_code,
-                    "latitude": lat,
-                    "longitude": lon
-                }
-                import pendulum
-                tz = pendulum.local_timezone().name
+                console.print(f"[dim]• Detected ZIP code: {zip_code}[/dim]")
+                if typer.confirm("Use detected location?", default=True):
+                    config["location"] = {
+                        "zip": zip_code,
+                        "latitude": lat,
+                        "longitude": lon
+                    }
+                    import pendulum
+                    tz = pendulum.local_timezone().name
 
-                config["location"]["timezone"] = tz
-                console.print(f"[green]✔ Saved time zone: {tz}[/green]")
-                return
-    except (requests.RequestException, ValueError) as e:
-        console.print(
-            "[yellow]Unable to detect your location automatically.[/yellow]")
-        console.print(
-            "[dim]Reason: Could not connect or parse location info.[/dim]")
-        console.print(f"[dim]Details: {str(e)}[/dim]")
+                    config["location"]["timezone"] = tz
+                    console.print(f"[green]✔ Saved time zone: {tz}[/green]")
+                    return
+            # If we get here, no location was found but request succeeded
+            break
+        except (requests.RequestException, ValueError) as e:
+            if attempt < max_retries:
+                console.print(f"[dim]Network attempt {attempt + 1} failed, retrying...[/dim]")
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            # Last attempt failed - show error message
+            console.print(
+                "[yellow]Unable to detect your location automatically.[/yellow]")
+            console.print(
+                "[dim]Reason: Could not connect or parse location info.[/dim]")
+            console.print(f"[dim]Details: {str(e)}[/dim]")
         console.print(
             "[yellow]You'll need to enter your ZIP code manually.[/yellow]")
 

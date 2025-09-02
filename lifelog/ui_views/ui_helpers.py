@@ -12,29 +12,27 @@ from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notif
 # -------------------------------------------------------------------
 # ─── Single, contextual status‐bar ───────────────────────────────────
 
-# TODO: Consider removing threading for Raspberry Pi performance optimization
-# Threading may add unnecessary overhead on single-core systems
-import threading
-
+# Optimized for Pi: removed threading overhead, using simple global
+# Pi Zero 2W has limited cores, thread-local storage is unnecessary overhead
 
 logger = logging.getLogger(__name__)
-_tls = threading.local()
+_current_stdscr = None
 
 
 def set_current_stdscr(stdscr):
     """
-    Store the current curses stdscr in thread-local storage
-    so other modules (e.g. notifications or popups) can access it.
+    Store the current curses stdscr globally.
+    Simplified for single-threaded CLI usage on Pi.
     """
-    _tls.current_stdscr = stdscr
+    global _current_stdscr
+    _current_stdscr = stdscr
 
 
 def get_current_stdscr():
     """
-    Retrieve the current curses stdscr from thread-local storage,
-    or None if not set.
+    Retrieve the current curses stdscr, or None if not set.
     """
-    return getattr(_tls, "current_stdscr", None)
+    return _current_stdscr
 
 
 def draw_status(stdscr, h, w, current_tab):

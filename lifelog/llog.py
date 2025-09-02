@@ -629,20 +629,27 @@ def main_callback(ctx: typer.Context):
         console.print(f"[red]Initialization error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Only show pending notifications, without any init banners
-    if should_sync():
+    # Optimize startup: only sync for commands that need data
+    # Skip expensive sync operations for fast commands  
+    if ctx.info_name and ctx.params.get("help") is not True and should_sync():
         try:
             auto_sync()
         except Exception as e:
             logger.warning(f"Auto-sync failed: {e}", exc_info=True)
 
-    # TODO: Optimize notification checking for Raspberry Pi performance  
-    # Database calls in main callback can slow startup
-    profile = _ensure_profile()
-    unread = get_unread_notifications(profile.id)
-    if unread:
-        console.print("[bold yellow]You have new notifications![/bold yellow]")
-        console.print("Run `llog hero notify` to view them.")
+    # Optimize startup: only check notifications for interactive commands
+    # Skip notification check for fast commands like --help, --version
+    if ctx.info_name and ctx.params.get("help") is not True:
+        # Only do expensive database operations for actual commands
+        try:
+            profile = _ensure_profile()
+            unread = get_unread_notifications(profile.id)
+            if unread:
+                console.print("[bold yellow]You have new notifications![/bold yellow]")
+                console.print("Run `llog hero notify` to view them.")
+        except Exception as e:
+            # Don't let notification errors block the main command
+            logger.warning(f"Notification check failed: {e}")
 
 
 lifelog_app = app

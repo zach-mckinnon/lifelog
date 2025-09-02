@@ -16,7 +16,7 @@ from lifelog.utils.db import (
 )
 from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
-from lifelog.utils.shared_utils import now_utc, parse_date_string, to_utc
+from lifelog.utils.core_utils import now_utc, to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ def get_active_time_entry() -> Optional[TimeLog]:
 
 
 def start_time_entry(data: Dict[str, Any]) -> TimeLog:
-    from lifelog.utils.shared_utils import now_utc
+    from lifelog.utils.core_utils import now_utc
     # normalize start
     start_val = data.get("start")
     if isinstance(start_val, datetime):

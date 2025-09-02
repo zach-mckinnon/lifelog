@@ -3,7 +3,7 @@
 from typing import Optional, Dict, Any
 from lifelog.utils.db import get_connection
 import json
-from lifelog.utils.shared_utils import now_utc
+from lifelog.utils.core_utils import now_utc
 
 # Only these four sections exist in the schema
 VALID_SECTIONS = {"weather", "air_quality", "moon", "satellite"}

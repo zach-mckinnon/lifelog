@@ -58,7 +58,10 @@ def fetch_today_forecast(lat, lon):
         f"&timezone=auto"
     )
     try:
-        resp = requests.get(url, timeout=10)
+        # Use configurable timeout for Pi networks
+        import os
+        timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
+        resp = requests.get(url, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -199,7 +202,10 @@ def latest(section: str = typer.Argument(..., help="Section (weather, air_qualit
 def fetch_weather_data(lat, lon):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
     try:
-        response = requests.get(url, timeout=10)
+        # Use configurable timeout for Pi networks
+        import os
+        timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -209,7 +215,10 @@ def fetch_weather_data(lat, lon):
 def fetch_air_quality_data(lat, lon):
     url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&hourly=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,ozone"
     try:
-        response = requests.get(url, timeout=10)
+        # Use configurable timeout for Pi networks
+        import os
+        timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -219,7 +228,10 @@ def fetch_air_quality_data(lat, lon):
 def fetch_moon_data(lat, lon, api_key):
     url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&exclude=hourly,daily,minutely,alerts&appid={api_key}"
     try:
-        response = requests.get(url, timeout=10)
+        # Use configurable timeout for Pi networks
+        import os
+        timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:

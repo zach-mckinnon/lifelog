@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def get_tracker_summary(since_days: int = 7):
     pd = get_pandas()  # Lazy load pandas
-    from lifelog.utils.shared_utils import now_utc
+    from lifelog.utils.core_utils import now_utc
     since = now_utc() - timedelta(days=since_days)
     try:
         trackers = track_repository.get_all_trackers_with_entries()
@@ -48,8 +48,9 @@ def get_tracker_summary(since_days: int = 7):
     return pd.DataFrame(rows)
 
 
-def get_time_summary(since_days: int = 7) -> pd.DataFrame:
-    from lifelog.utils.shared_utils import now_utc
+def get_time_summary(since_days: int = 7):
+    pd = get_pandas()  # Lazy load pandas
+    from lifelog.utils.core_utils import now_utc
     since = now_utc() - timedelta(days=since_days)
     try:
         logs = time_repository.get_all_time_logs(since)
@@ -67,8 +68,9 @@ def get_time_summary(since_days: int = 7) -> pd.DataFrame:
     return df.groupby('category', dropna=False)['duration_minutes'].sum().reset_index()
 
 
-def get_daily_tracker_averages(metric_name: str, since_days: int = 7) -> pd.DataFrame:
-    from lifelog.utils.shared_utils import now_utc
+def get_daily_tracker_averages(metric_name: str, since_days: int = 7):
+    pd = get_pandas()  # Lazy load pandas
+    from lifelog.utils.core_utils import now_utc
     since = now_utc() - timedelta(days=since_days)
     try:
         tracker = track_repository.get_tracker_by_title(metric_name)
@@ -109,7 +111,7 @@ def get_correlation_insights() -> List[Dict[str, Any]]:
     return []
 
 
-def export_data(df: pd.DataFrame, filepath: str):
+def export_data(df, filepath: str):
     if df.empty:
         print("[yellow]⚠️ No data to export.[/yellow]")
         return
