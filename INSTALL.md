@@ -5,6 +5,7 @@ Multiple installation methods for different use cases and testing scenarios.
 ## 🚀 Release Installation (Recommended for Testers)
 
 ### Install from GitHub Release
+
 ```bash
 # Download the latest wheel file from GitHub releases
 # https://github.com/zach-mckinnon/lifelog/releases
@@ -17,11 +18,12 @@ llog setup
 ```
 
 ### One-Command Install (when available)
+
 ```bash
 # Future: Direct install from GitHub releases
 pip install https://github.com/zach-mckinnon/lifelog/releases/latest/download/lifelog-0.1.0-py3-none-any.whl
 
-# Run setup  
+# Run setup
 llog setup
 ```
 
@@ -30,6 +32,7 @@ llog setup
 ## 📦 Development Installation Methods
 
 ### Method 1: Direct from Source (Recommended for Development)
+
 ```bash
 # Clone or download the project
 cd lifelog-project-directory
@@ -42,6 +45,7 @@ llog setup
 ```
 
 ### Method 2: From Built Package (Testing/Distribution)
+
 ```bash
 # Install from wheel file
 pip install dist/lifelog-0.1.0-py3-none-any.whl
@@ -54,6 +58,7 @@ llog setup
 ```
 
 ### Method 3: Virtual Environment Setup (Raspberry Pi Compatible)
+
 ```bash
 # Create Python 3.9 virtual environment (Pi Zero 2W compatible)
 python3.9 -m venv venv39
@@ -70,6 +75,7 @@ llog setup
 ## 🔧 Development Installation
 
 ### For Contributors and Testers
+
 ```bash
 # Clone repository
 git clone <repository-url>
@@ -93,6 +99,7 @@ llog time stop
 ## 🏗️ Building from Source
 
 ### Create Distribution Packages
+
 ```bash
 # Install build tools
 pip install build
@@ -108,6 +115,7 @@ python -m build
 ## 🥧 Raspberry Pi Installation
 
 ### Raspberry Pi Zero 2W Optimized Setup
+
 ```bash
 # Ensure Python 3.9+ is installed
 python3 --version
@@ -126,6 +134,7 @@ llog setup
 ```
 
 ### Pi-Specific Notes
+
 - **Memory Management**: Heavy dependencies (numpy, pandas) are lazy-loaded
 - **Performance**: 23 database indexes optimize for limited hardware
 - **Storage**: Database stored in `~/.lifelog/` with automatic cleanup
@@ -133,6 +142,7 @@ llog setup
 ## 🌐 Network/Multi-Device Setup
 
 ### Host Device (Pi or Main Computer)
+
 ```bash
 # Install lifelog
 pip install -e .
@@ -146,6 +156,7 @@ llog api get-server-url
 ```
 
 ### Client Devices
+
 ```bash
 # Install on each device
 pip install -e .
@@ -161,6 +172,7 @@ llog sync
 ## ✅ Post-Installation Verification
 
 ### Basic Functionality Test
+
 ```bash
 # Check installation
 llog --help
@@ -183,6 +195,7 @@ llog track list
 ```
 
 ### Performance Test (Pi)
+
 ```bash
 # Check Pi optimization status
 llog report summary  # Should show Pi-optimized performance info
@@ -195,7 +208,8 @@ llog task list  # Should be fast even with many tasks
 
 ### Common Issues
 
-**Import Error: Missing Dependencies**
+#### Import Error: Missing Dependencies
+
 ```bash
 # Install missing packages
 pip install psutil rich typer pendulum
@@ -205,13 +219,15 @@ pip uninstall lifelog
 pip install -e .
 ```
 
-**Permission Errors**
+#### Permission Errors
+
 ```bash
 # Ensure proper permissions for config directory
 chmod 700 ~/.lifelog
 ```
 
-**Database Issues**
+#### Database Issues
+
 ```bash
 # Backup and reset if needed
 llog backup backup_$(date +%Y%m%d).db
@@ -219,7 +235,8 @@ rm ~/.lifelog/lifelog.db
 llog setup
 ```
 
-**Sync Issues**
+#### Sync Issues
+
 ```bash
 # Check network connectivity
 llog api pair  # Re-pair devices if needed
@@ -229,12 +246,14 @@ llog sync --verbose  # Debug sync issues
 ## 📋 System Requirements
 
 ### Minimum Requirements
+
 - **Python**: 3.9+
 - **RAM**: 512MB (Pi Zero 2W compatible)
 - **Storage**: 50MB for app + database storage
 - **OS**: Windows, macOS, Linux, Raspberry Pi OS
 
 ### Recommended Requirements
+
 - **RAM**: 1GB+ for heavy analytics
 - **Python**: 3.10+ for best performance
 - **Network**: For multi-device sync
@@ -258,7 +277,7 @@ llog track add "Mood" --type scale
 llog report summary
 ```
 
-**You're ready to start tracking your life! 🎉**
+## You're ready to start tracking your life! 🎉
 
 ---
 
