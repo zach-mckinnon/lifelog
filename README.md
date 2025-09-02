@@ -1,6 +1,6 @@
 # 🚀 Lifelog CLI — The Ultimate Neurodivergent Productivity & Insights App
 
-**Lifelog** is your personal command-line home for comprehensive life tracking with a **Claude-inspired interface**, advanced analytics, and multi-device sync—designed for neurodivergent users who demand both power and clarity.
+**Lifelog** is your personal command-line home for comprehensive life tracking with a **Beautiful CLI interface**, advanced analytics, and multi-device sync—designed for neurodivergent users who demand both power and clarity.
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-Optimized-red.svg)](https://www.raspberrypi.org/)
@@ -8,7 +8,7 @@
 
 ## ✨ Recent Updates
 
-- **🎨 Enhanced CLI**: Claude-inspired interface with loading states, progress indicators, and beautiful visual feedback
+- **🎨 Enhanced CLI**: CLI interface with loading states, progress indicators, and beautiful visual feedback
 - **🔧 Pi Optimization**: Full Raspberry Pi Zero 2W support with automatic performance tuning
 - **⚡ Database Performance**: 23 strategic indexes for lightning-fast queries
 - **🛡️ Robust Error Handling**: Comprehensive validation and graceful error recovery
