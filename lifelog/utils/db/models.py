@@ -99,7 +99,12 @@ def task_from_row(row: Dict[str, Any]) -> Task:
         # datetime fields: created, due, start, end, recur_base, updated_at
         if typ is datetime or typ == Optional[datetime]:
             try:
-                data[k] = datetime.fromisoformat(v)
+                dt = datetime.fromisoformat(v)
+                # Ensure timezone-aware: if naive, assume UTC
+                if dt.tzinfo is None:
+                    from datetime import timezone
+                    dt = dt.replace(tzinfo=timezone.utc)
+                data[k] = dt
             except Exception:
                 data[k] = None
             continue
@@ -147,7 +152,12 @@ def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
             continue
         if name in ("start", "end") and val:
             try:
-                kwargs[name] = datetime.fromisoformat(val)
+                dt = datetime.fromisoformat(val)
+                # Ensure timezone-aware: if naive, assume UTC
+                if dt.tzinfo is None:
+                    from datetime import timezone
+                    dt = dt.replace(tzinfo=timezone.utc)
+                kwargs[name] = dt
             except Exception:
                 kwargs[name] = None
             continue
@@ -156,7 +166,12 @@ def time_log_from_row(row: Dict[str, Any]) -> TimeLog:
             continue
         if name == 'updated_at':
             try:
-                kwargs[name] = datetime.fromisoformat(val)
+                dt = datetime.fromisoformat(val)
+                # Ensure timezone-aware: if naive, assume UTC
+                if dt.tzinfo is None:
+                    from datetime import timezone
+                    dt = dt.replace(tzinfo=timezone.utc)
+                kwargs[name] = dt
             except Exception:
                 kwargs[name] = None
             continue

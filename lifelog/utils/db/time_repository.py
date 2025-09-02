@@ -66,7 +66,8 @@ def _pull_changed_time_logs_from_host() -> None:
                          remote.get("uid"), e, exc_info=True)
     # 5) update last_synced
     try:
-        set_last_synced("time_history", datetime.now().isoformat())
+        from lifelog.utils.core_utils import now_utc
+        set_last_synced("time_history", now_utc().isoformat())
     except Exception as e:
         logger.error(
             "Failed to set last_synced for time_history: %s", e, exc_info=True)
@@ -212,7 +213,8 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
 
     # Optional: set updated_at/deleted defaults here if schema expects them on insert.
     # If you want to record creation time:
-    now_iso = datetime.now().isoformat()
+    from lifelog.utils.core_utils import now_utc
+    now_iso = now_utc().isoformat()
     if 'updated_at' in fields:
         # If updated_at should default to creation time
         data['updated_at'] = data.get('updated_at') or now_iso
@@ -252,8 +254,16 @@ def stop_active_time_entry(
     # normalize end_time
     if isinstance(end_time, str):
         end_dt = datetime.fromisoformat(end_time)
+        # Ensure timezone-aware: if naive, assume UTC
+        if end_dt.tzinfo is None:
+            from datetime import timezone
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
     else:
         end_dt = end_time
+        # Ensure timezone-aware: if naive, assume UTC
+        if end_dt.tzinfo is None:
+            from datetime import timezone
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
 
     active = get_active_time_entry()
     if not active:
@@ -262,8 +272,16 @@ def stop_active_time_entry(
     # Parse stored start (assuming active.start is ISO string)
     if isinstance(active.start, str):
         start_dt = datetime.fromisoformat(active.start)
+        # Ensure timezone-aware: if naive, assume UTC
+        if start_dt.tzinfo is None:
+            from datetime import timezone
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
     elif isinstance(active.start, datetime):
         start_dt = active.start
+        # Ensure timezone-aware: if naive, assume UTC
+        if start_dt.tzinfo is None:
+            from datetime import timezone
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
     else:
         raise RuntimeError(
             f"Cannot parse start time of active entry: {active.start}")
@@ -318,7 +336,8 @@ def add_time_entry(data: Dict[str, Any]) -> TimeLog:
     # Assign UID
     data.setdefault("uid", str(uuid.uuid4()))
     # Set updated_at and deleted
-    now_iso = datetime.now().isoformat()
+    from lifelog.utils.core_utils import now_utc
+    now_iso = now_utc().isoformat()
     data['updated_at'] = now_iso
     data['deleted'] = 0
     # Insert locally

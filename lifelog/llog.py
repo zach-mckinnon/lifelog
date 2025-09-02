@@ -53,7 +53,7 @@ from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notif
 
 # Initialize the config manager and ensure the files exist
 app = typer.Typer(
-    help="🧠 Lifelog CLI: Track your habits, health, time, and tasks.")
+    help="Lifelog CLI: Track your habits, health, time, and tasks.")
 
 console = Console()
 logger = logging.getLogger(__name__)
