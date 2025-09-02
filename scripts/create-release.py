@@ -88,7 +88,7 @@ llog report summary           # View insights
 - Multi-device sync with secure pairing
 - Lightning-fast database performance (23 optimized indexes)
 
-See [INSTALL.md](https://github.com/yourusername/lifelog/blob/main/INSTALL.md) for detailed installation instructions.
+See [INSTALL.md](https://github.com/zach-mckinnon/lifelog/blob/main/INSTALL.md) for detailed installation instructions.
 
 **System Requirements:** Python 3.9+, 512MB RAM (Pi compatible)
 """
@@ -105,7 +105,7 @@ See [INSTALL.md](https://github.com/yourusername/lifelog/blob/main/INSTALL.md) f
     except subprocess.CalledProcessError:
         print("\n❌ GitHub CLI (gh) not available or not authenticated.")
         print("Manual release creation:")
-        print(f"1. Go to: https://github.com/yourusername/lifelog/releases/new")
+        print(f"1. Go to: https://github.com/zach-mckinnon/lifelog/releases/new")
         print(f"2. Tag: {tag_name}")
         print(f"3. Title: Lifelog {tag_name}")
         print(f"4. Upload files: {wheel_file}, {tar_file}")

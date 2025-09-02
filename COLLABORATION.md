@@ -211,7 +211,7 @@ Raspberry Pi optimization, and multi-device sync capabilities.
 
 **Quick start:**
 ```bash
-git clone https://github.com/yourusername/lifelog.git
+git clone https://github.com/zach-mckinnon/lifelog.git
 cd lifelog
 pip install -e .
 llog setup

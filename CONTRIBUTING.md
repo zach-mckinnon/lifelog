@@ -14,7 +14,7 @@ Thank you for your interest in contributing to Lifelog! This document provides g
 
 ```bash
 # Fork and clone the repository
-git clone https://github.com/yourusername/lifelog.git
+git clone https://github.com/zach-mckinnon/lifelog.git
 cd lifelog
 
 # Create development environment

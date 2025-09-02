@@ -1,0 +1,21 @@
+# Global ownership - all files require review
+* @zach-mckinnon
+
+# Core system files require extra scrutiny
+lifelog/utils/db/ @zach-mckinnon
+lifelog/api/ @zach-mckinnon
+lifelog/utils/encrypt.py @zach-mckinnon
+
+# Configuration and build files
+pyproject.toml @zach-mckinnon
+CLAUDE.md @zach-mckinnon
+setup.py @zach-mckinnon
+
+# Security-related files
+SECURITY.md @zach-mckinnon
+.github/workflows/ @zach-mckinnon
+
+# Documentation can have community input but still needs approval
+README.md @zach-mckinnon
+CONTRIBUTING.md @zach-mckinnon
+*.md @zach-mckinnon

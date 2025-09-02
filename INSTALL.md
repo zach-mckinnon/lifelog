@@ -7,7 +7,7 @@ Multiple installation methods for different use cases and testing scenarios.
 ### Install from GitHub Release
 ```bash
 # Download the latest wheel file from GitHub releases
-# https://github.com/yourusername/lifelog/releases
+# https://github.com/zach-mckinnon/lifelog/releases
 
 # Install the downloaded wheel
 pip install lifelog-0.1.0-py3-none-any.whl
@@ -19,7 +19,7 @@ llog setup
 ### One-Command Install (when available)
 ```bash
 # Future: Direct install from GitHub releases
-pip install https://github.com/yourusername/lifelog/releases/latest/download/lifelog-0.1.0-py3-none-any.whl
+pip install https://github.com/zach-mckinnon/lifelog/releases/latest/download/lifelog-0.1.0-py3-none-any.whl
 
 # Run setup  
 llog setup

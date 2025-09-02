@@ -41,7 +41,8 @@
       "Bash(PYTHONIOENCODING=utf-8 llog time start \"Testing enhanced CLI experience\")",
       "Bash(PYTHONIOENCODING=utf-8 llog task add \"Testing enhanced task interface with beautiful CLI\")",
       "Bash(PYTHONIOENCODING=utf-8 llog time start \"Final comprehensive test\" --cat work)",
-      "Bash(PYTHONIOENCODING=utf-8 llog --help)"
+      "Bash(PYTHONIOENCODING=utf-8 llog --help)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []
