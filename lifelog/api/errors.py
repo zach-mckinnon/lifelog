@@ -5,16 +5,12 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# ——— Custom exception for expected errors ———
-
 
 class ApiError(Exception):
     def __init__(self, message, status_code=400):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
-
-# ——— Generic error handler decorator ———
 
 
 def debug_api(f):
@@ -28,8 +24,6 @@ def debug_api(f):
             logger.exception("Unhandled exception in API endpoint")
             return jsonify({'error': 'Internal server error'}), 500
     return wrapped
-
-# ——— Helpers ———
 
 
 def error(message, code=400):
@@ -78,8 +72,6 @@ def identify(payload, repo_by_uid, repo_by_id):
         return obj, 'id', iid
 
     error('No identifier provided', 400)
-
-# ——— Central error‐handler registration ———
 
 
 def register_error_handlers(app):

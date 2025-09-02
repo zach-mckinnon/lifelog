@@ -39,7 +39,6 @@ WEATHERCODE_MAP = {
     95: "Thunderstorm: slight or moderate",
     96: "Thunderstorm with slight hail",
     99: "Thunderstorm with heavy hail",
-    # Add more codes if needed
 }
 
 
@@ -49,7 +48,6 @@ def fetch_today_forecast(lat, lon):
     Also save the raw hourly data into environment_data under source "weather_hourly".
     Returns list of dicts: {'time': 'YYYY-MM-DDThh:MM', 'temperature': float, 'precip_prob': int, 'description': str}
     """
-    # Build URL with hourly variables and timezone=auto so times are local
     hourly_vars = "temperature_2m,weathercode,precipitation_probability"
     url = (
         f"https://api.open-meteo.com/v1/forecast"
@@ -58,50 +56,37 @@ def fetch_today_forecast(lat, lon):
         f"&timezone=auto"
     )
     try:
-        # Use configurable timeout for Pi networks
         import os
         timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
         resp = requests.get(url, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        # Propagate exception to caller
         raise RuntimeError(f"Failed to fetch weather: {e}")
 
-    # Save raw forecast data so other parts can reuse without new API calls
     try:
-        # Save full data if desired:
         environment_repository.save_environment_data("weather_full", data)
-        # Save only hourly portion:
         hourly_data = data.get("hourly", {})
         environment_repository.save_environment_data(
             "weather_hourly", hourly_data)
     except Exception as save_err:
-        # Log or print warning but do not interrupt processing
-        # For CLI context: print; for environment_sync command context: print; here no print in library context
-        # or use logging
         print(f"[warn]Failed to save weather data: {save_err}")
-        # Continue
 
-    # Process hourly data to extract today's 4-hourly entries
     hourly = data.get("hourly", {})
     times = hourly.get("time", [])
     temps = hourly.get("temperature_2m", [])
     precip_probs = hourly.get("precipitation_probability", [])
     codes = hourly.get("weathercode", [])
 
-    today_str = date.today().isoformat()  # e.g. "2025-06-10"
+    today_str = date.today().isoformat()
     results = []
     for idx, t_str in enumerate(times):
-        # Expect format "YYYY-MM-DDThh:MM"
         if not t_str.startswith(today_str + "T"):
             continue
-        # Parse hour part
         try:
             hour = int(t_str[11:13])
         except Exception:
             continue
-        # Sample every 4 hours (00:00, 04:00, 08:00, ...)
         if hour % 4 != 0:
             continue
         temp = temps[idx] if idx < len(temps) else None
@@ -202,7 +187,6 @@ def latest(section: str = typer.Argument(..., help="Section (weather, air_qualit
 def fetch_weather_data(lat, lon):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
     try:
-        # Use configurable timeout for Pi networks
         import os
         timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
         response = requests.get(url, timeout=timeout)
@@ -215,7 +199,6 @@ def fetch_weather_data(lat, lon):
 def fetch_air_quality_data(lat, lon):
     url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&hourly=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,ozone"
     try:
-        # Use configurable timeout for Pi networks
         import os
         timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
         response = requests.get(url, timeout=timeout)
@@ -228,7 +211,6 @@ def fetch_air_quality_data(lat, lon):
 def fetch_moon_data(lat, lon, api_key):
     url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&exclude=hourly,daily,minutely,alerts&appid={api_key}"
     try:
-        # Use configurable timeout for Pi networks
         import os
         timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
         response = requests.get(url, timeout=timeout)

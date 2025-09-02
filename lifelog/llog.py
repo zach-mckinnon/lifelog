@@ -58,10 +58,6 @@ app = typer.Typer(
 console = Console()
 logger = logging.getLogger(__name__)
 
-# -------------------------------------------------------------------
-# Core Initialization System
-# -------------------------------------------------------------------
-
 
 # Ensure the app is initialized
 sync_app = typer.Typer(help="Pull external data sources into lifelog.")
@@ -132,11 +128,9 @@ app.add_typer(api_module.app, name="api",
 @app.command("setup")
 def setup_command():
     """Run initial setup wizard"""
-    # 1️⃣ Set up logging and ensure base dir
     log_utils.setup_logging()
     cf.BASE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 2️⃣ Initialize DB schema + seed badges/skills if this is the first time
     from lifelog.utils.db.database_manager import is_initialized, initialize_schema
     from lifelog.utils.gamification_seed import run_seed
 
@@ -146,7 +140,6 @@ def setup_command():
         run_seed()
         console.print("[dim]• Initial data seeded[/dim]")
 
-    # 3️⃣ Load (or create) the config file
     try:
         config = cf.load_config()
     except Exception as e:
@@ -154,7 +147,6 @@ def setup_command():
         console.print(f"[red]Error loading config: {e}[/red]")
         raise typer.Exit(1)
 
-    # 4️⃣ Run the wizard if not already done
     first_done = config.get("meta", {}).get("first_run_complete", False)
     if not first_done:
         config = run_wizard(config)
@@ -532,7 +524,6 @@ def greet_user():
     Greet user with daily quote (if not in curses UI).
     """
     log_utils.setup_logging()
-    # Skip banner in UI mode
     if "curses" in sys.modules:
         return
     try:
@@ -621,7 +612,6 @@ def main_callback(ctx: typer.Context):
     try:
         initialize_application()
     except typer.Exit:
-        # let typer handle exit cleanly (e.g. when first-run detects setup needed)
         raise
     except Exception as e:
         logger.error(
@@ -629,26 +619,21 @@ def main_callback(ctx: typer.Context):
         console.print(f"[red]Initialization error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Optimize startup: only sync for commands that need data
-    # Skip expensive sync operations for fast commands  
     if ctx.info_name and ctx.params.get("help") is not True and should_sync():
         try:
             auto_sync()
         except Exception as e:
             logger.warning(f"Auto-sync failed: {e}", exc_info=True)
 
-    # Optimize startup: only check notifications for interactive commands
-    # Skip notification check for fast commands like --help, --version
     if ctx.info_name and ctx.params.get("help") is not True:
-        # Only do expensive database operations for actual commands
         try:
             profile = _ensure_profile()
             unread = get_unread_notifications(profile.id)
             if unread:
-                console.print("[bold yellow]You have new notifications![/bold yellow]")
+                console.print(
+                    "[bold yellow]You have new notifications![/bold yellow]")
                 console.print("Run `llog hero notify` to view them.")
         except Exception as e:
-            # Don't let notification errors block the main command
             logger.warning(f"Notification check failed: {e}")
 
 

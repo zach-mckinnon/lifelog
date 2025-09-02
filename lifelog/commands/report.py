@@ -1,10 +1,20 @@
 # lifelog/commands/report.py
+from enum import Enum
+from lifelog.utils.db.models import Tracker
+from lifelog.utils.db import track_repository
+import lifelog.config.config_manager as cf
+from lifelog.utils.db import track_repository, time_repository
+from lifelog.utils.db import report_repository
+from lifelog.utils.db import environment_repository, task_repository
+from rich.console import Console
+from rich.table import Table
+import typer
 import toml
 import json
 from typing import Dict, Any
 from datetime import datetime
-# Lazy loading for pandas - memory optimization for Pi
 _pd = None
+
 
 def get_pandas():
     """Lazy load pandas only when needed for reports"""
@@ -13,18 +23,6 @@ def get_pandas():
         import pandas as pd
         _pd = pd
     return _pd
-from enum import Enum
-import typer
-
-from rich.table import Table
-from rich.console import Console
-
-from lifelog.utils.db import environment_repository, task_repository
-from lifelog.utils.db import report_repository
-from lifelog.utils.db import track_repository, time_repository
-import lifelog.config.config_manager as cf
-from lifelog.utils.db import track_repository
-from lifelog.utils.db.models import Tracker
 
 
 app = typer.Typer(help="Generate a report for your goal progress.")
@@ -50,11 +48,9 @@ def generate_goal_report(tracker: Tracker) -> Dict[str, Any]:
     Generate a structured goal progress report for a given Tracker instance.
     Pulls entries and goals from SQL.
     """
-    # Fetch goals and entries via repository
     goals = track_repository.get_goals_for_tracker(tracker.id)
     entries = track_repository.get_entries_for_tracker(tracker.id)
 
-    # Convert list of TrackerEntry to DataFrame via dicts
     pd = get_pandas()  # Lazy load pandas
     if entries:
         entry_dicts = [e.to_dict() for e in entries]
@@ -63,7 +59,6 @@ def generate_goal_report(tracker: Tracker) -> Dict[str, Any]:
         df = pd.DataFrame(
             columns=["id", "tracker_id", "timestamp", "value", "uid"])
 
-    # Handle empty DataFrame
     if df.empty:
         return {
             "report_type": "empty",
@@ -90,13 +85,10 @@ def generate_goal_report(tracker: Tracker) -> Dict[str, Any]:
             "metrics": {}
         }
 
-    # Use first goal for now
     goal = goals[0]
     goal_id = goal.id
-    kind = goal.kind  # attribute
+    kind = goal.kind
 
-    # Dispatch handlers
-    # Use the new get_goal_details or named wrappers
     if kind == "range":
         details = track_repository.get_goal_range(goal_id)
         return _report_range(tracker, goal, details, df)
@@ -107,7 +99,6 @@ def generate_goal_report(tracker: Tracker) -> Dict[str, Any]:
         details = track_repository.get_goal_count(goal_id)
         return _report_count(tracker, goal, details, df)
     if kind == "bool":
-        # bool goals often have no detail fields; can pass empty details dict
         return _report_bool(tracker, goal, {}, df)
     if kind == "streak":
         details = track_repository.get_goal_streak(goal_id)
@@ -128,7 +119,6 @@ def generate_goal_report(tracker: Tracker) -> Dict[str, Any]:
         details = track_repository.get_goal_replacement(goal_id)
         return _report_replacement(tracker, goal, details, df)
 
-    # Unknown kind
     return _empty_report(f"Unknown goal kind: {kind}")
 
 
@@ -164,8 +154,6 @@ def daily_tracker(metric_name: str, since_days: int = 7):
     print_dataframe(df)
 
 
-
-
 def print_dataframe(df):
     if df.empty:
         print("[yellow]⚠️ No data found.[/yellow]")
@@ -182,7 +170,7 @@ def print_dataframe(df):
 def _report_range(tracker, goal, details, df):
     if df.empty:
         return _empty_report("No data available for range analysis")
-    
+
     pd = get_pandas()  # Lazy load pandas
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     latest_value = df['value'].iloc[-1]
@@ -217,7 +205,7 @@ def _report_range(tracker, goal, details, df):
 def _report_sum(tracker, goal, details, df):
     if df.empty:
         return _empty_report("No data available for sum analysis")
-        
+
     total = df['value'].sum()
     target = details['amount']
 
@@ -354,18 +342,13 @@ def _report_duration(tracker, goal, details, df):
 def _report_milestone(tracker, goal, details, df):
     if df.empty:
         return _empty_report("No data available for milestone analysis")
-        
+
     current = df['value'].sum()
     target = details['target']
     unit = details.get('unit', '')
 
-    # ------------------------- NEW LOGIC --------------------------
-    # A milestone is complete only if
-    #   • total progress ≥ target, and
-    #   • the last reading repeats the previous one (stable)
     stable = len(df) >= 2 and df['value'].iloc[-1] == df['value'].iloc[-2]
     completed = bool(current >= target and stable)
-    # --------------------------------------------------------------
 
     pct = (current / target) * 100 if target else 0
     remaining = max(0, target - current)
@@ -390,7 +373,7 @@ def _report_milestone(tracker, goal, details, df):
 def _report_percentage(tracker, goal, details, df):
     if df.empty:
         return _empty_report("No data available for percentage analysis")
-        
+
     latest_pct = df['value'].iloc[-1]
     target_pct = details['target_percentage']
 
@@ -415,7 +398,7 @@ def _report_percentage(tracker, goal, details, df):
 def _report_reduction(tracker, goal, details, df):
     if df.empty:
         return _empty_report("No data available for reduction analysis")
-        
+
     latest = df['value'].iloc[-1]
     target = details['amount']
     unit = details.get('unit', '')
@@ -465,11 +448,7 @@ def _report_replacement(tracker, goal, details, df):
     }
 
 
-
-
-
 def gather_all_data():
-    # Fix: get all tracker entries by iterating over trackers
     trackers = track_repository.get_all_trackers()
     tracker_entries = []
     for t in trackers:
@@ -482,8 +461,3 @@ def gather_all_data():
         "time_logs": time_repository.get_all_time_logs(),
         "environment": environment_repository.get_all_environmental_data() if hasattr(environment_repository, "get_all_environmental_data") else [],
     }
-
-
-# AI insight functionality removed
-
-

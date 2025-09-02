@@ -26,8 +26,6 @@ def _get_tracker_or_404(uid: str):
     return t
 
 
-# ─── TRACKER CRUD ─────────────────────────────────────────────────────────────
-
 @trackers_bp.route('/', methods=['GET'])
 @require_device_token
 @debug_api
@@ -42,7 +40,6 @@ def list_trackers():
 
     trackers = track_repository.get_all_trackers(**filters)
 
-    # optional uid filter
     uid = request.args.get('uid')
     if uid:
         trackers = [t for t in trackers if t.uid == uid]
@@ -55,7 +52,6 @@ def list_trackers():
 @debug_api
 def create_tracker():
     data = parse_json()
-    # minimal validation
     title = data.get('title')
     if not isinstance(title, str) or not title.strip():
         error('Missing or invalid "title"', 400)
@@ -69,8 +65,7 @@ def create_tracker():
     except ValueError as ve:
         error(str(ve), 400)
     except Exception:
-        # TODO: Add more specific exception handling for better debugging on Raspberry Pi
-        # Current bare Exception catch makes debugging difficult
+        # TODO: Add more specific exception handling for better debugging
         logger.exception("Failed to create tracker")
         error('Failed to create tracker', 500)
 
@@ -91,7 +86,6 @@ def update_tracker_by_uid(uid):
     t = _get_tracker_or_404(uid)
 
     data = parse_json()
-    # minimal field checks
     if 'title' in data:
         if not isinstance(data['title'], str) or not data['title'].strip():
             error('Field "title" must be non-empty string', 400)
@@ -128,8 +122,6 @@ def delete_tracker_by_uid(uid):
         error('Failed to delete tracker', 500)
 
 
-# ─── TRACKER‐ENTRY (local only) ────────────────────────────────────────────────
-
 @trackers_bp.route('/uid/<string:tracker_uid>/entries', methods=['GET'])
 @require_device_token
 @debug_api
@@ -165,8 +157,6 @@ def add_tracker_entry_api(tracker_uid):
         logger.exception("Failed to add tracker entry")
         error('Failed to add entry', 500)
 
-
-# ─── GOALS (sync aware) ───────────────────────────────────────────────────────
 
 @trackers_bp.route('/uid/<string:tracker_uid>/goals', methods=['GET'])
 @require_device_token
@@ -213,7 +203,6 @@ def update_goal_by_uid(uid):
         error('Goal not found', 404)
 
     data = parse_json()
-    # ensure kind present so repo can route detail correctly
     data.setdefault('kind', g.kind)
     try:
         updated = track_repository.update_goal(g.id, data)

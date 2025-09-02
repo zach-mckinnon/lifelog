@@ -125,11 +125,11 @@ class BaseRepository(ABC, Generic[T]):
     
     @handle_db_errors("get_all_records")
     def get_all(self, limit: Optional[int] = None, **filters) -> List[T]:
-        """Get all records with optional filters and Pi-optimized limits."""
+        """Get all records with optional filters and hardware-optimized limits."""
         if should_sync():
             self._pull_changed_from_host()
         
-        # Apply Pi-specific query limits
+        # Apply hardware-specific query limits
         settings = pi_optimizer.get_optimized_settings()
         if limit is None:
             limit = settings["performance"]["query_limit"]

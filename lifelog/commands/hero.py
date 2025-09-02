@@ -106,17 +106,6 @@ def buy_cli(uid: str):
     console.print(
         f"[green]✅ Bought {uid}! Now have {inv.quantity} in inventory.[/green]")
 
-# Allow manual XP award (for testing/demo)
-
-
-@app.command("add-xp")
-def add_xp_cli(amount: int):
-    """
-    Add a chunk of XP to your profile (for testing).
-    """
-    p = add_xp(amount)
-    console.print(f"[cyan]Your new XP is {p.xp}/100 at Level {p.level}[/cyan]")
-
 
 @app.command("notify")
 def show_notifications():

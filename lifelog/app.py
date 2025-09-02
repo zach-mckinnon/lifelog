@@ -10,30 +10,23 @@ from lifelog.api.errors import register_error_handlers
 from lifelog.config.config_manager import get_deployment_mode
 from lifelog.utils.db import initialize_schema
 
-# Flask optimizations for Raspberry Pi deployment
 app = Flask(__name__)
 
-# Production configuration for Pi
 app.config.update(
-    # Security
     SECRET_KEY=os.environ.get('FLASK_SECRET_KEY', os.urandom(24)),
-    
-    # Performance optimizations for Pi
+
     SEND_FILE_MAX_AGE_DEFAULT=31536000,  # 1 year cache for static files
     MAX_CONTENT_LENGTH=16 * 1024 * 1024,  # 16MB max request size
-    
-    # Timeouts and limits for Pi hardware
+
     PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
     APPLICATION_ROOT='/',
-    
-    # Disable unnecessary features for API server
+
     EXPLAIN_TEMPLATE_LOADING=False,
     PRESERVE_CONTEXT_ON_EXCEPTION=False,
 )
 
-# Configure logging for Pi
 if not app.debug:
-    logging.basicConfig(level=logging.WARNING)  # Reduce log verbosity
+    logging.basicConfig(level=logging.WARNING)
     app.logger.setLevel(logging.WARNING)
 
 initialize_schema()
@@ -44,10 +37,9 @@ app.register_blueprint(time_bp)
 app.register_blueprint(trackers_bp)
 app.register_blueprint(sync_bp)
 
-# Register error handlers
 register_error_handlers(app)
 
-# Add request optimization middleware for Pi
+
 @app.before_request
 def optimize_request():
     """Pi-specific request optimizations"""
@@ -57,13 +49,14 @@ def optimize_request():
         from flask import abort
         abort(413)  # Request Entity Too Large
 
+
 @app.after_request
 def optimize_response(response):
     """Pi-specific response optimizations"""
     # Add efficient caching headers for Pi
     if not response.cache_control.max_age:
         response.cache_control.max_age = 300  # 5 minute default cache
-    
+
     # Compress response for slower Pi network
     response.headers['X-Content-Type-Options'] = 'nosniff'
     return response
@@ -84,15 +77,16 @@ def api_status():
 
 
 if __name__ == '__main__':
-    # Production-optimized server settings for Raspberry Pi
-    is_debug = os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
+    # Production server settings for resource-constrained devices
+    is_debug = os.environ.get(
+        'FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
     port = int(os.environ.get('FLASK_PORT', 5000))
     host = os.environ.get('FLASK_HOST', '0.0.0.0')
-    
-    # Pi-optimized server settings
+
+    # Hardware-optimized server settings
     app.run(
         host=host,
-        port=port, 
+        port=port,
         debug=is_debug,
         threaded=True,  # Enable threading for Pi's limited cores
         use_reloader=False,  # Disable reloader to save memory

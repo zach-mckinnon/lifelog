@@ -70,13 +70,13 @@ def get_connection():
     db_path = _resolve_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Connect with Pi-optimized timeout
+    # Connect with hardware-optimized timeout
     settings = pi_optimizer.get_optimized_settings()
     timeout = settings["performance"]["connection_timeout"]
     conn = sqlite3.connect(db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
     
-    # Apply Pi-optimized SQLite settings
+    # Apply hardware-optimized SQLite settings
     pi_optimizer.optimize_connection_settings(conn)
 
     try:

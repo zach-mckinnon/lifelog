@@ -17,7 +17,7 @@ from lifelog.utils.db import time_repository
 from lifelog.utils.shared_options import category_option, project_option, past_option
 from lifelog.utils.cli_enhanced import cli
 from lifelog.utils.cli_decorators import (
-    with_loading, with_operation_header, database_operation, 
+    with_loading, with_operation_header, database_operation,
     interactive_command, with_performance_monitoring
 )
 
@@ -29,7 +29,7 @@ from lifelog.utils.shared_utils import (
     now_utc,
     parse_date_string,
     parse_args,
-    parse_offset_to_timedelta,  # Add shared duration parsing utility
+    parse_offset_to_timedelta,
 )
 
 app = typer.Typer(help="⏱️  Track time spent in different life categories.")
@@ -53,8 +53,6 @@ def start(
     🚀 Start tracking time for an activity with enhanced interface.
     """
     now = now_utc()
-    
-    # Parse arguments with error handling
     with cli.thinking("Parsing arguments"):
         try:
             tags, notes = parse_args(args or [])
@@ -62,38 +60,34 @@ def start(
             cli.error(f"Error parsing arguments: {e}")
             raise typer.Exit(code=1)
 
-    # Interactive category/project creation
     if category and category not in get_available_categories():
         if cli.enhanced_confirm(f"Create new category '{category}'?"):
             with cli.loading_operation(f"Adding category '{category}'"):
                 add_category_to_config(category)
             cli.success(f"Category '{category}' added")
-            
+
     if project and project not in get_available_projects():
         if cli.enhanced_confirm(f"Create new project '{project}'?"):
             with cli.loading_operation(f"Adding project '{project}'"):
                 add_project_to_config(project)
             cli.success(f"Project '{project}' added")
 
-    # Check for existing active session
     with cli.thinking("Checking for active sessions"):
         active = time_repository.get_active_time_entry()
         if active:
             duration = cli.format_relative_time(active.start)
-            cli.warning(f"Already tracking: '{active.title}' (started {duration})")
-            
+            cli.warning(
+                f"Already tracking: '{active.title}' (started {duration})")
+
             if not cli.enhanced_confirm("Stop current session and start new one?", default=False):
                 cli.info("Keeping current session active")
                 return
-            
-            # Stop current session
+
             with cli.loading_operation("Stopping current session"):
                 time_repository.stop_active_time_entry(now)
 
-    # Determine start time
     start_dt = parse_date_string(past, now=now) if past else now
 
-    # Build TimeLog data
     tag_str = ",".join(tags) if tags else None
     note_str = " ".join(notes) if notes else None
     data = {
@@ -104,19 +98,17 @@ def start(
         "tags": tag_str,
         "notes": note_str,
     }
-    
-    # Start the time entry
+
     time_repository.start_time_entry(data)
-    
-    # Display success with summary
+
     summary_data = {
         "Activity": title,
         "Category": category or "None",
-        "Project": project or "None", 
+        "Project": project or "None",
         "Tags": ", ".join(tags) if tags else "None",
         "Started": start_dt.strftime("%H:%M:%S")
     }
-    
+
     cli.success(f"Started tracking: '{title}'")
     cli.display_summary_card("Time Tracking Session", summary_data)
 
@@ -134,8 +126,7 @@ def stop(
     ⏹️ Stop the current timer and record the time block with enhanced feedback.
     """
     now = now_utc()
-    
-    # Parse arguments
+
     with cli.thinking("Processing arguments"):
         try:
             tags, notes = parse_args(args or [])
@@ -143,24 +134,21 @@ def stop(
             cli.error(f"Error parsing arguments: {e}")
             raise typer.Exit(code=1)
 
-    # Check for active session
     with cli.thinking("Checking for active session"):
         active = time_repository.get_active_time_entry()
         if not active:
             cli.warning("No active time tracking session found")
-            cli.info("Ready to start tracking whenever you are! Use 'llog time start' to begin.")
+            cli.info(
+                "Ready to start tracking whenever you are! Use 'llog time start' to begin.")
             return
 
-    # Calculate session duration so far
     if active.start:
         current_duration = (now - active.start).total_seconds() / 60
         duration_display = cli.format_duration(current_duration)
         cli.info(f"Current session: '{active.title}' ({duration_display})")
 
-    # Determine end time
     end_time = parse_date_string(past, now=now) if past else now
 
-    # Stop the time entry
     with cli.loading_operation("Finalizing time entry", "Time entry completed"):
         updated = time_repository.stop_active_time_entry(
             end_time=end_time,
@@ -168,7 +156,6 @@ def stop(
             notes=" ".join(notes) if notes else None
         )
 
-    # Calculate final statistics
     distracted = updated.distracted_minutes or 0
     if updated.start and updated.end:
         total_minutes = (updated.end - updated.start).total_seconds() / 60
@@ -176,7 +163,6 @@ def stop(
         total_minutes = 0
     actual_minutes = max(0, total_minutes - distracted)
 
-    # Display detailed session summary
     session_data = {
         "Activity": updated.title,
         "Category": updated.category or "None",
@@ -187,10 +173,10 @@ def stop(
         "Efficiency": f"{(actual_minutes/total_minutes*100):.1f}%" if total_minutes > 0 else "N/A"
     }
 
-    cli.success(f"Session completed: {cli.format_duration(total_minutes)} on '{updated.title}'")
+    cli.success(
+        f"Session completed: {cli.format_duration(total_minutes)} on '{updated.title}'")
     cli.display_summary_card("Time Tracking Summary", session_data)
-    
-    # Motivational message based on duration
+
     if total_minutes >= 60:
         cli.info("🏆 Great focus! You completed a substantial work session.")
     elif total_minutes >= 25:
@@ -207,13 +193,13 @@ def status():
     """
     with cli.thinking("Checking time tracking status"):
         active = time_repository.get_active_time_entry()
-    
+
     if not active:
         cli.info("⏸️ No active time tracking session")
-        cli.info("Ready to start tracking! Use 'llog time start <activity>' to begin.")
+        cli.info(
+            "Ready to start tracking! Use 'llog time start <activity>' to begin.")
         return
-    
-    # Calculate current duration
+
     now = now_utc()
     if active.start:
         current_duration = (now - active.start).total_seconds() / 60
@@ -222,8 +208,7 @@ def status():
     else:
         duration_display = "Unknown"
         time_ago = "Unknown"
-    
-    # Display active session info
+
     session_data = {
         "Activity": active.title,
         "Category": active.category or "None",
@@ -232,11 +217,10 @@ def status():
         "Started": time_ago,
         "Tags": active.tags or "None"
     }
-    
+
     cli.success(f"⏱️ Currently tracking: '{active.title}'")
     cli.display_summary_card("Active Session", session_data)
-    
-    # Productivity tips based on duration
+
     if current_duration >= 90:
         cli.info("💡 Consider taking a break - you've been focused for a while!")
     elif current_duration >= 25:
@@ -257,7 +241,6 @@ def time_summary(
     Shows focused (duration minus distracted) and distracted minutes.
     """
     now = now_utc()
-    # Determine 'since' cutoff
     if period:
         if period == "day":
             since = now - timedelta(days=1)
@@ -271,10 +254,8 @@ def time_summary(
             )
             raise typer.Exit(code=1)
     else:
-        # default to last year
         since = now - timedelta(days=365)
 
-    # Fetch all TimeLog entries since 'since'
     try:
         history = time_repository.get_all_time_logs(since=since)
     except Exception as e:
@@ -285,28 +266,22 @@ def time_summary(
         console.print("[italic]No time tracking history found yet![/italic]")
         return
 
-    # Validate 'by' field
     valid_fields = {"title", "category", "project"}
     if by not in valid_fields:
         console.print(
             f"[bold red]Invalid group field '{by}'. Choose title, category, or project.[/bold red]")
         raise typer.Exit(code=1)
 
-    # Group by field: use getattr
     totals = {}
     distracted_totals = {}
     for record in history:
-        # record is TimeLog; access attribute
         key = getattr(record, by, None) or "(none)"
-        # If grouping by tags and tags stored as comma-separated string, split/join:
-        # But since 'by' only allows title/category/project, skip special tags logic here.
         duration = record.duration_minutes or 0
         distracted = record.distracted_minutes or 0
         focus = max(0, duration - distracted)
         totals[key] = totals.get(key, 0) + focus
         distracted_totals[key] = distracted_totals.get(key, 0) + distracted
 
-    # Sort descending by focused time
     sorted_totals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
 
     console.print(
@@ -334,7 +309,6 @@ def distracted(
     Log a distracted block (does not stop the current session).
     """
     now = now_utc()
-    # Parse duration using shared utility
     try:
         duration_td = parse_offset_to_timedelta(duration)
         mins = int(duration_td.total_seconds() / 60)
@@ -347,7 +321,6 @@ def distracted(
     note_str = notes if notes else None
 
     if active:
-        # Increment distracted_minutes on active session
         try:
             new_distracted = time_repository.add_distracted_minutes_to_active(
                 mins)
@@ -356,7 +329,6 @@ def distracted(
                 f"[bold red]Failed to update distracted minutes: {e}[/bold red]")
             raise typer.Exit(code=1)
 
-        # Also log a separate distraction block if desired
         start_dt = now - timedelta(minutes=mins)
         distraction = TimeLog(
             title="Distracted",
@@ -377,7 +349,6 @@ def distracted(
             f"(Total distracted: {new_distracted} min).[/green]"
         )
     else:
-        # No active session: log distraction as standalone entry
         start_dt = now - timedelta(minutes=mins)
         distraction = TimeLog(
             title="Distracted",

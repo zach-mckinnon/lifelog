@@ -61,7 +61,6 @@ def add(
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1)
 
-    # Check if tracker already exists by title (now using dataclass)
     existing_trackers = track_repository.get_all_trackers()
     for tracker in existing_trackers:
         if getattr(tracker, "title", None) == title:
@@ -69,14 +68,12 @@ def add(
                 f"[red]⚠️ Tracker '{title}' already exists.[/red] Use a different name or modify the existing one.")
             raise typer.Exit(code=1)
 
-    # Validate type
     valid_types = ["int", "float", "bool", "str"]
     if type not in valid_types:
         console.print(
             f"[red]Invalid type '{type}'. Must be one of: {', '.join(valid_types)}.[/red]")
         raise typer.Exit(code=1)
 
-    # Category check (optional)
     doc = cf.load_config()
     existing_categories = cf.get_config_section("categories").keys()
     if category and category not in existing_categories:
@@ -88,23 +85,20 @@ def add(
             console.print(
                 f"[green]✅ Category '{category}' created.[/green]")
 
-    # Goal setup
     goal = None
     if Confirm.ask("Would you like to add a goal to this tracker?"):
         goal = create_goal_interactive(type)
-        # Goal validation is handled by the repository during insertion
-    # Create Tracker dataclass with consistent datetime handling
+
     tracker = Tracker(
-        id=None,  # Will be auto-assigned by database
+        id=None,
         title=title,
         type=type,
         category=category,
-        created=now.isoformat(),  # Convert datetime to ISO string for database consistency
+        created=now.isoformat(),
         tags=",".join(tags) if tags else None,
         notes=" ".join(notes) if notes else None,
     )
 
-    # Add to repo
     try:
         new_tracker = track_repository.add_tracker(tracker)
         tracker_id = new_tracker.id
@@ -216,8 +210,7 @@ def list_trackers(
             goal = goals[0]
             goal_str = goal.title or title
             try:
-                report = generate_goal_report(t)  # pass Tracker instance
-                # format_goal_display expects (goal_title, report)
+                report = generate_goal_report(t)
                 progress_display = "\n".join(
                     format_goal_display(goal_str, report))
             except Exception as e:
@@ -378,7 +371,6 @@ def validate_type(title: str, value: str):
     min_val = definition.get("min")
     max_val = definition.get("max")
 
-    # Parse the value according to the expected type
     try:
         if expected_type == "int":
             value = int(value)
@@ -397,7 +389,6 @@ def validate_type(title: str, value: str):
         raise typer.BadParameter(
             f"Value '{value}' is not a valid {expected_type}.")
 
-    # Basic validation (min/max)
     if isinstance(value, (int, float)):
         if min_val is not None and value < min_val:
             raise typer.BadParameter(
@@ -406,19 +397,16 @@ def validate_type(title: str, value: str):
             raise typer.BadParameter(
                 f"Value is above the maximum allowed ({max_val}).")
 
-    # Validate against goals if they exist
     goals = definition.get("goals", [])
     if goals:
         for goal in goals:
             goal_kind = goal.name
 
-            # Validate based on goal type
             if goal_kind == "range" and isinstance(value, (int, float)):
                 min_amount = goal.get("min_amount")
                 max_amount = goal.get("max_amount")
                 if min_amount is not None and max_amount is not None:
                     if not (min_amount <= value <= max_amount):
-                        # This is not an error, just information
                         console.print(
                             f"[yellow]Note: Value {value} is outside the goal range ({min_amount}-{max_amount}).[/yellow]")
 
@@ -440,22 +428,20 @@ def validate_value_against_tracker(tracker: Tracker, value: Any) -> Any:
     Returns the validated/converted value or raises ValueError.
     """
     tracker_type = tracker.type
-    
-    # Validation map for cleaner code
+
     validators = {
         "int": lambda v: int(v),
-        "float": lambda v: float(v), 
+        "float": lambda v: float(v),
         "bool": _validate_bool,
         "str": lambda v: str(v)
     }
-    
+
     if tracker_type not in validators:
         raise ValueError(f"Unsupported tracker type '{tracker_type}'")
-    
+
     try:
         return validators[tracker_type](value)
     except (ValueError, TypeError) as e:
-        # For interactive mode, prompt for correct value
         console.print(
             f"[bold red]⚠️ '{value}' is not a valid {tracker_type}. {str(e)}[/bold red]")
         return _prompt_correct_value_for_type(tracker_type)
@@ -480,17 +466,16 @@ def _prompt_correct_value_for_type(tracker_type: str) -> Any:
     """Prompt user for a correct value based on tracker type."""
     prompts = {
         "int": "Enter an integer value",
-        "float": "Enter a decimal number", 
+        "float": "Enter a decimal number",
         "bool": "Enter true/false, yes/no, or 1/0",
         "str": "Enter a text value"
     }
-    
+
     prompt_text = prompts.get(tracker_type, "Enter a value")
-    
+
     while True:
         try:
             user_input = typer.prompt(prompt_text)
-            # Recursively validate the new input
             if tracker_type == "int":
                 return int(user_input)
             elif tracker_type == "float":

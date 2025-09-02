@@ -147,7 +147,7 @@ def multi_step_command(steps: List[str]):
     return decorator
 
 class CommandContext:
-    """Context object passed to enhanced commands."""
+    """Context object for command execution."""
     
     def __init__(self):
         self.cli = cli

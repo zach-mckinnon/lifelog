@@ -58,7 +58,7 @@ def main():
     wheel_file = list(dist_dir.glob("*.whl"))[0]
     tar_file = list(dist_dir.glob("*.tar.gz"))[0]
     
-    release_body = f"""## 🚀 Lifelog Release {tag_name}
+    release_body = f"""## Lifelog Release {tag_name}
 
 ### Quick Install
 ```bash
@@ -82,11 +82,11 @@ llog report summary           # View insights
 ```
 
 ### What's Included
-- ✨ Claude-inspired CLI with loading states and visual feedback  
-- 🥧 Raspberry Pi Zero 2W optimization with automatic detection
-- 📊 Advanced analytics with correlation analysis
-- 🔄 Multi-device sync with secure pairing
-- ⚡ Lightning-fast database performance (23 optimized indexes)
+- Claude-inspired CLI with loading states and visual feedback  
+- Raspberry Pi Zero 2W optimization with automatic detection
+- Advanced analytics with correlation analysis
+- Multi-device sync with secure pairing
+- Lightning-fast database performance (23 optimized indexes)
 
 See [INSTALL.md](https://github.com/yourusername/lifelog/blob/main/INSTALL.md) for detailed installation instructions.
 

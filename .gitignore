@@ -166,3 +166,5 @@ cython_debug/
 .claude/settings.local.json
 /.claude
 /venv39
+CLAUDE.md
+CLAUDE.md

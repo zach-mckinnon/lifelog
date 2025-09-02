@@ -7,8 +7,6 @@ readme = "README.md"
 license = "MIT"
 dependencies = [
     # TODO: Consider making heavy dependencies optional for Raspberry Pi Zero 2W
-    # numpy, scipy, pandas can be memory intensive on low-power devices
-    # Universal
     "typer",
     "rich",
     "pyfiglet",

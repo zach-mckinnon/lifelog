@@ -12,8 +12,8 @@ from lifelog.utils.db.gamify_repository import _ensure_profile, get_unread_notif
 # -------------------------------------------------------------------
 # ─── Single, contextual status‐bar ───────────────────────────────────
 
-# Optimized for Pi: removed threading overhead, using simple global
-# Pi Zero 2W has limited cores, thread-local storage is unnecessary overhead
+# Resource optimization: removed threading overhead, using simple global
+# Limited-core devices benefit from reduced thread-local storage overhead
 
 logger = logging.getLogger(__name__)
 _current_stdscr = None

@@ -33,11 +33,6 @@ categories = [
   "custom"
 ]
 
-[ai]
-chatgpt_api_key = "sk-..."          # For OpenAI/ChatGPT
-gemini_api_key = "..."              # For Gemini/Google
-preferred_ai_model = "chatgpt"
-
 [aliases]
 m = "mood"
 w = "water"

@@ -71,7 +71,6 @@ def complete_pairing():
         # Clean up expired codes
         conn.execute("DELETE FROM api_pairing_codes WHERE expires_at < ?",
                      (datetime.now().isoformat(),))
-        # Optionally: reject duplicate device names
         cur = conn.execute(
             "SELECT 1 FROM api_devices WHERE device_name = ?", (device_name,))
         if cur.fetchone():

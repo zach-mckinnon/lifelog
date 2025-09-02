@@ -19,18 +19,13 @@ logger = logging.getLogger(__name__)
 
 IS_POSIX = os.name == "posix"
 
-# ── POSIX-only constants (safe to be None on Windows) ----------------------------------
 if IS_POSIX:
     CRON_D_DIR: Path = Path("/etc/cron.d")
     CRON_FILE: Path = CRON_D_DIR / "lifelog_recur_auto"
 else:
     CRON_D_DIR: Optional[Path] = None
     CRON_FILE: Optional[Path] = None
-# ---------------------------------------------------------------------------------------
-
 CONFIG_PATH = cf.USER_CONFIG
-
-# ----- LINUX Cron Jobs -----
 
 
 def save_config(doc: dict) -> bool:
@@ -44,7 +39,6 @@ def save_config(doc: dict) -> bool:
     except Exception as e:
         logger.error(
             f"Failed to ensure config directory {CONFIG_PATH.parent}: {e}", exc_info=True)
-        # Continue to attempt write; may still fail.
 
     try:
         toml_str = dumps(doc)
@@ -131,18 +125,14 @@ def _apply_user_cron_jobs(lines: str) -> bool:
     stripping out any old Lifelog entries first.
     """
     try:
-        # TODO: Add timeout and error handling for Raspberry Pi subprocess calls
-        # Subprocess calls can hang on slow systems
-        # 1) read existing crontab (may be empty)
         p = subprocess.run(
             ["crontab", "-l"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             text=True,
-            timeout=30  # Add timeout for Raspberry Pi
+            timeout=30
         )
         old = p.stdout.splitlines() if p.returncode == 0 else []
 
-        # 2) drop any previous Lifelog lines
         filtered = [
             ln for ln in old
             if "llog task auto_recur" not in ln
@@ -150,7 +140,6 @@ def _apply_user_cron_jobs(lines: str) -> bool:
                and not ln.strip().startswith("# Lifelog")
         ]
 
-        # 3) convert any "… root cmd" entries into user‐cron format
         user_lines = []
         for ln in lines.splitlines():
             parts = ln.split()
@@ -158,13 +147,11 @@ def _apply_user_cron_jobs(lines: str) -> bool:
                 parts = parts[:5] + parts[6:]
             user_lines.append(" ".join(parts))
 
-        # 4) assemble new crontab
         header = "# Lifelog scheduled jobs"
         newtab = "\n".join(filtered + [header] + user_lines) + "\n"
 
-        # 5) install  
-        # TODO: Add timeout to prevent hanging on slow Raspberry Pi systems
-        subprocess.run(["crontab", "-"], input=newtab, text=True, check=True, timeout=30)
+        subprocess.run(["crontab", "-"], input=newtab,
+                       text=True, check=True, timeout=30)
         logger.info("Installed Lifelog jobs into user crontab")
         return True
 
@@ -188,11 +175,9 @@ def apply_cron_jobs() -> bool:
         logger.info("No cron entries to apply")
         return True
 
-    # build the raw text
     lines = [f"{sched} root {cmd}" for (_n, sched, cmd) in jobs]
     content = "\n".join(lines) + "\n"
 
-    # 1️⃣ Try system‐wide /etc/cron.d
     try:
         CRON_D_DIR.mkdir(parents=True, exist_ok=True)
         with CRON_FILE.open("w", encoding="utf-8") as f:
@@ -205,7 +190,6 @@ def apply_cron_jobs() -> bool:
         return True
 
     except PermissionError:
-        # no sudo: drop silently into user crontab
         logger.warning(
             f"No permission to write {CRON_FILE}; using user crontab")
 
@@ -213,12 +197,7 @@ def apply_cron_jobs() -> bool:
         logger.warning(
             f"Error writing {CRON_FILE}: {e}; falling back", exc_info=True)
 
-    # 2️⃣ Fallback
     return _apply_user_cron_jobs(content)
-
-# ────────────────────────────────────────────────────────────────────────────────────────
-#  Windows helper (still WIP but now never called on POSIX)
-# ────────────────────────────────────────────────────────────────────────────────────────
 
 
 def apply_windows_tasks() -> bool:
@@ -244,7 +223,6 @@ def apply_windows_tasks() -> bool:
 
     all_ok = True
     for name, schedule, command in jobs:
-        # Simple cron parsing: expecting 5 fields
         fields = schedule.split()
         if len(fields) != 5:
             logger.warning(
@@ -253,7 +231,6 @@ def apply_windows_tasks() -> bool:
             continue
 
         minute_str, hour_str, day_str, month_str, weekday_str = fields
-        # Only support daily tasks: day_str, month_str, weekday_str should be "*"
         if not (day_str == "*" and month_str == "*" and weekday_str == "*"):
             logger.warning(
                 f"Schedule '{schedule}' for job '{name}' is not a simple daily schedule. "
@@ -262,7 +239,6 @@ def apply_windows_tasks() -> bool:
             all_ok = False
             continue
 
-        # Convert hour/minute to int; guard against invalid ints
         try:
             minute = int(minute_str)
             hour = int(hour_str)
@@ -276,7 +252,6 @@ def apply_windows_tasks() -> bool:
             continue
 
         task_name = f"Lifelog_{name}"
-        # Delete existing task, ignoring errors
         try:
             subprocess.run(
                 ["schtasks", "/Delete", "/TN", task_name, "/F"],
@@ -286,9 +261,7 @@ def apply_windows_tasks() -> bool:
         except Exception as e:
             logger.warning(
                 f"Failed to delete existing scheduled task '{task_name}': {e}", exc_info=True)
-            # continue to creation attempt anyway
 
-        # Create the task
         try:
             subprocess.run([
                 "schtasks",
@@ -327,17 +300,13 @@ def build_linux_notifier(cmd_msg: str) -> str:
     Build a bash-safe one-liner that sends a persistent critical notification
     and plays a sound. 
     """
-    # timeout 0 = until dismissed; urgency critical = high visibility
     notify = f"notify-send -u critical -t 0 {quote(cmd_msg)}"
-    # try canberra-gtk-play if installed, otherwise paplay, otherwise bell
     if shutil.which("canberra-gtk-play"):
         sound = "canberra-gtk-play --id='message'"
     elif shutil.which("paplay"):
         sound = "paplay /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
     else:
-        # fallback to terminal bell
         sound = "printf '\\a'"
-    # run both
     return f"bash -lc {quote(notify + ' && ' + sound)}"
 
 
@@ -349,7 +318,6 @@ def build_windows_notifier(cmd_msg: str) -> list[str]:
     """
     ps = [
         "powershell.exe", "-NoProfile", "-Command",
-        # load forms and media, play sound, then MessageBox
         (
             "[Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null;"
             "[Reflection.Assembly]::LoadWithPartialName('System.Drawing') | Out-Null;"

@@ -49,18 +49,16 @@ def run_wizard(config):
     setup_deployment(config)
     show_tutorial()
 
-    # Add first-run marker
     config["meta"]["first_run_complete"] = True
     return config
 
 
 def show_welcome(stdscr=None):
     """Universal welcome screen that works for both CLI and TUI"""
-    if stdscr:  # TUI mode (curses)
+    if stdscr:
         h, w = stdscr.getmaxyx()
         min_widths = [50, 30, 10]
 
-        # Select appropriate logo
         if w >= min_widths[0]:
             logo = LOGO_LARGE
         elif w >= min_widths[1]:
@@ -71,13 +69,11 @@ def show_welcome(stdscr=None):
         logo_height = len(logo)
         start_y = max(1, h//2 - logo_height//2 - 1)
 
-        # Display logo
         for i, line in enumerate(logo):
             y = start_y + i
             if y >= h - 1:
                 break
             x = max(1, w//2 - len(line)//2)
-            # Truncate if necessary
             if x + len(line) > w:
                 line = line[:w - x - 1]
             try:
@@ -85,7 +81,6 @@ def show_welcome(stdscr=None):
             except curses.error:
                 pass
 
-        # Display message
         message = "Press any key to begin"
         msg_y = min(h-2, start_y + logo_height + 2)
         msg_x = max(1, w//2 - len(message)//2)
@@ -97,14 +92,12 @@ def show_welcome(stdscr=None):
         stdscr.refresh()
         stdscr.getch()
 
-    else:  # CLI mode (Rich)
+    else:
         from rich.console import Console
         console = Console()
 
-        # Get terminal width
         width = console.width
 
-        # Select appropriate logo
         if width >= 50:
             logo = "\n".join(LOGO_LARGE)
         elif width >= 30:
@@ -135,16 +128,13 @@ def setup_scheduled_tasks(config: dict):
     Prompt user for times (recur_auto and env_sync), then write absolute paths
     into config.toml under [cron.recur_auto] and [cron.env_sync], and install jobs.
     """
-    # 1. Find the absolute path to the `llog` executable/script:
     llog_cmd = shutil.which("llog")
     if not llog_cmd:
         llog_cmd = os.path.abspath(sys.argv[0])
 
-    # 2. Load or create the [cron] section of config.toml
     doc = cf.load_config()
     cron_section = doc.get("cron", table())
 
-    # 3. If recur_auto isn’t defined yet, ask the user and write it:
     if "recur_auto" not in cron_section:
         console.print(
             "[bold blue]⏰ When do you want recurring tasks to run? (HH:MM)[/bold blue]")
@@ -172,7 +162,6 @@ def setup_scheduled_tasks(config: dict):
         console.print(
             "[yellow]⚡ recur_auto already set—skipping creation[/yellow]")
 
-    # 4. If env_sync isn’t defined yet, ask the user and write it:
     if "env_sync" not in cron_section:
         console.print(
             "[bold blue]⏰ When do you want env sync to run? (HH:MM every N hours)[/bold blue]")
@@ -190,8 +179,6 @@ def setup_scheduled_tasks(config: dict):
                 pass
             console.print("[red]Invalid time. Enter HH:MM, e.g. 02:00.[/red]")
 
-        # Let’s assume env_sync should run every 4 hours starting at `sync_time`.
-        # Cron expression: “minute hour/4 * * *”
         cron_expr_env = f"{sminute} */4 * * *"
         cron_section["env_sync"] = {
             "schedule": cron_expr_env,
@@ -203,11 +190,9 @@ def setup_scheduled_tasks(config: dict):
         console.print(
             "[yellow]⚡ env_sync already set—skipping creation[/yellow]")
 
-    # 5. Save the updated config.toml
     doc["cron"] = cron_section
     cf.save_config(doc)
 
-    # 6. Finally, install into the OS scheduler (cron or Windows Task Scheduler)
     system = platform.system()
     if system == "Windows":
         console.print("[cyan]Setting up Windows Scheduled Tasks...[/cyan]")
@@ -230,15 +215,15 @@ def setup_location(config):
         style="blue"
     ))
 
-    # Optimized network operations for Raspberry Pi with retry logic
     import os
     import time
     network_timeout = int(os.getenv('LIFELOG_NETWORK_TIMEOUT', '15'))
     max_retries = int(os.getenv('LIFELOG_NETWORK_RETRIES', '2'))
-    
+
     for attempt in range(max_retries + 1):
         try:
-            response = requests.get('https://ipinfo.io/json', timeout=network_timeout)
+            response = requests.get(
+                'https://ipinfo.io/json', timeout=network_timeout)
             data = response.json()
             if zip_code := data.get('postal'):
                 loc = data.get("loc", "0,0").split(",")
@@ -257,14 +242,13 @@ def setup_location(config):
                     config["location"]["timezone"] = tz
                     console.print(f"[green]✔ Saved time zone: {tz}[/green]")
                     return
-            # If we get here, no location was found but request succeeded
             break
         except (requests.RequestException, ValueError) as e:
             if attempt < max_retries:
-                console.print(f"[dim]Network attempt {attempt + 1} failed, retrying...[/dim]")
+                console.print(
+                    f"[dim]Network attempt {attempt + 1} failed, retrying...[/dim]")
                 time.sleep(2 ** attempt)  # Exponential backoff
                 continue
-            # Last attempt failed - show error message
             console.print(
                 "[yellow]Unable to detect your location automatically.[/yellow]")
             console.print(
@@ -273,7 +257,6 @@ def setup_location(config):
         console.print(
             "[yellow]You'll need to enter your ZIP code manually.[/yellow]")
 
-    # Manual entry
     zip_code = typer.prompt("Please enter your 5-digit ZIP code")
     while not (zip_code.isdigit() and len(zip_code) == 5):
         zip_code = typer.prompt(
@@ -289,8 +272,6 @@ def mask_key(key: str) -> str:
     return f"{key[:2]}{'*'*(len(key)-6)}{key[-4:]}"
 
 
-
-
 def setup_api(config):
     """Prepare the API server: credentials, encryption, Docker files."""
     console.print(Panel(
@@ -299,7 +280,6 @@ def setup_api(config):
         style="yellow"
     ))
 
-    # Check if already complete
     api_completed = config.get("meta", {}).get("api_setup_complete", False)
 
     if api_completed:
@@ -310,7 +290,6 @@ def setup_api(config):
             console.print(
                 "[bold yellow]Reconfiguring API server credentials[/bold yellow]")
 
-    # No prompt; always enable API in host mode
     key = ''.join(secrets.choice(string.ascii_letters + string.digits)
                   for _ in range(32))
     secret = ''.join(secrets.choice(string.ascii_letters +
@@ -327,11 +306,9 @@ def setup_api(config):
 
     config.setdefault("meta", {})["api_setup_complete"] = True
 
-    # Only show instructions for server/host, not the actual credentials
     console.print(
         "\n[bold green]✓ API server enabled for device sync.[/bold green]")
 
-    # Docker support for API server (optional but recommended)
     if typer.confirm("\nCreate Docker deployment files?", default=True):
         from lifelog.config.config_manager import BASE_DIR
         generate_docker_files(BASE_DIR)
@@ -368,16 +345,13 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
     docker_dir = base_path / "docker"
     docker_dir.mkdir(parents=True, exist_ok=True)
 
-    # Abort if files exist and user says “no”
     if any((docker_dir / f).exists() for f in ("Dockerfile", "docker-compose.yml")):
         if not typer.confirm("Docker files already exist here. Overwrite?", default=False):
             print("Skipped Docker file generation.")
             return
 
-    # --- Write a requirements.txt (if needed) ---
     requirements_path = docker_dir / "requirements.txt"
     if not requirements_path.exists():
-        # The essentials for your server, adjust if you use more packages
         requirements = (
             "flask\n"
             "npyscreen\n"
@@ -399,7 +373,6 @@ def generate_docker_files(base_path: Optional[Path] = None) -> None:
         )
         requirements_path.write_text(requirements, encoding="utf-8")
 
-    # ── Dockerfile ──────────────────────────────────────────────────────────
     dockerfile_content = '''\
 FROM python:3.8-slim-buster AS builder
 
@@ -443,7 +416,6 @@ HEALTHCHECK --interval=30s --timeout=5s \\
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "lifelog.app:app"]
 '''
 
-    # ── docker-compose.yml ──────────────────────────────────────────────────
     home_path = str(Path.home())
     compose_content = f'''\
 services:
@@ -469,7 +441,6 @@ services:
       start_period: 15s
 '''
 
-    # Write files
     (docker_dir / "Dockerfile").write_text(dockerfile_content, encoding="utf-8")
     (docker_dir / "docker-compose.yml").write_text(compose_content, encoding="utf-8")
 

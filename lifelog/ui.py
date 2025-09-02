@@ -55,7 +55,6 @@ def show_tui_welcome(stdscr):
 
 
 def main(stdscr, show_status: bool = True):
-    # --- Color & Cursor Setup ---
     try:
         set_current_stdscr(stdscr)
         config = cf.load_config()
@@ -66,21 +65,20 @@ def main(stdscr, show_status: bool = True):
         curses.start_color()
         curses.use_default_colors()
         curses.init_pair(1, curses.COLOR_WHITE,
-                         curses.COLOR_BLUE)    # menu bar
+                         curses.COLOR_BLUE)
         curses.init_pair(2, curses.COLOR_BLACK,
-                         curses.COLOR_CYAN)    # selection
+                         curses.COLOR_CYAN)
         curses.init_pair(3, curses.COLOR_BLACK,
-                         curses.COLOR_WHITE)   # status bar
+                         curses.COLOR_WHITE)
         curses.curs_set(0)
         stdscr.keypad(True)
 
-        # --- State ---
         current = 0
         agenda_sel = 0
         tracker_sel = 0
         time_sel = 0
 
-        menu_h = 3  # 2 lines for menu/status + 1 for padding
+        menu_h = 3
         h, w = stdscr.getmaxyx()
         panes = create_main_panes(stdscr, h, w, menu_h)
 
@@ -106,7 +104,6 @@ def main(stdscr, show_status: bool = True):
             except Exception as e:
                 stdscr.addstr(0, 0, f"Menu err: {e}")
 
-            # Erase and border all panes (optional: only border active pane)
             for pane in panes.values():
                 pane.erase()
                 pane.border()
@@ -126,15 +123,10 @@ def main(stdscr, show_status: bool = True):
                         active_pane, h, w, tracker_sel, color_pair=2)
                 elif active_screen == "R":
                     draw_report(active_pane, h, w)
-                elif active_screen == "GM":
-                    # drop into your Hero TUI menu
-                    hero_menu(stdscr)
             except Exception as e:
                 safe_addstr(active_pane, 1, 1, f"Tab err: {e}")
 
-            # Only show the active pane (you could also overlay)
             active_pane.noutrefresh()
-            # Draw status/help bar
             if show_status:
                 try:
                     draw_status(stdscr, h, w, current)
@@ -162,7 +154,6 @@ def main(stdscr, show_status: bool = True):
                 current = (current - 1) % len(SCREENS)
                 continue
 
-            # Now, context-sensitive key handling per tab:
             if active_screen == "H":
                 if key == ord("S"):
                     start_day_tui(stdscr)
@@ -301,20 +292,15 @@ def draw_home(pane, h, w):
         y = 2
         sections = []
 
-        # Section 1: Top Tasks
         try:
             tasks = task_repository.query_tasks(sort="priority")[:3]
             if tasks:
-                # Use task.title (Task object), not t.title
-                # Wrap attribute in tuple (text, attr)
                 top_items = [(t.title or "<no title>", None) for t in tasks]
                 sections.append(("Top Tasks:", top_items))
 
         except Exception as e:
-            # Wrap the error string into a tuple so unpacking (text, attr) works
             sections.append(("Tasks Error", [(str(e), None)]))
 
-       # Section 2: Time Info
         try:
             time_info = []
             active = time_repository.get_active_time_entry()
@@ -335,7 +321,6 @@ def draw_home(pane, h, w):
         except Exception as e:
             sections.append(("Time Error", [str(e)]))
 
-        # Section 3: Recent Trackers
         try:
             trackers = track_repository.get_all_trackers()[-2:]
             if trackers:
@@ -344,10 +329,7 @@ def draw_home(pane, h, w):
         except Exception as e:
             sections.append(("Trackers Error", [str(e)]))
 
-        # Render sections with adaptive layout
         for header, items in sections:
-            # Check if we have space for this section
-            # Need at least 3 lines (header + 1 item + footer)
             if y >= max_h - 4:
                 break
 
@@ -355,15 +337,14 @@ def draw_home(pane, h, w):
             y += 1
 
             for text, attr in items:
-                if y >= max_h - 3:  # Stop before footer
+                if y >= max_h - 3:
                     break
                 safe_addstr(pane, y, 4, text[:max_w-8], attr)
                 y += 1
-            y += 1  # Section gap
+            y += 1
 
-        # Environment section at bottom (if space)
         try:
-            if y <= max_h - 6:  # Check space for environment + devices + footer
+            if y <= max_h - 6:
                 env_y = max_h - 5
                 env_weather = environment_repository.get_latest_environment_data(
                     'weather')
@@ -385,16 +366,15 @@ def draw_home(pane, h, w):
                 safe_addstr(pane, max_h - 5, 2,
                             f"Env error: {str(e)[:max_w-4]}")
 
-        # Devices section (if space)
         try:
-            if y <= max_h - 7:  # Check space for devices section
+            if y <= max_h - 7:
                 devices_y = max_h - 7
                 devices = get_all_api_devices()
                 if devices:
                     safe_addstr(pane, devices_y, 2,
                                 "Paired Devices:", curses.A_UNDERLINE)
                     device_line_y = devices_y + 1
-                    for d in devices[:3]:  # Max 3 devices
+                    for d in devices[:3]:
                         if device_line_y >= max_h - 2:
                             break
                         paired_at = d.get('paired_at', '')
@@ -407,7 +387,6 @@ def draw_home(pane, h, w):
                 safe_addstr(pane, max_h - 7, 2,
                             f"Devices error: {str(e)[:max_w-4]}")
 
-        # Footer always at bottom
         footer_y = max_h - 2
         safe_addstr(pane, footer_y, 2,
                     "Press 'S' to Start My Day!", curses.A_BOLD)

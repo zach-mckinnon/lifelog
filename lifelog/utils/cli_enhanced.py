@@ -1,7 +1,6 @@
 # lifelog/utils/cli_enhanced.py
 """
-Modern CLI components with Claude-inspired interface patterns.
-Includes loading states, progress indicators, and enhanced user feedback.
+Modern CLI components with loading states, progress indicators, and user feedback.
 """
 import time
 import threading
@@ -36,7 +35,7 @@ class OperationStatus(Enum):
     CANCELLED = "cancelled"
 
 class EnhancedCLI:
-    """Enhanced CLI with Claude-inspired interface patterns."""
+    """CLI with modern interface patterns, loading states, and progress indicators."""
     
     def __init__(self, console: Optional[Console] = None):
         self.console = console or Console()
@@ -116,7 +115,7 @@ class EnhancedCLI:
             yield progress, task
 
     def step_progress(self, message: str, step: int, total: int):
-        """Show step-based progress similar to Claude's interface."""
+        """Show step-based progress indicator."""
         progress_bar = "█" * int(20 * step / total) + "░" * (20 - int(20 * step / total))
         percentage = int(100 * step / total)
         
@@ -126,7 +125,7 @@ class EnhancedCLI:
         )
 
     def operation_header(self, title: str, subtitle: Optional[str] = None):
-        """Display operation header like Claude's responses."""
+        """Display operation header with status."""
         header_text = Text(title, style="bold bright_blue")
         if subtitle:
             header_text.append(f"\n{subtitle}", style="dim")
@@ -162,7 +161,7 @@ class EnhancedCLI:
         self.console.print(f"{icon} [red]{message}[/red]")
 
     def thinking(self, message: str = "Processing"):
-        """Show thinking indicator similar to Claude."""
+        """Show processing indicator."""
         return self.console.status(f"[dim]{message}...[/dim]", spinner="dots2")
 
     def enhanced_table(
@@ -173,7 +172,7 @@ class EnhancedCLI:
         show_header: bool = True,
         show_lines: bool = True
     ) -> Table:
-        """Create enhanced table with better styling."""
+        """Create table with improved styling."""
         table = Table(
             title=title,
             show_header=show_header,
@@ -222,7 +221,7 @@ class EnhancedCLI:
         default: bool = True,
         show_default: bool = True
     ) -> bool:
-        """Enhanced confirmation prompt with fallback for non-interactive environments."""
+        """Confirmation prompt with non-interactive fallback."""
         try:
             return Confirm.ask(message, default=default, show_default=show_default)
         except (EOFError, KeyboardInterrupt):
@@ -331,7 +330,7 @@ class EnhancedCLI:
         )
         self.console.print(panel)
 
-# Global enhanced CLI instance
+# Global CLI instance
 cli = EnhancedCLI()
 
 # Convenience functions for backward compatibility
