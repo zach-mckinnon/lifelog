@@ -7,26 +7,30 @@ To enable users to install with just `pip install lifelog`, you need to publish 
 ## 🚀 One-Time PyPI Setup
 
 ### 1. Create PyPI Account
+
 - Go to https://pypi.org/account/register/
 - Verify email address
 - Enable 2FA (strongly recommended)
 
-### 2. Create Test PyPI Account  
+### 2. Create Test PyPI Account
+
 - Go to https://test.pypi.org/account/register/
 - This is for testing releases before going live
 
 ### 3. Generate API Tokens
+
 ```bash
 # PyPI Main (for production releases)
 # Go to: https://pypi.org/manage/account/token/
 # Create token with scope: "Entire account"
 
 # Test PyPI (for testing)
-# Go to: https://test.pypi.org/manage/account/token/  
+# Go to: https://test.pypi.org/manage/account/token/
 # Create token with scope: "Entire account"
 ```
 
 ### 4. Configure Local Environment
+
 ```bash
 # Install publishing tools
 pip install twine build
@@ -35,7 +39,7 @@ pip install twine build
 # Create ~/.pypirc
 cat > ~/.pypirc << EOF
 [distutils]
-index-servers = 
+index-servers =
     pypi
     testpypi
 
@@ -55,6 +59,7 @@ chmod 600 ~/.pypirc
 ## 🧪 Test Publishing Process
 
 ### 1. Build Package
+
 ```bash
 # Clean previous builds
 rm -rf dist/ build/ *.egg-info/
@@ -68,6 +73,7 @@ ls dist/
 ```
 
 ### 2. Test Upload to Test PyPI
+
 ```bash
 # Upload to test PyPI first
 python -m twine upload --repository testpypi dist/*
@@ -78,6 +84,7 @@ llog --help
 ```
 
 ### 3. If Test Successful, Upload to Production
+
 ```bash
 # Upload to production PyPI
 python -m twine upload dist/*
@@ -89,6 +96,7 @@ pip install lifelog
 ## 🤖 Automated PyPI Publishing
 
 ### GitHub Actions Workflow
+
 Create `.github/workflows/publish-pypi.yml`:
 
 ```yaml
@@ -101,37 +109,38 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-        
-    - name: Build package
-      run: python -m build
-      
-    - name: Publish to Test PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        repository_url: https://test.pypi.org/legacy/
-        
-    - name: Publish to PyPI
-      if: startsWith(github.ref, 'refs/tags')
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        password: ${{ secrets.PYPI_API_TOKEN }}
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to Test PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
 ```
 
 ### GitHub Secrets Setup
+
 In your repository settings → Secrets and variables → Actions:
 
 - `PYPI_API_TOKEN`: Your PyPI production token
@@ -140,6 +149,7 @@ In your repository settings → Secrets and variables → Actions:
 ## 📋 PyPI Package Requirements
 
 ### Update pyproject.toml
+
 Make sure your `pyproject.toml` includes:
 
 ```toml
@@ -179,6 +189,7 @@ llog = "lifelog.llog:lifelog_app"
 ## 🚀 Publishing Workflow
 
 ### Manual Release Process
+
 ```bash
 # 1. Update version in pyproject.toml
 # 2. Create git tag
@@ -197,6 +208,7 @@ python -m twine upload dist/*
 ```
 
 ### Automated Release Process
+
 1. Create GitHub release (triggers workflow)
 2. Workflow automatically publishes to PyPI
 3. Users can immediately `pip install lifelog`
@@ -204,6 +216,7 @@ python -m twine upload dist/*
 ## ✅ Benefits of PyPI Publishing
 
 ### For Users:
+
 ```bash
 # Instead of:
 pip install https://github.com/zach-mckinnon/lifelog/releases/download/v0.1.0/lifelog-0.1.0-py3-none-any.whl
@@ -213,6 +226,7 @@ pip install lifelog
 ```
 
 ### For Package Managers:
+
 - Homebrew can reference PyPI
 - System package managers can build from PyPI
 - Docker images can install directly
@@ -221,12 +235,14 @@ pip install lifelog
 ## 🔒 Security Considerations
 
 ### API Token Security:
+
 - Store tokens as GitHub secrets, never in code
 - Use scoped tokens (project-specific when possible)
 - Rotate tokens regularly
 - Enable 2FA on PyPI account
 
 ### Package Integrity:
+
 - Always build locally and verify contents
 - Test on Test PyPI before production
 - Monitor download stats for unusual activity
@@ -235,12 +251,14 @@ pip install lifelog
 ## 📈 Once Published
 
 ### Monitor Your Package:
+
 - **PyPI Statistics**: https://pypistats.org/packages/lifelog
 - **Downloads**: Track adoption
 - **Issues**: Monitor GitHub for user feedback
 - **Security**: Watch for vulnerability reports
 
 ### Update Process:
+
 1. Increment version in `pyproject.toml`
 2. Create git tag and GitHub release
 3. Automated workflow publishes to PyPI

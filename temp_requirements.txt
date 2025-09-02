@@ -1,4 +1,0 @@
-pendulum==3.1.0
-psutil==7.0.0
-rich==14.1.0
-typer==0.17.3
