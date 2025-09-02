@@ -358,11 +358,37 @@ def initialize_schema():
             # Indexes
             # ───────────────────────────────────────────────────────────────────────
             cursor.executescript("""
+            -- Existing indexes
             CREATE INDEX IF NOT EXISTS idx_tracker_entries_tracker_id ON tracker_entries(tracker_id);
             CREATE INDEX IF NOT EXISTS idx_time_history_task_id ON time_history(task_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due);
             CREATE INDEX IF NOT EXISTS idx_goals_tracker_id ON goals(tracker_id);
+            
+            -- Performance-critical indexes for Pi Zero 2W
+            CREATE INDEX IF NOT EXISTS idx_time_history_start ON time_history(start);
+            CREATE INDEX IF NOT EXISTS idx_time_history_end ON time_history(end);
+            CREATE INDEX IF NOT EXISTS idx_time_history_category ON time_history(category);
+            CREATE INDEX IF NOT EXISTS idx_time_history_uid ON time_history(uid);
+            CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
+            CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created);
+            CREATE INDEX IF NOT EXISTS idx_tasks_uid ON tasks(uid);
+            CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_timestamp ON tracker_entries(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_uid ON tracker_entries(uid);
+            CREATE INDEX IF NOT EXISTS idx_trackers_category ON trackers(category);
+            CREATE INDEX IF NOT EXISTS idx_trackers_uid ON trackers(uid);
+            
+            -- Composite indexes for common query patterns
+            CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due);
+            CREATE INDEX IF NOT EXISTS idx_time_history_category_start ON time_history(category, start);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_tracker_timestamp ON tracker_entries(tracker_id, timestamp);
+            
+            -- Sync performance indexes
+            CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_time_history_updated_at ON time_history(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_trackers_updated_at ON trackers(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_tracker_entries_updated_at ON tracker_entries(updated_at);
             """)
 
             # simple test query

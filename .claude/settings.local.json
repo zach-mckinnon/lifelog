@@ -31,7 +31,15 @@
       "Bash(PYTHONIOENCODING=utf-8 llog track add \"Test Tracker\" --type=bool)",
       "Bash(PYTHONIOENCODING=utf-8 llog track list)",
       "Bash(PYTHONIOENCODING=utf-8 llog time start \"Testing time tracking fix\")",
-      "Bash(PYTHONIOENCODING=utf-8 llog task add \"Test task after timezone fix\" --cat work)"
+      "Bash(PYTHONIOENCODING=utf-8 llog task add \"Test task after timezone fix\" --cat work)",
+      "Bash(find:*)",
+      "Bash(PYTHONIOENCODING=utf-8 llog time start \"Testing improved performance features\")",
+      "Bash(PYTHONIOENCODING=utf-8 llog task add \"Test optimized task creation with validation\" --cat work)",
+      "Bash(PYTHONIOENCODING=utf-8 llog time status)",
+      "Bash(PYTHONIOENCODING=utf-8 llog time start \"Testing enhanced CLI experience\" --category testing)",
+      "Bash(PYTHONIOENCODING=utf-8 llog time start \"Testing enhanced CLI experience\" --cat testing)",
+      "Bash(PYTHONIOENCODING=utf-8 llog time start \"Testing enhanced CLI experience\")",
+      "Bash(PYTHONIOENCODING=utf-8 llog task add \"Testing enhanced task interface with beautiful CLI\")"
     ],
     "deny": [],
     "ask": []

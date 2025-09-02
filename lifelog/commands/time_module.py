@@ -15,6 +15,11 @@ from rich.table import Table
 from lifelog.utils.db.models import TimeLog
 from lifelog.utils.db import time_repository
 from lifelog.utils.shared_options import category_option, project_option, past_option
+from lifelog.utils.cli_enhanced import cli
+from lifelog.utils.cli_decorators import (
+    with_loading, with_operation_header, database_operation, 
+    interactive_command, with_performance_monitoring
+)
 
 from lifelog.utils.shared_utils import (
     add_category_to_config,
@@ -27,12 +32,14 @@ from lifelog.utils.shared_utils import (
     parse_offset_to_timedelta,  # Add shared duration parsing utility
 )
 
-app = typer.Typer(help="Track time spent in different life categories.")
+app = typer.Typer(help="⏱️  Track time spent in different life categories.")
 
 console = Console()
 
 
 @app.command("start")
+@with_operation_header("Starting Time Tracking", "Initialize new time tracking session")
+@database_operation("Start Time Entry")
 def start(
     title: str = typer.Argument(..., help="Activity title"),
     category: Optional[str] = category_option,
@@ -43,35 +50,50 @@ def start(
     ),
 ):
     """
-    Start tracking time for an activity.
+    🚀 Start tracking time for an activity with enhanced interface.
     """
     now = now_utc()
-    try:
-        tags, notes = parse_args(args or [])
-    except ValueError as e:
-        console.print(f"[bold red]Error parsing args: {e}[/bold red]")
-        raise typer.Exit(code=1)
+    
+    # Parse arguments with error handling
+    with cli.thinking("Parsing arguments"):
+        try:
+            tags, notes = parse_args(args or [])
+        except ValueError as e:
+            cli.error(f"Error parsing arguments: {e}")
+            raise typer.Exit(code=1)
 
-    # Add new category/project if not existing
+    # Interactive category/project creation
     if category and category not in get_available_categories():
-        if typer.confirm(f"Add new category '{category}'?"):
-            add_category_to_config(category)
+        if cli.enhanced_confirm(f"Create new category '{category}'?"):
+            with cli.loading_operation(f"Adding category '{category}'"):
+                add_category_to_config(category)
+            cli.success(f"Category '{category}' added")
+            
     if project and project not in get_available_projects():
-        if typer.confirm(f"Add new project '{project}'?"):
-            add_project_to_config(project)
+        if cli.enhanced_confirm(f"Create new project '{project}'?"):
+            with cli.loading_operation(f"Adding project '{project}'"):
+                add_project_to_config(project)
+            cli.success(f"Project '{project}' added")
 
-    # Check if already active
-    active = time_repository.get_active_time_entry()
-    if active:
-        console.print(
-            f"[yellow]⏳ Already tracking: '{active.title}' since {active.start}.[/yellow]"
-        )
-        raise typer.Exit(code=1)
+    # Check for existing active session
+    with cli.thinking("Checking for active sessions"):
+        active = time_repository.get_active_time_entry()
+        if active:
+            duration = cli.format_relative_time(active.start)
+            cli.warning(f"Already tracking: '{active.title}' (started {duration})")
+            
+            if not cli.enhanced_confirm("Stop current session and start new one?", default=False):
+                cli.info("Keeping current session active")
+                return
+            
+            # Stop current session
+            with cli.loading_operation("Stopping current session"):
+                time_repository.stop_active_time_entry(now)
 
     # Determine start time
     start_dt = parse_date_string(past, now=now) if past else now
 
-    # Build TimeLog data; convert datetime to ISO string for consistency
+    # Build TimeLog data
     tag_str = ",".join(tags) if tags else None
     note_str = " ".join(notes) if notes else None
     data = {
@@ -82,17 +104,26 @@ def start(
         "tags": tag_str,
         "notes": note_str,
     }
-    # Start entry in repository; assume repo accepts TimeLog
-    try:
-        time_repository.start_time_entry(data)
-    except Exception as e:
-        console.print(f"[bold red]Failed to start time entry: {e}[/bold red]")
-        raise typer.Exit(code=1)
-
-    console.print(f"[green]✅ Started tracking: '{title}'[/green]")
+    
+    # Start the time entry
+    time_repository.start_time_entry(data)
+    
+    # Display success with summary
+    summary_data = {
+        "Activity": title,
+        "Category": category or "None",
+        "Project": project or "None", 
+        "Tags": ", ".join(tags) if tags else "None",
+        "Started": start_dt.strftime("%H:%M:%S")
+    }
+    
+    cli.success(f"Started tracking: '{title}'")
+    cli.display_summary_card("Time Tracking Session", summary_data)
 
 
 @app.command("stop")
+@with_operation_header("Stopping Time Tracking", "Finalize current tracking session")
+@database_operation("Stop Time Entry")
 def stop(
     past: Optional[str] = past_option,
     args: Optional[List[str]] = typer.Argument(
@@ -100,56 +131,116 @@ def stop(
     ),
 ):
     """
-    Stop the current timer and record the time block.
+    ⏹️ Stop the current timer and record the time block with enhanced feedback.
     """
     now = now_utc()
-    try:
-        tags, notes = parse_args(args or [])
-    except ValueError as e:
-        console.print(f"[bold red]Error parsing args: {e}[/bold red]")
-        raise typer.Exit(code=1)
+    
+    # Parse arguments
+    with cli.thinking("Processing arguments"):
+        try:
+            tags, notes = parse_args(args or [])
+        except ValueError as e:
+            cli.error(f"Error parsing arguments: {e}")
+            raise typer.Exit(code=1)
 
-    active = time_repository.get_active_time_entry()
-    if not active:
-        console.print(
-            "[yellow]⏸️ Looks like you're not actively tracking right now. Hope you got some time to rest![/yellow]"
-        )
-        console.print(
-            "[dim]🌟 Ready to start something new whenever you are![/dim]"
-        )
-        raise typer.Exit(code=1)
+    # Check for active session
+    with cli.thinking("Checking for active session"):
+        active = time_repository.get_active_time_entry()
+        if not active:
+            cli.warning("No active time tracking session found")
+            cli.info("Ready to start tracking whenever you are! Use 'llog time start' to begin.")
+            return
+
+    # Calculate session duration so far
+    if active.start:
+        current_duration = (now - active.start).total_seconds() / 60
+        duration_display = cli.format_duration(current_duration)
+        cli.info(f"Current session: '{active.title}' ({duration_display})")
 
     # Determine end time
     end_time = parse_date_string(past, now=now) if past else now
 
-    # Stop the entry in the DB; repository returns updated TimeLog
-    try:
+    # Stop the time entry
+    with cli.loading_operation("Finalizing time entry", "Time entry completed"):
         updated = time_repository.stop_active_time_entry(
             end_time=end_time,
             tags=",".join(tags) if tags else None,
             notes=" ".join(notes) if notes else None
         )
-    except Exception as e:
-        console.print(f"[bold red]Failed to stop time entry: {e}[/bold red]")
-        raise typer.Exit(code=1)
 
-    # Compute distracted and actual focused minutes
+    # Calculate final statistics
     distracted = updated.distracted_minutes or 0
-    # Ensure start/end are datetime
     if updated.start and updated.end:
         total_minutes = (updated.end - updated.start).total_seconds() / 60
     else:
         total_minutes = 0
     actual_minutes = max(0, total_minutes - distracted)
 
-    console.print(
-        f"[green]⏹️ You spent [bold]{round(actual_minutes, 2)}[/bold] minutes on [bold]{updated.title}[/bold] "
-        f"(Distracted: {distracted} min).[/green]"
-    )
-    console.print(
-        f"[green]⏹️ Well done! You spent [bold]{round(total_minutes, 2)}[/bold] minutes on [bold]{updated.title}[/bold].[/green]"
-    )
-    console.print("[dim]🌱 Every minute you invest matters. Nice work![/dim]")
+    # Display detailed session summary
+    session_data = {
+        "Activity": updated.title,
+        "Category": updated.category or "None",
+        "Project": updated.project or "None",
+        "Total Time": cli.format_duration(total_minutes),
+        "Focused Time": cli.format_duration(actual_minutes),
+        "Distracted Time": cli.format_duration(distracted),
+        "Efficiency": f"{(actual_minutes/total_minutes*100):.1f}%" if total_minutes > 0 else "N/A"
+    }
+
+    cli.success(f"Session completed: {cli.format_duration(total_minutes)} on '{updated.title}'")
+    cli.display_summary_card("Time Tracking Summary", session_data)
+    
+    # Motivational message based on duration
+    if total_minutes >= 60:
+        cli.info("🏆 Great focus! You completed a substantial work session.")
+    elif total_minutes >= 25:
+        cli.info("✨ Nice work! That's a solid pomodoro session.")
+    else:
+        cli.info("🌱 Every minute you invest matters. Nice work!")
+
+
+@app.command("status")
+@database_operation("Check Status", show_performance=False)
+def status():
+    """
+    📊 Show current time tracking status with enhanced display.
+    """
+    with cli.thinking("Checking time tracking status"):
+        active = time_repository.get_active_time_entry()
+    
+    if not active:
+        cli.info("⏸️ No active time tracking session")
+        cli.info("Ready to start tracking! Use 'llog time start <activity>' to begin.")
+        return
+    
+    # Calculate current duration
+    now = now_utc()
+    if active.start:
+        current_duration = (now - active.start).total_seconds() / 60
+        duration_display = cli.format_duration(current_duration)
+        time_ago = cli.format_relative_time(active.start)
+    else:
+        duration_display = "Unknown"
+        time_ago = "Unknown"
+    
+    # Display active session info
+    session_data = {
+        "Activity": active.title,
+        "Category": active.category or "None",
+        "Project": active.project or "None",
+        "Duration": duration_display,
+        "Started": time_ago,
+        "Tags": active.tags or "None"
+    }
+    
+    cli.success(f"⏱️ Currently tracking: '{active.title}'")
+    cli.display_summary_card("Active Session", session_data)
+    
+    # Productivity tips based on duration
+    if current_duration >= 90:
+        cli.info("💡 Consider taking a break - you've been focused for a while!")
+    elif current_duration >= 25:
+        cli.info("🍅 You're in a great flow state! Keep it up.")
 
 
 @app.command("summary")

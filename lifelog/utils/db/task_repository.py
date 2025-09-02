@@ -16,6 +16,7 @@ from lifelog.utils.db import (
 )
 from lifelog.utils.db import fetch_from_server, get_last_synced, process_sync_queue, set_last_synced, safe_execute, safe_query
 from lifelog.utils.core_utils import calculate_priority
+from lifelog.utils.error_handler import handle_db_errors, validate_task_data
 logger = logging.getLogger(__name__)
 
 

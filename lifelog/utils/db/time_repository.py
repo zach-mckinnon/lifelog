@@ -17,6 +17,7 @@ from lifelog.utils.db import (
 from lifelog.utils.db import add_record, update_record
 from lifelog.utils.db.models import TimeLog, time_log_from_row, fields as dataclass_fields
 from lifelog.utils.core_utils import now_utc, to_utc
+from lifelog.utils.error_handler import handle_db_errors, validate_time_entry_data
 
 logger = logging.getLogger(__name__)
 
@@ -192,8 +193,14 @@ def get_active_time_entry() -> Optional[TimeLog]:
         return None
 
 
+@handle_db_errors("start_time_entry")
 def start_time_entry(data: Dict[str, Any]) -> TimeLog:
+    """Start a new time entry with validation and error handling."""
     from lifelog.utils.core_utils import now_utc
+    
+    # Validate data
+    data = validate_time_entry_data(data)
+    
     # normalize start
     start_val = data.get("start")
     if isinstance(start_val, datetime):
@@ -213,7 +220,6 @@ def start_time_entry(data: Dict[str, Any]) -> TimeLog:
 
     # Optional: set updated_at/deleted defaults here if schema expects them on insert.
     # If you want to record creation time:
-    from lifelog.utils.core_utils import now_utc
     now_iso = now_utc().isoformat()
     if 'updated_at' in fields:
         # If updated_at should default to creation time

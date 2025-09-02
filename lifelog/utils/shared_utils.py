@@ -12,16 +12,74 @@ from dateutil.relativedelta import relativedelta
 
 import re
 from typing import List
-# Lazy loading for memory-heavy libraries - improves Pi startup time
+# Enhanced lazy loading for memory-heavy libraries - optimized for Pi
 _pd = None
+_numpy = None
+_scipy = None
+
+class LazyLibraryLoader:
+    """Thread-safe lazy loader for heavy libraries on Pi."""
+    
+    def __init__(self):
+        self._pd = None
+        self._numpy = None
+        self._scipy = None
+        self._lock = None
+    
+    def get_pandas(self):
+        """Lazy load pandas with Pi-specific optimizations."""
+        if self._pd is None:
+            try:
+                # Check if we're on Pi and apply memory settings
+                from lifelog.utils.pi_optimizer import is_raspberry_pi
+                
+                import pandas as pd
+                if is_raspberry_pi():
+                    # Configure pandas for Pi memory constraints
+                    pd.set_option('mode.chained_assignment', None)  # Reduce warnings
+                    pd.set_option('display.max_rows', 50)  # Limit display rows
+                    pd.set_option('display.max_columns', 10)  # Limit display columns
+                
+                self._pd = pd
+            except ImportError:
+                # Graceful fallback if pandas not available
+                self._pd = None
+        return self._pd
+    
+    def get_numpy(self):
+        """Lazy load numpy.""" 
+        if self._numpy is None:
+            try:
+                import numpy as np
+                self._numpy = np
+            except ImportError:
+                self._numpy = None
+        return self._numpy
+    
+    def get_scipy(self):
+        """Lazy load scipy."""
+        if self._scipy is None:
+            try:
+                import scipy
+                self._scipy = scipy  
+            except ImportError:
+                self._scipy = None
+        return self._scipy
+
+# Global lazy loader instance
+_lazy_loader = LazyLibraryLoader()
 
 def get_pandas():
-    """Lazy load pandas only when needed to reduce memory usage on Pi"""
-    global _pd
-    if _pd is None:
-        import pandas as pd
-        _pd = pd
-    return _pd
+    """Get pandas with Pi optimizations - backward compatibility."""
+    return _lazy_loader.get_pandas()
+
+def get_numpy():
+    """Get numpy with lazy loading."""
+    return _lazy_loader.get_numpy()
+
+def get_scipy():
+    """Get scipy with lazy loading."""
+    return _lazy_loader.get_scipy()
 from rich.console import Console
 import typer
 import lifelog.config.config_manager as cf

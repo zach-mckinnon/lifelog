@@ -11,6 +11,8 @@ from lifelog.utils.db import (
     set_last_synced, should_sync, is_direct_db_mode, 
     queue_sync_operation, process_sync_queue, add_record, update_record
 )
+from lifelog.utils.error_handler import handle_db_errors, ValidationError
+from lifelog.utils.pi_optimizer import pi_optimizer
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +123,16 @@ class BaseRepository(ABC, Generic[T]):
     
     # ─── CRUD OPERATIONS ───
     
-    def get_all(self, **filters) -> List[T]:
-        """Get all records with optional filters."""
+    @handle_db_errors("get_all_records")
+    def get_all(self, limit: Optional[int] = None, **filters) -> List[T]:
+        """Get all records with optional filters and Pi-optimized limits."""
         if should_sync():
             self._pull_changed_from_host()
+        
+        # Apply Pi-specific query limits
+        settings = pi_optimizer.get_optimized_settings()
+        if limit is None:
+            limit = settings["performance"]["query_limit"]
             
         query = f"SELECT * FROM {self.table_name} WHERE 1=1"
         params = []
@@ -135,15 +143,18 @@ class BaseRepository(ABC, Generic[T]):
                 query += f" AND {key} = ?"
                 params.append(value)
         
-        query += " ORDER BY id ASC"
-        rows = safe_query(query, tuple(params))
+        query += f" ORDER BY id ASC LIMIT ?"
+        params.append(limit)
         
-        result = []
-        for row in rows:
-            try:
-                result.append(self.from_row_func(dict(row)))
-            except Exception as e:
-                logger.error(f"Failed to parse {self.table_name} row: {e}", exc_info=True)
+        with pi_optimizer.memory_efficient_operation(f"query_{self.table_name}"):
+            rows = safe_query(query, tuple(params))
+            
+            result = []
+            for row in rows:
+                try:
+                    result.append(self.from_row_func(dict(row)))
+                except Exception as e:
+                    logger.error(f"Failed to parse {self.table_name} row: {e}", exc_info=True)
         
         return result
     
@@ -177,30 +188,33 @@ class BaseRepository(ABC, Generic[T]):
             logger.error(f"Failed to parse {self.table_name} row for uid={uid_val}: {e}", exc_info=True)
             return None
     
+    @handle_db_errors("add_record")
     def add(self, data: Dict[str, Any]) -> T:
-        """Add new record."""
+        """Add new record with validation and Pi optimization."""
         # Validate and normalize
         data = self.validate_before_save(data)
         
-        # Set defaults
-        now = datetime.now()
+        # Set defaults with UTC-aware datetime
+        from lifelog.utils.core_utils import now_utc
+        now_iso = now_utc().isoformat()
         data.setdefault('uid', str(uuid.uuid4()))
-        data.setdefault('updated_at', now)
+        data.setdefault('updated_at', now_iso)
         data.setdefault('deleted', 0)
         
         # Ensure all fields exist
         for field in self.field_names:
             data.setdefault(field, None)
         
-        # Insert locally
-        if is_direct_db_mode():
-            new_id = add_record(self.table_name, data, self.field_names)
-            return self.get_by_id(new_id)
-        else:
-            add_record(self.table_name, data, self.field_names)
-            queue_sync_operation(self.get_sync_endpoint(), "create", data)
-            process_sync_queue()
-            return self.get_by_uid(data["uid"])
+        with pi_optimizer.memory_efficient_operation(f"add_{self.table_name}"):
+            # Insert locally
+            if is_direct_db_mode():
+                new_id = add_record(self.table_name, data, self.field_names)
+                return self.get_by_id(new_id)
+            else:
+                add_record(self.table_name, data, self.field_names)
+                queue_sync_operation(self.get_sync_endpoint(), "create", data)
+                process_sync_queue()
+                return self.get_by_uid(data["uid"])
     
     def update(self, record_id: int, updates: Dict[str, Any]) -> None:
         """Update existing record."""

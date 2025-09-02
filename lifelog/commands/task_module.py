@@ -48,6 +48,13 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.align import Align
 from rich.layout import Layout
+
+# Enhanced CLI imports
+from lifelog.utils.cli_enhanced import cli
+from lifelog.utils.cli_decorators import (
+    with_loading, with_operation_header, database_operation, 
+    interactive_command, with_performance_monitoring, multi_step_command
+)
 from rich.text import Text
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 import calendar
@@ -80,6 +87,8 @@ MAX_TASKS_DISPLAY = 50
 
 
 @app.command()
+@with_operation_header("Adding New Task", "Create and configure task with validation")
+@database_operation("Add Task")
 def add(
     title: str = typer.Argument(...,
                                 help="The title of the task you need to get done."),
@@ -92,30 +101,37 @@ def add(
         None, help="Optional +tags and notes."),
 ):
     """
-    Add a new task.
+    ✨ Add a new task with enhanced validation and feedback.
     """
     now = now_local()
     tags, notes = [], []
+    
+    # Parse arguments with enhanced error handling
     if args:
-        try:
-            tags, notes = parse_args(args)
-            for tag in tags:
-                if tag and tag not in get_available_tags():
-                    add_tag_to_config(tag)
-        except ValueError as e:
-            console.print(f"[error]{e}[/error]")
-            raise typer.Exit(code=1)
-        except ValueError as e:
-            console.print(f"[error]{e}[/error]")
-            raise typer.Exit(code=1)
+        with cli.thinking("Parsing task arguments"):
+            try:
+                tags, notes = parse_args(args)
+                # Auto-add new tags
+                for tag in tags:
+                    if tag and tag not in get_available_tags():
+                        with cli.loading_operation(f"Adding tag '{tag}'"):
+                            add_tag_to_config(tag)
+            except ValueError as e:
+                cli.error(f"Error parsing arguments: {e}")
+                raise typer.Exit(code=1)
 
-    # Validate and set up recurrence fields
+    # Interactive category/project setup
     if category and category not in get_available_categories():
-        if typer.confirm(f"Category '{category}' not in your config. Add it?"):
-            add_category_to_config(category)
+        if cli.enhanced_confirm(f"Create new category '{category}'?"):
+            with cli.loading_operation(f"Adding category '{category}'"):
+                add_category_to_config(category)
+            cli.success(f"Category '{category}' added")
+            
     if project and project not in get_available_projects():
-        if typer.confirm(f"Project '{project}' not in your config. Add it?"):
-            add_project_to_config(project)
+        if cli.enhanced_confirm(f"Create new project '{project}'?"):
+            with cli.loading_operation(f"Adding project '{project}'"):
+                add_project_to_config(project)
+            cli.success(f"Project '{project}' added")
 
     recur_interval = None
     recur_unit = None

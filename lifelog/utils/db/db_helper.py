@@ -59,26 +59,25 @@ def get_connection():
     """
     Yields an sqlite3.Connection optimized for Raspberry Pi:
       • has PRAGMA foreign_keys=ON
-      • Optimized PRAGMA settings for Pi performance
+      • Dynamically optimized PRAGMA settings based on Pi hardware
       • will COMMIT on normal exit,
       • ROLLBACK on exception,
       • and ALWAYS CLOSE.
     """
     from lifelog.utils.db import _resolve_db_path
+    from lifelog.utils.pi_optimizer import pi_optimizer
+    
     db_path = _resolve_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Connect with timeout to prevent hanging on slow Pi storage
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    # Connect with Pi-optimized timeout
+    settings = pi_optimizer.get_optimized_settings()
+    timeout = settings["performance"]["connection_timeout"]
+    conn = sqlite3.connect(db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
     
-    # Optimize SQLite settings for Raspberry Pi performance
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")  # Better for concurrent access
-    conn.execute("PRAGMA synchronous = NORMAL")  # Balance performance vs safety
-    conn.execute("PRAGMA cache_size = 10000")  # 10MB cache (reasonable for Pi)
-    conn.execute("PRAGMA temp_store = MEMORY")  # Use RAM for temp tables
-    conn.execute("PRAGMA mmap_size = 268435456")  # 256MB mmap (if available)
+    # Apply Pi-optimized SQLite settings
+    pi_optimizer.optimize_connection_settings(conn)
 
     try:
         yield conn
