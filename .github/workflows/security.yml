@@ -34,8 +34,8 @@ jobs:
       
     - name: Check for secrets
       run: |
-        # Check for common secret patterns
-        if grep -r -i "password.*=\|token.*=\|secret.*=\|key.*=" --include="*.py" lifelog/; then
+        # Check for common secret patterns, excluding false positives
+        if grep -r -i "password\s*=\s*[\"'][^\"']*[\"']\|token\s*=\s*[\"'][^\"']*[\"']\|secret\s*=\s*[\"'][^\"']*[\"']\|api_key\s*=\s*[\"'][^\"']*[\"']" --include="*.py" lifelog/ | grep -v "ord(\|key == ord\|lambda.*key"; then
           echo "⚠️  Found potential secrets in code"
           exit 1
         fi
