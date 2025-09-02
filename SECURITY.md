@@ -35,7 +35,7 @@ Set up these automated checks:
 
 ### 3. Repository Security Settings
 
-```
+```txt
 Settings → Security & Analysis:
 
 ✅ Dependency graph
@@ -95,7 +95,7 @@ jobs:
 
 Create `.github/CODEOWNERS`:
 
-```
+```txt
 # Global ownership
 * @zach-mckinnon
 
