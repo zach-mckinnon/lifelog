@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(pi_test_envScriptsactivate)",
+      "Bash(pi_test_env\\Scripts\\activate)",
+      "Bash(dir:*)",
+      "Bash(call pi_test_env\\Scripts\\activate.bat)",
+      "Bash(pi_test_env\\Scripts\\python.exe --version)",
+      "Bash(pi_test_env/Scripts/python.exe --version)",
+      "Bash(pi_test_env/Scripts/python.exe -m pip install --upgrade pip)",
+      "Bash(pi_test_env/Scripts/python.exe -m pip install -e .)"
     ],
     "deny": [],
     "ask": []
