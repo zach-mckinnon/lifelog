@@ -1,0 +1,21 @@
+# Include important files for distribution
+include README.md
+include LICENSE
+include CLAUDE.md
+include pyproject.toml
+
+# Include config templates
+recursive-include lifelog/config *.toml
+
+# Include any data files
+recursive-include lifelog *.py
+
+# Exclude development and build files
+exclude .gitignore
+exclude temp_requirements.txt
+global-exclude __pycache__/*
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude .DS_Store
+global-exclude .pytest_cache
+global-exclude *.egg-info/*

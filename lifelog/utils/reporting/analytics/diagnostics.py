@@ -14,6 +14,7 @@ from lifelog.config.config_manager import get_time_file
 from lifelog.utils.reporting.analytics.report_utils import render_line_chart, render_calendar_heatmap
 from lifelog.utils.db.track_repository import get_all_trackers, get_entries_for_tracker
 from lifelog.utils.shared_utils import parse_date_string
+from lifelog.utils.reporting.insight_engine import compute_correlation
 
 console = Console()
 

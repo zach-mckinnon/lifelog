@@ -17,6 +17,7 @@ from lifelog.utils.reporting.analytics.report_utils import render_pie_chart
 from rich.table import Table
 
 from lifelog.utils.shared_utils import now_utc
+from lifelog.utils.reporting.insight_engine import daily_averages, load_time_data, load_tracker_data
 
 console = Console()
 cfg = cf.load_config()
