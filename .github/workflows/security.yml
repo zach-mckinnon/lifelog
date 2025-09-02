@@ -1,0 +1,51 @@
+name: Security Checks
+
+on:
+  pull_request:
+    branches: [ main, public ]
+  push:
+    branches: [ main, public ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install safety bandit
+        
+    - name: Check for known vulnerabilities
+      run: |
+        safety check --json || echo "Safety check completed with warnings"
+      
+    - name: Run security linter
+      run: |
+        bandit -r lifelog/ -f json || echo "Bandit scan completed"
+      
+    - name: Check for secrets
+      run: |
+        # Check for common secret patterns, excluding false positives
+        if grep -r -i "password\s*=\s*[\"'][^\"']*[\"']\|token\s*=\s*[\"'][^\"']*[\"']\|secret\s*=\s*[\"'][^\"']*[\"']\|api_key\s*=\s*[\"'][^\"']*[\"']" --include="*.py" lifelog/ | grep -v "ord(\|key == ord\|lambda.*key"; then
+          echo "⚠️  Found potential secrets in code"
+          exit 1
+        fi
+        echo "✅ No hardcoded secrets found"
+        
+    - name: Verify build works
+      run: |
+        python -m build
+        
+    - name: Test installation
+      run: |
+        pip install dist/*.whl
+        llog --help

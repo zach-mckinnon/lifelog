@@ -1,0 +1,54 @@
+[categories]
+work = "Work related tasks"
+school = "School or study tasks"
+home = "Home related tasks"
+personal = "Personal tasks"
+health = "Health and fitness tasks"
+
+[category_importance]
+work = 1.2
+school = 1.0
+home = 0.9
+personal = 1.0
+health = 1.1
+
+[tracker]
+[mood]
+[water]
+[sleep]
+[sleepq]
+[exercise]
+
+[reporting]
+categories = [
+  "tasks",
+  "trackers",
+  "time",
+  "mood",
+  "energy",
+  "productivity",
+  "health",
+  "environment",
+  "goals",
+  "custom"
+]
+
+[aliases]
+m = "mood"
+w = "water"
+sl = "sleep"
+
+[cron.recur_auto]
+schedule = "0 3 * * *"
+command = "llog task auto_recur"
+
+[cron.env_sync]
+schedule = "0 */4 * * *"
+command = "llog env sync-all"
+
+[settings]
+default_importance = 3
+show_completed_tasks = false
+
+[meta]
+initialized = false

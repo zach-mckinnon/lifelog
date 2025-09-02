@@ -1,0 +1,21 @@
+Flask
+npyscreen
+numpy
+pandas
+plotext
+python_dateutil
+Requests
+rich
+scipy
+termplotlib
+toml
+tomlkit
+typer
+plotille
+pydantic
+pyyaml
+gunicorn
+pendulum>=2.0
+pyfiglet
+windows-curses; sys_platform == "win32"
+pywin32; sys_platform == "win32"
