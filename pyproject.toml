@@ -27,6 +27,7 @@ dependencies = [
     "pyyaml", 
     "gunicorn",
     "pendulum>=2.0",
+    "psutil>=5.0",  # For Pi optimization and system monitoring
 
     # Windows only
     "windows-curses; sys_platform == 'win32'",

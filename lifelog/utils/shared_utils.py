@@ -594,12 +594,17 @@ def add_category_to_config(category: str, description: str = ""):
     if category not in cats:
         cats[category] = description
 
-        # Prompt for importance multiplier
-        multiplier = typer.prompt(
-            f"Enter importance multiplier for '{category}' (1.0 = normal)",
-            default=1.0,
-            type=float
-        )
+        # Prompt for importance multiplier with fallback
+        try:
+            multiplier = typer.prompt(
+                f"Enter importance multiplier for '{category}' (1.0 = normal)",
+                default=1.0,
+                type=float
+            )
+        except (EOFError, KeyboardInterrupt):
+            # Non-interactive environment fallback
+            multiplier = 1.0
+            console.print(f"[dim]Using default multiplier: {multiplier}[/dim]")
         cat_importances[category] = multiplier
 
         config["categories"] = cats
