@@ -471,35 +471,37 @@ def entry_from_row(row: Dict[str, Any]) -> TrackerEntry:
 def goal_from_row(row):
     if not isinstance(row, dict):
         row = dict(row)
-    kind = row["kind"]
+    kind = row.get("kind")
+    if not kind:
+        raise ValueError("Missing required field 'kind' in goal row")
     base = {
-        "id": row["id"],
-        "tracker_id": row["tracker_id"],
-        "title": row["title"],
-        "kind": row["kind"],
+        "id": row.get("id"),
+        "tracker_id": row.get("tracker_id"),
+        "title": row.get("title", ""),
+        "kind": kind,
         "period": row.get("period", "day"),
         "uid": row.get("uid"),
     }
     if kind == "sum":
-        return GoalSum(**base, amount=row["amount"], unit=row.get("unit"))
+        return GoalSum(**base, amount=row.get("amount", 0), unit=row.get("unit"))
     elif kind == "count":
-        return GoalCount(**base, amount=row["amount"], unit=row.get("unit"))
+        return GoalCount(**base, amount=row.get("amount", 0), unit=row.get("unit"))
     elif kind == "bool":
         return GoalBool(**base)
     elif kind == "streak":
-        return GoalStreak(**base, target_streak=row["target_streak"])
+        return GoalStreak(**base, target_streak=row.get("target_streak", 1))
     elif kind == "duration":
-        return GoalDuration(**base, amount=row["amount"], unit=row.get("unit", "minutes"))
+        return GoalDuration(**base, amount=row.get("amount", 0), unit=row.get("unit", "minutes"))
     elif kind == "milestone":
-        return GoalMilestone(**base, target=row["target"], unit=row.get("unit"))
+        return GoalMilestone(**base, target=row.get("target", 0), unit=row.get("unit"))
     elif kind == "reduction":
-        return GoalReduction(**base, amount=row["amount"], unit=row.get("unit"))
+        return GoalReduction(**base, amount=row.get("amount", 0), unit=row.get("unit"))
     elif kind == "range":
-        return GoalRange(**base, min_amount=row["min_amount"], max_amount=row["max_amount"], unit=row.get("unit"), mode=row.get("mode", "goal"))
+        return GoalRange(**base, min_amount=row.get("min_amount", 0), max_amount=row.get("max_amount", 0), unit=row.get("unit"), mode=row.get("mode", "goal"))
     elif kind == "percentage":
-        return GoalPercentage(**base, target_percentage=row["target_percentage"], current_percentage=row.get("current_percentage", 0))
+        return GoalPercentage(**base, target_percentage=row.get("target_percentage", 100), current_percentage=row.get("current_percentage", 0))
     elif kind == "replacement":
-        return GoalReplacement(**base, old_behavior=row["old_behavior"], new_behavior=row["new_behavior"])
+        return GoalReplacement(**base, old_behavior=row.get("old_behavior", ""), new_behavior=row.get("new_behavior", ""))
     elif kind == "average":
         return GoalAverage(**base, amount=row.get("amount", 0), unit=row.get("unit"))
     else:

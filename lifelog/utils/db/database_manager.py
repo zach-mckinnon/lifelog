@@ -407,7 +407,7 @@ def add_record(table, data, fields):
             data["uid"] = str(uuid.uuid4())
         cols = ', '.join(fields)
         ph = ', '.join('?' for _ in fields)
-        vals = [data[f] for f in fields]
+        vals = [data.get(f) for f in fields]
         cursor.execute(f"INSERT INTO {table} ({cols}) VALUES ({ph})", vals)
         new_id = cursor.lastrowid
         # no conn.commit() or conn.close() here—handled by the contextmanager
