@@ -625,7 +625,7 @@ def create_goal_interactive_tui(stdscr, tracker_type: str):
 
     # 4. Additional fields by goal kind
     if kind == GoalKind.BOOL.value:
-        goal.amount = True
+        goal["amount"] = True
 
     elif kind == GoalKind.RANGE.value:
         min_amt = popup_input(stdscr, "Minimum value:")
@@ -643,7 +643,7 @@ def create_goal_interactive_tui(stdscr, tracker_type: str):
             stdscr, "Number of replacements to target (default 1):")
         goal["old_behavior"] = old
         goal["new_behavior"] = new
-        goal.amount = float(amt) if amt else 1
+        goal["amount"] = float(amt) if amt else 1
 
     elif kind == GoalKind.PERCENTAGE.value:
         target_pct = popup_input(stdscr, "Target percentage (0-100):")
@@ -668,14 +668,14 @@ def create_goal_interactive_tui(stdscr, tracker_type: str):
         amt = popup_input(stdscr, "Target duration amount (number):")
         unit = popup_input(
             stdscr, "Time unit (e.g. minutes, hours):", max_length=20) or "minutes"
-        goal.amount = float(amt) if amt else 0
+        goal["amount"] = float(amt) if amt else 0
         goal["unit"] = unit
 
     elif kind in [GoalKind.SUM.value, GoalKind.COUNT.value, GoalKind.REDUCTION.value]:
         amt = popup_input(stdscr, "Target amount:")
         unit = popup_input(
             stdscr, "Unit (e.g. 'oz', 'times', leave blank if none):", max_length=20) or ""
-        goal.amount = float(amt) if amt else 0
+        goal["amount"] = float(amt) if amt else 0
         goal["unit"] = unit
 
     # For other goal types, add logic as needed.

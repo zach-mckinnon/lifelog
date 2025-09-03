@@ -126,7 +126,7 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
 
     # Additional fields based on goal kind
     if goal_kind == GoalKind.BOOL:
-        goal.amount = True
+        goal["amount"] = True
     elif goal_kind == GoalKind.RANGE:
         goal["min_amount"] = float(typer.prompt(
             "Enter minimum value", type=float))
@@ -137,7 +137,7 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
     elif goal_kind == GoalKind.REPLACEMENT:
         goal["old_behavior"] = typer.prompt("Enter behavior to replace")
         goal["new_behavior"] = typer.prompt("Enter replacement behavior")
-        goal.amount = True
+        goal["amount"] = True
     elif goal_kind == GoalKind.PERCENTAGE:
         goal["target_percentage"] = float(typer.prompt(
             "Enter target percentage (0-100)", type=float))
@@ -153,12 +153,12 @@ def create_goal_interactive(type: str) -> Dict[str, Any]:
         goal["target_streak"] = int(typer.prompt(
             "Enter target streak length", type=int))
     elif goal_kind == GoalKind.DURATION:
-        goal.amount = float(typer.prompt(
+        goal["amount"] = float(typer.prompt(
             "Enter duration amount", type=float))
         goal["unit"] = typer.prompt(
             "Enter time unit (e.g., 'minutes', 'hours')", default="minutes")
     elif goal_kind in [GoalKind.SUM, GoalKind.COUNT, GoalKind.REDUCTION]:
-        goal.amount = float(typer.prompt("Enter target amount", type=float))
+        goal["amount"] = float(typer.prompt("Enter target amount", type=float))
         goal["unit"] = typer.prompt(
             "Enter unit (e.g., 'oz', 'times', 'pages', leave blank if none)", default="")
 
